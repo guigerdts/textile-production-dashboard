@@ -1,0 +1,3 @@
+# Productive time is derived, never entered manually
+
+Tiempo productivo = tiempo total disponible − tiempo no productivo planificado − tiempo improductivo por incidencias. The operator never types a productive time; the system derives it from the shift window, planned activities (almuerzo, pausas, cambio de diseño, limpieza), and registered paradas. The two deduction categories are mutually exclusive to avoid double counting.

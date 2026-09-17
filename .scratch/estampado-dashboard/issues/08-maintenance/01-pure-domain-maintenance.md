@@ -1,0 +1,18 @@
+# 01: Pure domain for maintenance (reactivo and preventivo)
+
+**What to build:** The operator can register a maintenance applied to machine M1 (never per paint chemistry, per ADR 0006) in the pure domain, before any storage or UI exists: open a maintenance in progress or register one complete in a single step, close an open one later, and read the one open maintenance per machine. The domain enforces every approved rule: only the closed reactivo/preventivo type catalog is accepted, reactivo may optionally reference a daño (validated through an injected lookup; the link is never a precondition) while preventivo never carries one, inicio is required and fin optional (null while in progress), duration is always derived, queSeRevisoReparo is optional while open but required at close, records are immutable once closed. This ticket delivers the machine's maintenance rules as a proven, tested unit.
+
+**Blocked by:** None (can start immediately).
+
+**Status:** closed
+
+- [x] `TipoMantenimiento`, `TipoMantenimientoDef`, `Mantenimiento`, `MantenimientoAbierto`, and `ObtenerDanoPorId` types exist in `src/domain/types.ts` and the maintenance functions are exported from `src/domain/mantenimiento.ts`.
+- [x] The type catalog is closed: exactly "Mantenimiento reactivo" and "Mantenimiento preventivo", retrievable via `getTiposMantenimiento()` and `getTipoMantenimientoPorId(id)`. An unknown type is rejected.
+- [ ] `registrarMantenimiento` opens an in-progress maintenance when `fin` is omitted (stored as `null`) and registers a complete one when `fin` is present; `fin >= inicio` is enforced, otherwise the operation is rejected.
+- [ ] `inicio` is required and the only temporal reference: there is no date/fechaOperativa field and the model has no `ordenId`.
+- [ ] The input fields are normalized in the domain: `operatorName` and `motivo` are trimmed and must remain non-empty; `queSeRevisoReparo` is trimmed and may only remain empty while `fin === null` (required at close or one-step complete); `observaciones` is trimmed and becomes `undefined` when empty. The domain returns the normalized values and persistence receives exactly those.
+- [ ] A reactivo maintenance may record a `danoId` or remain without one; when a `danoId` is present the injected `ObtenerDanoPorId` is invoked and a non-existent daño rejects the operation with no mutation. A preventivo maintenance always has `danoId = null`; the UI never offers a daño selector for it.
+- [ ] `cerrarMantenimiento` completes an open maintenance and always returns a NEW closed record (it does not mutate the open one): it fills `fin` and `queSeRevisoReparo`, keeps every other field unchanged, and leaves the previous open record intact.
+- [ ] At most one open maintenance per machine is allowed (temporary operational restriction, relaxable if the flow requires it) via `mantenimientoAbierto`; a closed maintenance never blocks later registrations.
+- [ ] Maintenance is documentary: the domain never touches `tiempo.ts`, `ResumenTiempoTurno`, or any productive-time model (ADR 0007), and has no edit or delete operation after close.
+- [ ] Tests in `src/domain/mantenimiento.test.ts` cover the catalog, open and one-step registration, close-by-new-record, `fin >= inicio`, type/motivo/operatorName/queSeRevisoReparo rejections, the un-abierto-por-máquina restriction, the declarative reactivo/preventivo daño relationship with an injected lookup, and normalization, following the `danos.test.ts` (ticket 05) module pattern.
