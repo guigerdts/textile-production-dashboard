@@ -13,7 +13,7 @@ export interface ResumenTiempoProps {
   /** Resumen del turno ya calculado por dominio (4 valores derivados). */
   resumenTiempo: ResumenTiempoTurno;
   /** Devuelve errores de dominio vacío = éxito. Recibe el fin editado como "HH:MM". */
-  onCambiarFinJornada(fin: string): string[];
+  onCambiarFinJornada(fin: string): Promise<string[]>;
 }
 
 /** "HH:MM" de 24 h a partir de un timestamp ISO (para el input type="time").
@@ -56,9 +56,9 @@ export function ResumenTiempoSection({
     setFinInput(horaParaInput(jornada.fin));
   }, [jornada.fin]);
 
-  function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    setErrores(onCambiarFinJornada(finInput));
+    setErrores(await onCambiarFinJornada(finInput));
   }
 
   return (

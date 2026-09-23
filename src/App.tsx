@@ -141,7 +141,15 @@ function App({
   }, [actividadRepository]);
 
   useEffect(() => {
-    setJornada(jornadaRepository.obtenerParaFecha(hoy));
+    let cancelled = false;
+    async function cargarJornada() {
+      const jornadaCargada = await jornadaRepository.obtenerParaFecha(hoy);
+      if (!cancelled) setJornada(jornadaCargada);
+    }
+    cargarJornada();
+    return () => {
+      cancelled = true;
+    };
   }, [jornadaRepository, hoy]);
 
   useEffect(() => {
@@ -296,11 +304,11 @@ function App({
   }
 
   /** Única vía editar el fin de jornada (overtime): repositorio valida; React no duplica reglas. */
-  function handleCambiarFinJornada(fin: string): string[] {
+  async function handleCambiarFinJornada(fin: string): Promise<string[]> {
     const finIso = `${hoy}T${fin}:00.000Z`;
     const nuevaJornada: JornadaTurno = { inicio: jornada.inicio, fin: finIso };
     try {
-      jornadaRepository.guardarJornada(hoy, nuevaJornada);
+      await jornadaRepository.guardarJornada(hoy, nuevaJornada);
       setJornada(nuevaJornada);
       return [];
     } catch (error) {

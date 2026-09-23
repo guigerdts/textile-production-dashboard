@@ -850,7 +850,7 @@ describe("App — ticket 04: resumen del turno (UI)", () => {
 
     // jornada extendida a 19:00 → 12 h disponibles y productivas
     expectBuckets("12 h", "0 min", "0 min", "12 h");
-    expect(jornadaRepository.obtenerParaFecha(hoy).fin).toBe("2026-09-11T19:00:00.000Z");
+    expect((await jornadaRepository.obtenerParaFecha(hoy)).fin).toBe("2026-09-11T19:00:00.000Z");
   });
 
   it("fin de jornada inválido: el dominio rechaza y la UI muestra el error, sin mutar el repo", async () => {
@@ -864,7 +864,7 @@ describe("App — ticket 04: resumen del turno (UI)", () => {
 
     expectTexto(/el fin de la jornada debe ser posterior al inicio/i);
     // el repositorio no persistió la jornada inválida
-    expect(jornadaRepository.obtenerParaFecha(hoy).fin).toBe("2026-09-11T17:00:00.000Z");
+    expect((await jornadaRepository.obtenerParaFecha(hoy)).fin).toBe("2026-09-11T17:00:00.000Z");
   });
 
   it("el resumen del turno no muestra «no productivo total» (solo los 4 buckets principales)", () => {
