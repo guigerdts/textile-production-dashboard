@@ -129,7 +129,15 @@ function App({
   );
 
   useEffect(() => {
-    setOrden(repository.getOrderByFechaOperativa(hoy));
+    let cancelled = false;
+    async function cargarOrden() {
+      const ordenCargada = await repository.getOrderByFechaOperativa(hoy);
+      if (!cancelled) setOrden(ordenCargada);
+    }
+    cargarOrden();
+    return () => {
+      cancelled = true;
+    };
   }, [repository, hoy]);
 
   useEffect(() => {
@@ -166,7 +174,7 @@ function App({
   }, [inspeccionRepository, orden?.id]);
 
   /** Única vía available -> in_production: dominio + repositorio; React no duplica reglas. */
-  function handleIniciar(operatorName: string, lecturaInicial: number): string[] {
+  async function handleIniciar(operatorName: string, lecturaInicial: number): Promise<string[]> {
     if (!orden || orden.estado !== "available") {
       return ["solo se puede iniciar una orden disponible"];
     }
@@ -181,13 +189,17 @@ function App({
     if (!resultado.orden) {
       return ["no se pudo iniciar la producción"];
     }
-    repository.saveOrder(resultado.orden);
+    try {
+      await repository.saveOrder(resultado.orden);
+    } catch (error) {
+      return [error instanceof Error ? error.message : "no se pudo guardar la orden"];
+    }
     setOrden(resultado.orden);
     return [];
   }
 
   /** Única vía in_production -> nueva lectura: dominio + repositorio; React no duplica reglas. */
-  function handleRegistrarLectura(valor: number): ResultadoRegistroLectura {
+  async function handleRegistrarLectura(valor: number): Promise<ResultadoRegistroLectura> {
     if (!orden || orden.estado !== "in_production") {
       return { errores: ["solo se registran lecturas en una orden en producción"], sinIncremento: false };
     }
@@ -206,13 +218,20 @@ function App({
     if (!resultado.orden) {
       return { errores: ["no se pudo registrar la lectura"], sinIncremento: false };
     }
-    repository.saveOrder(resultado.orden);
+    try {
+      await repository.saveOrder(resultado.orden);
+    } catch (error) {
+      return {
+        errores: [error instanceof Error ? error.message : "no se pudo guardar la lectura"],
+        sinIncremento: false,
+      };
+    }
     setOrden(resultado.orden);
     return { errores: [], sinIncremento: resultado.sinIncremento ?? false };
   }
 
   /** Única vía in_production -> finished: dominio + repositorio; React no duplica reglas. */
-  function handleFinalizar(): string[] {
+  async function handleFinalizar(): Promise<string[]> {
     if (!orden || orden.estado !== "in_production") {
       return ["solo se finaliza una orden en producción"];
     }
@@ -228,7 +247,11 @@ function App({
     if (!resultado.orden) {
       return ["no se pudo finalizar la producción"];
     }
-    repository.saveOrder(resultado.orden);
+    try {
+      await repository.saveOrder(resultado.orden);
+    } catch (error) {
+      return [error instanceof Error ? error.message : "no se pudo guardar la orden"];
+    }
     setOrden(resultado.orden);
     return [];
   }

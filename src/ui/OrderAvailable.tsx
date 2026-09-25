@@ -29,8 +29,9 @@ interface OrderAvailableProps
   /**
    * Ejecuta la operación de dominio (`iniciarProduccion`) + persistencia en el repositorio.
    * Devuelve los errores de dominio para mostrarlos; vacío = éxito.
+   * Async desde el ticket 10.4 (IOrderRepository es async).
    */
-  onIniciar(operatorName: string, lecturaInicial: number): string[];
+  onIniciar(operatorName: string, lecturaInicial: number): Promise<string[]>;
 }
 
 /** Orden `available`: datos + formulario de inicio (operario + lectura inicial absoluta). */
@@ -43,9 +44,9 @@ export function OrderAvailable({
   const [lecturaInicial, setLecturaInicial] = useState("");
   const [errores, setErrores] = useState<string[]>([]);
 
-  function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    setErrores(onIniciar(operatorName, Number(lecturaInicial)));
+    setErrores(await onIniciar(operatorName, Number(lecturaInicial)));
   }
 
   return (

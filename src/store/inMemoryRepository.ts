@@ -22,7 +22,7 @@ export class InMemoryOrderRepository implements IOrderRepository {
     }
   }
 
-  getOrderByFechaOperativa(fechaOperativa: string): Orden | undefined {
+  async getOrderByFechaOperativa(fechaOperativa: string): Promise<Orden | undefined> {
     for (const o of this.porId.values()) {
       if (o.fechaOperativa === fechaOperativa) {
         return structuredClone(o);
@@ -31,7 +31,7 @@ export class InMemoryOrderRepository implements IOrderRepository {
     return undefined;
   }
 
-  saveOrder(orden: Orden): void {
+  async saveOrder(orden: Orden): Promise<void> {
     if (!this.porId.has(orden.id)) {
       throw new Error(`no se puede guardar una orden inexistente: ${orden.id}`);
     }

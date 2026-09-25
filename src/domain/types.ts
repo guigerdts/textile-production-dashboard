@@ -43,7 +43,8 @@ export interface Orden {
   /** Fecha operativa en que se ejecuta la orden (YYYY-MM-DD). */
   fechaOperativa: string;
   estado: EstadoOrden;
-  creadaExternamenteEn: string;
+  /** Metadato de origen externo (programación semanal). Opcional desde D-1 (ticket 10.4): la persistencia NUNCA lo reconstruye ni fabrica. */
+  creadaExternamenteEn?: string;
   iniciadaEn?: string;
   finalizadaEn?: string;
   operatorName?: string;

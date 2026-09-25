@@ -41,9 +41,10 @@ interface OrderInProductionProps
   orden: Orden;
   /** Proyección integrada por el dominio para la producción actual (SIEMPRE viva: se recalcula con lecturas/daños actuales). */
   integracion2da: ResultadoIntegracion2da;
-  onRegistrarLectura(valor: number): ResultadoRegistroLectura;
-  /** Devuelve errores de dominio vacío = éxito. */
-  onFinalizar(): string[];
+  /** Async desde el ticket 10.4 (IOrderRepository es async). */
+  onRegistrarLectura(valor: number): Promise<ResultadoRegistroLectura>;
+  /** Devuelve errores de dominio vacío = éxito. Async desde el ticket 10.4. */
+  onFinalizar(): Promise<string[]>;
   /** Paradas de la orden actual (abiertas y cerradas). */
   paradasDeOrden: Parada[];
   /** Parada abierta de la orden actual, si existe; activa bloqueo de lecturas y finalización. */
@@ -78,11 +79,11 @@ export function OrderInProduction({
   const progreso = calcularProgreso(golpesProducidos, orden.unidadesSolicitadas, orden.porcentaje2da);
   const ultimaLectura = orden.lecturas.at(-1)?.valor;
 
-  function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setAviso(null);
     setErroresFin([]);
-    const res = onRegistrarLectura(Number(nuevaLectura));
+    const res = await onRegistrarLectura(Number(nuevaLectura));
     setErrores(res.errores);
     if (res.errores.length > 0) {
       return;
@@ -93,10 +94,10 @@ export function OrderInProduction({
     }
   }
 
-  function handleFinalizar() {
+  async function handleFinalizar() {
     setAviso(null);
     setErrores([]);
-    setErroresFin(onFinalizar());
+    setErroresFin(await onFinalizar());
   }
 
   return (

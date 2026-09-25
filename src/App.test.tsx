@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import type { ReactElement } from "react";
 import userEvent from "@testing-library/user-event";
 import App from "./App";
 import { InMemoryOrderRepository } from "./store/inMemoryRepository";
@@ -38,12 +39,21 @@ import {
 import { registrarMantenimiento } from "./domain/mantenimiento";
 
 
-function renderApp(hoy: string) {
-  return render(<App repository={new InMemoryOrderRepository()} hoy={hoy} />);
+/**
+ * Renderiza App y descarga la carga asíncrona de la orden
+ * (IOrderRepository es async desde el ticket 10.4).
+ */
+async function mountApp(ui: ReactElement) {
+  render(ui);
+  await act(async () => {});
 }
 
-function renderAppConActividades(hoy: string, actividadRepository?: InMemoryActividadPlanificadaRepository) {
-  return render(
+async function renderApp(hoy: string) {
+  return await mountApp(<App repository={new InMemoryOrderRepository()} hoy={hoy} />);
+}
+
+async function renderAppConActividades(hoy: string, actividadRepository?: InMemoryActividadPlanificadaRepository) {
+  return await mountApp(
     <App
       repository={new InMemoryOrderRepository()}
       actividadRepository={actividadRepository ?? new InMemoryActividadPlanificadaRepository([])}
@@ -58,13 +68,13 @@ function expectTexto(texto: string | RegExp) {
 }
 
 describe("App — ciclo 1: shell, día vacío y orden disponible", () => {
-  it("muestra la fecha operativa actual", () => {
-    renderApp(FECHA_CON_ORDEN);
+  it("muestra la fecha operativa actual", async () => {
+    await renderApp(FECHA_CON_ORDEN);
     expectTexto(`Fecha operativa: ${FECHA_CON_ORDEN}`);
   });
 
-  it("día vacío: sin orden para la fecha no hay acciones de orden, sí hay actividades planificadas", () => {
-    renderApp(FECHA_SIN_ORDEN);
+  it("día vacío: sin orden para la fecha no hay acciones de orden, sí hay actividades planificadas", async () => {
+    await renderApp(FECHA_SIN_ORDEN);
     expectTexto(/No hay orden asignada para hoy/i);
     // sin acciones de orden: no hay formulario de inicio ni selector de fecha
     expect(screen.queryByRole("button", { name: /Iniciar producción/i })).toBeNull();
@@ -73,8 +83,8 @@ describe("App — ciclo 1: shell, día vacío y orden disponible", () => {
     expect(screen.getByTestId("actividades")).toBeTruthy();
   });
 
-  it("orden disponible: OP-101 (sin segunda) muestra todos los datos, objetivo = solicitadas", () => {
-    renderApp(FECHA_CON_ORDEN);
+  it("orden disponible: OP-101 (sin segunda) muestra todos los datos, objetivo = solicitadas", async () => {
+    await renderApp(FECHA_CON_ORDEN);
     expectTexto("OP-101");
     expectTexto("Jessie");
     expectTexto("T-100");
@@ -86,8 +96,8 @@ describe("App — ciclo 1: shell, día vacío y orden disponible", () => {
     expectTexto("Disponible");
   });
 
-  it("orden disponible: OP-102 (con segunda al 5%) muestra porcentaje y objetivo proyectado", () => {
-    renderApp("2026-09-15");
+  it("orden disponible: OP-102 (con segunda al 5%) muestra porcentaje y objetivo proyectado", async () => {
+    await renderApp("2026-09-15");
     expectTexto("OP-102");
     expectTexto("Palm");
     expectTexto("T-200");
@@ -106,7 +116,7 @@ describe("App — ciclo 2: iniciar producción", () => {
     { operario = "Laura", lectura = "100" }: { operario?: string; lectura?: string } = {},
   ) {
     const user = userEvent.setup();
-    render(<App repository={repo} hoy={FECHA_CON_ORDEN} />);
+    await mountApp(<App repository={repo} hoy={FECHA_CON_ORDEN} />);
     if (operario) await user.type(screen.getByRole("textbox", { name: /operario \(obligatorio\)/i }), operario);
     if (lectura) await user.type(screen.getByRole("spinbutton", { name: /lectura inicial/i }), lectura);
     await user.click(screen.getByRole("button", { name: /Iniciar producción/i }));
@@ -124,7 +134,7 @@ describe("App — ciclo 2: iniciar producción", () => {
   it("inicio exitoso: registra los datos correctamente en el repositorio", async () => {
     const repo = new InMemoryOrderRepository();
     await iniciar(repo, { operario: "Laura", lectura: "100" });
-    const guardada = repo.getOrderByFechaOperativa(FECHA_CON_ORDEN)!;
+    const guardada = (await repo.getOrderByFechaOperativa(FECHA_CON_ORDEN))!;
     expect(guardada.estado).toBe("in_production");
     expect(guardada.operatorName).toBe("Laura");
     expect(guardada.contadorBase).toBe(100);
@@ -138,24 +148,24 @@ describe("App — ciclo 2: iniciar producción", () => {
     await iniciar(repo, { operario: "" });
     expect(screen.getByRole("alert")).toBeTruthy();
     expectTexto("operatorName es obligatorio");
-    expect(repo.getOrderByFechaOperativa(FECHA_CON_ORDEN)!.estado).toBe("available");
+    expect((await repo.getOrderByFechaOperativa(FECHA_CON_ORDEN))!.estado).toBe("available");
   });
 
   it("lectura negativa: no inicia y muestra el error del dominio", async () => {
     const repo = new InMemoryOrderRepository();
     await iniciar(repo, { lectura: "-1" });
     expect(screen.getByRole("alert")).toBeTruthy();
-    expect(repo.getOrderByFechaOperativa(FECHA_CON_ORDEN)!.estado).toBe("available");
+    expect((await repo.getOrderByFechaOperativa(FECHA_CON_ORDEN))!.estado).toBe("available");
   });
 
   it("orden ya iniciada: no muestra el formulario ni el botón", async () => {
     const repo = new InMemoryOrderRepository();
-    const op101 = repo.getOrderByFechaOperativa(FECHA_CON_ORDEN)!;
+    const op101 = (await repo.getOrderByFechaOperativa(FECHA_CON_ORDEN))!;
     const res = iniciarProduccion(op101, { operatorName: "Ana", lecturaInicial: 50, timestamp: "2026-09-11T07:00:00.000Z" });
     if (!res.orden) throw new Error("precondition failed");
-    repo.saveOrder(res.orden);
+    await repo.saveOrder(res.orden);
 
-    render(<App repository={repo} hoy={FECHA_CON_ORDEN} />);
+    await mountApp(<App repository={repo} hoy={FECHA_CON_ORDEN} />);
     expectTexto("En producción");
     expectTexto("Ana");
     expect(screen.queryByRole("button", { name: /Iniciar producción/i })).toBeNull();
@@ -163,14 +173,14 @@ describe("App — ciclo 2: iniciar producción", () => {
 
   it("orden finalizada: muestra la vista finalizada sin botones de acción", async () => {
     const repo = new InMemoryOrderRepository();
-    const op101 = repo.getOrderByFechaOperativa(FECHA_CON_ORDEN)!;
+    const op101 = (await repo.getOrderByFechaOperativa(FECHA_CON_ORDEN))!;
     const iniciada = iniciarProduccion(op101, { operatorName: "Ana", lecturaInicial: 50, timestamp: "2026-09-11T07:00:00.000Z" });
     if (!iniciada.orden) throw new Error("precondition failed");
     const finalizada = finalizarProduccion(iniciada.orden, "2026-09-11T12:00:00.000Z");
     if (!finalizada.orden) throw new Error("precondition failed");
-    repo.saveOrder(finalizada.orden);
+    await repo.saveOrder(finalizada.orden);
 
-    render(<App repository={repo} hoy={FECHA_CON_ORDEN} />);
+    await mountApp(<App repository={repo} hoy={FECHA_CON_ORDEN} />);
     expectTexto("Finalizada");
     expect(screen.queryByRole("button", { name: /Iniciar producción/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /Registrar lectura/i })).toBeNull();
@@ -185,7 +195,7 @@ describe("App — ciclo 3: registrar lecturas posteriores", () => {
     nuevaLectura: string,
   ) {
     const user = userEvent.setup();
-    render(<App repository={repo} hoy={FECHA_CON_ORDEN} />);
+    await mountApp(<App repository={repo} hoy={FECHA_CON_ORDEN} />);
     await user.type(screen.getByRole("textbox", { name: /operario \(obligatorio\)/i }), "Laura");
     await user.type(screen.getByRole("spinbutton", { name: /lectura inicial/i }), lecturaInicial);
     await user.click(screen.getByRole("button", { name: /Iniciar producción/i }));
@@ -202,7 +212,7 @@ describe("App — ciclo 3: registrar lecturas posteriores", () => {
     expectTexto("2.382 unidades");
     expectTexto("794 golpes");
     expectTexto("Última lectura");
-    const guardada = repo.getOrderByFechaOperativa(FECHA_CON_ORDEN)!;
+    const guardada = (await repo.getOrderByFechaOperativa(FECHA_CON_ORDEN))!;
     expect(guardada.lecturas).toHaveLength(2);
     expect(guardada.lecturas[1]).toMatchObject({ valor: 106, deltaGolpes: 6 });
   });
@@ -212,7 +222,7 @@ describe("App — ciclo 3: registrar lecturas posteriores", () => {
     await iniciarYRegistrar(repo, "100", "100");
     expectTexto("Sin incremento desde la última lectura");
     expectTexto("0 golpes / 0 unidades");
-    const guardada = repo.getOrderByFechaOperativa(FECHA_CON_ORDEN)!;
+    const guardada = (await repo.getOrderByFechaOperativa(FECHA_CON_ORDEN))!;
     expect(guardada.lecturas).toHaveLength(2);
     expect(guardada.lecturas[1]).toEqual(
       expect.objectContaining({ valor: 100, deltaGolpes: 0 }),
@@ -225,27 +235,27 @@ describe("App — ciclo 3: registrar lecturas posteriores", () => {
     expect(screen.getByRole("alert")).toBeTruthy();
     expectTexto("el contador no puede retroceder");
     expectTexto("0 golpes / 0 unidades");
-    const guardada = repo.getOrderByFechaOperativa(FECHA_CON_ORDEN)!;
+    const guardada = (await repo.getOrderByFechaOperativa(FECHA_CON_ORDEN))!;
     expect(guardada.lecturas).toHaveLength(1);
     expect(guardada.estado).toBe("in_production");
   });
 
   it("orden finalizada: no muestra el formulario de lectura", async () => {
     const repo = new InMemoryOrderRepository();
-    const op101 = repo.getOrderByFechaOperativa(FECHA_CON_ORDEN)!;
+    const op101 = (await repo.getOrderByFechaOperativa(FECHA_CON_ORDEN))!;
     const iniciada = iniciarProduccion(op101, { operatorName: "Ana", lecturaInicial: 50, timestamp: "2026-09-11T07:00:00.000Z" });
     if (!iniciada.orden) throw new Error("precondition failed");
     const finalizada = finalizarProduccion(iniciada.orden, "2026-09-11T12:00:00.000Z");
     if (!finalizada.orden) throw new Error("precondition failed");
-    repo.saveOrder(finalizada.orden);
+    await repo.saveOrder(finalizada.orden);
 
-    render(<App repository={repo} hoy={FECHA_CON_ORDEN} />);
+    await mountApp(<App repository={repo} hoy={FECHA_CON_ORDEN} />);
     expect(screen.queryByRole("button", { name: /Registrar lectura/i })).toBeNull();
     expect(screen.queryByRole("spinbutton", { name: /nueva lectura/i })).toBeNull();
   });
 
   it("orden disponible: no muestra el formulario de lectura", async () => {
-    renderApp(FECHA_CON_ORDEN);
+    await renderApp(FECHA_CON_ORDEN);
     expect(screen.getByRole("button", { name: /Iniciar producción/i })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Registrar lectura/i })).toBeNull();
     expect(screen.queryByRole("spinbutton", { name: /nueva lectura/i })).toBeNull();
@@ -253,7 +263,7 @@ describe("App — ciclo 3: registrar lecturas posteriores", () => {
 });
 
 describe("App — ticket 02: paradas / incidencias (UI)", () => {
-  afterEach(() => {
+  afterEach(async () => {
     vi.useRealTimers();
   });
 
@@ -261,7 +271,7 @@ describe("App — ticket 02: paradas / incidencias (UI)", () => {
     const user = userEvent.setup();
     const repo = new InMemoryOrderRepository();
     const repoParadas = new InMemoryParadaRepository(opciones.paradas ?? []);
-    render(<App repository={repo} paradaRepository={repoParadas} hoy={FECHA_CON_ORDEN} />);
+    await mountApp(<App repository={repo} paradaRepository={repoParadas} hoy={FECHA_CON_ORDEN} />);
     await user.type(screen.getByRole("textbox", { name: /operario \(obligatorio\)/i }), "Laura");
     await user.type(screen.getByRole("spinbutton", { name: /lectura inicial/i }), "100");
     await user.click(screen.getByRole("button", { name: /Iniciar producción/i }));
@@ -301,13 +311,13 @@ describe("App — ticket 02: paradas / incidencias (UI)", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-11T09:30:00.000Z"));
     const repo = new InMemoryOrderRepository();
-    const base = repo.getOrderByFechaOperativa(FECHA_CON_ORDEN)!;
+    const base = (await repo.getOrderByFechaOperativa(FECHA_CON_ORDEN))!;
     const iniciada = iniciarProduccion(base, {
       operatorName: "Laura",
       lecturaInicial: 100,
       timestamp: "2026-09-11T08:00:00.000Z",
     }).orden!;
-    repo.saveOrder(iniciada);
+    await repo.saveOrder(iniciada);
     const abierta: ParadaAbierta = {
       id: "par-activa-1",
       maquinaId: "M1",
@@ -319,7 +329,7 @@ describe("App — ticket 02: paradas / incidencias (UI)", () => {
       fin: null,
     };
     const repoParadas = new InMemoryParadaRepository([abierta]);
-    render(<App repository={repo} paradaRepository={repoParadas} hoy={FECHA_CON_ORDEN} />);
+    await mountApp(<App repository={repo} paradaRepository={repoParadas} hoy={FECHA_CON_ORDEN} />);
 
     const activa = screen.getByTestId("parada-activa");
     expect(activa.textContent).toContain("Atasco o rotura de tela en la máquina");
@@ -391,7 +401,7 @@ describe("App — ticket 02: paradas / incidencias (UI)", () => {
     expect(screen.getByRole("button", { name: /Finalizar producción/i }).hasAttribute("disabled")).toBe(true);
     expectTexto(/detenida por una parada activa/i);
     // Dominio rechaza aunque se registre la parada en el repositorio
-    const ordenId = repo.getOrderByFechaOperativa(FECHA_CON_ORDEN)!.id;
+    const ordenId = (await repo.getOrderByFechaOperativa(FECHA_CON_ORDEN))!.id;
     const abierta = repoParadas.getParadaAbierta("M1", ordenId);
     expect(abierta).not.toBeNull();
     expect(validarFinalizacionConParadas([abierta!], ordenId).length).toBeGreaterThan(0);
@@ -427,7 +437,7 @@ describe("App — ciclo 4: finalización de orden", () => {
   async function iniciarParaFinalizar(lecturaInicial = "100") {
     const user = userEvent.setup();
     const repo = new InMemoryOrderRepository();
-    render(<App repository={repo} hoy={FECHA_CON_ORDEN} />);
+    await mountApp(<App repository={repo} hoy={FECHA_CON_ORDEN} />);
     await user.type(screen.getByRole("textbox", { name: /operario \(obligatorio\)/i }), "Laura");
     await user.type(screen.getByRole("spinbutton", { name: /lectura inicial/i }), lecturaInicial);
     await user.click(screen.getByRole("button", { name: /Iniciar producción/i }));
@@ -459,7 +469,7 @@ describe("App — ciclo 4: finalización de orden", () => {
     await user.click(screen.getByRole("button", { name: /Finalizar producción/i }));
     // otro user instance es innecesario pero por consistencia del helper ya tenemos el user del iniciarParaFinalizar
     // el click ya ocurrió arriba — verificamos el repo
-    const guardada = repo.getOrderByFechaOperativa(FECHA_CON_ORDEN)!;
+    const guardada = (await repo.getOrderByFechaOperativa(FECHA_CON_ORDEN))!;
     expect(guardada.estado).toBe("finished");
     expect(typeof guardada.finalizadaEn).toBe("string");
     expect(guardada.finalizadaEn!.length).toBeGreaterThan(0);
@@ -495,7 +505,7 @@ describe("App — ticket 03: actividades planificadas (UI)", () => {
   async function iniciarOP101ConActividades(repoActividades: InMemoryActividadPlanificadaRepository) {
     const user = userEvent.setup();
     const repo = new InMemoryOrderRepository();
-    render(
+    await mountApp(
       <App
         repository={repo}
         actividadRepository={repoActividades}
@@ -521,7 +531,7 @@ describe("App — ticket 03: actividades planificadas (UI)", () => {
   it("registra una limpieza en día vacío y muestra la actividad activa", async () => {
     const user = userEvent.setup();
     const repoActividades = new InMemoryActividadPlanificadaRepository([]);
-    renderAppConActividades(FECHA_SIN_ORDEN, repoActividades);
+    await renderAppConActividades(FECHA_SIN_ORDEN, repoActividades);
 
     await seleccionarTipoActividad(user, "Limpieza");
     await user.type(screen.getByLabelText(/qué se limpió/i), "mesa de estampado");
@@ -538,7 +548,7 @@ describe("App — ticket 03: actividades planificadas (UI)", () => {
   it("registra un cambio de diseño en orden disponible sin bloquear el inicio", async () => {
     const user = userEvent.setup();
     const repoActividades = new InMemoryActividadPlanificadaRepository([]);
-    renderAppConActividades(FECHA_CON_ORDEN, repoActividades);
+    await renderAppConActividades(FECHA_CON_ORDEN, repoActividades);
 
     await seleccionarTipoActividad(user, "Cambio de diseño");
     await user.type(screen.getByLabelText(/operario de la actividad/i), "Carlos Gómez");
@@ -575,7 +585,7 @@ describe("App — ticket 03: actividades planificadas (UI)", () => {
   it("registra una actividad en orden finalizada y la muestra sin botones de orden", async () => {
     const repoActividades = new InMemoryActividadPlanificadaRepository([]);
     const repo = new InMemoryOrderRepository();
-    const op101 = repo.getOrderByFechaOperativa(FECHA_CON_ORDEN)!;
+    const op101 = (await repo.getOrderByFechaOperativa(FECHA_CON_ORDEN))!;
     const iniciada = iniciarProduccion(op101, {
       operatorName: "Ana",
       lecturaInicial: 50,
@@ -584,10 +594,10 @@ describe("App — ticket 03: actividades planificadas (UI)", () => {
     if (!iniciada.orden) throw new Error("precondition failed");
     const finalizada = finalizarProduccion(iniciada.orden, "2026-09-11T12:00:00.000Z");
     if (!finalizada.orden) throw new Error("precondition failed");
-    repo.saveOrder(finalizada.orden);
+    await repo.saveOrder(finalizada.orden);
 
     const user = userEvent.setup();
-    render(
+    await mountApp(
       <App
         repository={repo}
         actividadRepository={repoActividades}
@@ -606,7 +616,7 @@ describe("App — ticket 03: actividades planificadas (UI)", () => {
 
   it("«Qué se limpió» aparece solo para limpieza, y cambiar de tipo limpia el valor", async () => {
     const user = userEvent.setup();
-    renderAppConActividades(FECHA_SIN_ORDEN);
+    await renderAppConActividades(FECHA_SIN_ORDEN);
 
     // sin tipo elegido no hay campo de limpieza
     expect(screen.queryByLabelText(/qué se limpió/i)).toBeNull();
@@ -623,7 +633,7 @@ describe("App — ticket 03: actividades planificadas (UI)", () => {
   it("limpieza y cambio de diseño pueden estar abiertos simultáneamente", async () => {
     const user = userEvent.setup();
     const repoActividades = new InMemoryActividadPlanificadaRepository([]);
-    renderAppConActividades(FECHA_SIN_ORDEN, repoActividades);
+    await renderAppConActividades(FECHA_SIN_ORDEN, repoActividades);
 
     await seleccionarTipoActividad(user, "Limpieza");
     await user.type(screen.getByLabelText(/qué se limpió/i), "mesa");
@@ -643,7 +653,7 @@ describe("App — ticket 03: actividades planificadas (UI)", () => {
   it("cierra una actividad abierta y pasa al historial", async () => {
     const user = userEvent.setup();
     const repoActividades = new InMemoryActividadPlanificadaRepository([]);
-    renderAppConActividades(FECHA_SIN_ORDEN, repoActividades);
+    await renderAppConActividades(FECHA_SIN_ORDEN, repoActividades);
 
     await seleccionarTipoActividad(user, "Limpieza");
     await user.type(screen.getByLabelText(/qué se limpió/i), "mesa de estampado");
@@ -664,7 +674,7 @@ describe("App — ticket 03: actividades planificadas (UI)", () => {
       A1_LIMPIEZA_CERRADA,
       A2_CAMBIO_CERRADO,
     ]);
-    renderAppConActividades(FECHA_CON_ORDEN, repoActividades);
+    await renderAppConActividades(FECHA_CON_ORDEN, repoActividades);
 
     expectTexto("Historial de actividades");
     expectTexto(/Limpieza/);
@@ -676,7 +686,7 @@ describe("App — ticket 03: actividades planificadas (UI)", () => {
     const user = userEvent.setup();
     const repoActividades = new InMemoryActividadPlanificadaRepository([]);
     // 2026-09-15 es martes: la sugerencia es SOLO UI (editable, no crea nada, no valida)
-    renderAppConActividades("2026-09-15", repoActividades);
+    await renderAppConActividades("2026-09-15", repoActividades);
 
     await seleccionarTipoActividad(user, "Limpieza");
     const campo = screen.getByLabelText(/qué se limpió/i);
@@ -695,7 +705,7 @@ describe("App — ticket 03: actividades planificadas (UI)", () => {
     const user = userEvent.setup();
     const repoActividades = new InMemoryActividadPlanificadaRepository([]);
     // 2026-09-11 es viernes: sin sugerencia, pero la limpieza es registrable igual
-    renderAppConActividades(FECHA_CON_ORDEN, repoActividades);
+    await renderAppConActividades(FECHA_CON_ORDEN, repoActividades);
 
     await seleccionarTipoActividad(user, "Limpieza");
     const campo = screen.getByLabelText(/qué se limpió/i);
@@ -728,7 +738,7 @@ describe("App — ticket 03: actividades planificadas (UI)", () => {
   it("dentro del banner de actividad activa: cerrar, y errores de cierre se muestran ahí", async () => {
     const user = userEvent.setup();
     const repoActividades = new InMemoryActividadPlanificadaRepository([]);
-    renderAppConActividades(FECHA_SIN_ORDEN, repoActividades);
+    await renderAppConActividades(FECHA_SIN_ORDEN, repoActividades);
 
     await seleccionarTipoActividad(user, "Limpieza");
     await user.type(screen.getByLabelText(/qué se limpió/i), "mesa");
@@ -744,7 +754,7 @@ describe("App — ticket 03: actividades planificadas (UI)", () => {
 });
 
 describe("App — ticket 04: resumen del turno (UI)", () => {
-  function renderAppConTiempo(
+  async function renderAppConTiempo(
     hoy: string,
     opciones: {
       paradaRepository?: InMemoryParadaRepository;
@@ -752,7 +762,7 @@ describe("App — ticket 04: resumen del turno (UI)", () => {
       jornadaRepository?: InMemoryJornadaRepository;
     } = {},
   ) {
-    return render(
+    return await mountApp(
       <App
         repository={new InMemoryOrderRepository()}
         paradaRepository={opciones.paradaRepository ?? new InMemoryParadaRepository([])}
@@ -778,8 +788,8 @@ describe("App — ticket 04: resumen del turno (UI)", () => {
     expect(screen.getByTestId("resumen-tiempo_productivo").textContent).toBe(productivo);
   }
 
-  it("día vacío: muestra el resumen del turno con la jornada default y buckets en cero", () => {
-    renderAppConTiempo(FECHA_SIN_ORDEN);
+  it("día vacío: muestra el resumen del turno con la jornada default y buckets en cero", async () => {
+    await renderAppConTiempo(FECHA_SIN_ORDEN);
 
     const resumen = screen.getByTestId("resumen-tiempo");
     expectTexto("Resumen del turno");
@@ -790,8 +800,8 @@ describe("App — ticket 04: resumen del turno (UI)", () => {
     expect(screen.queryByLabelText(/productivo/i)).toBeNull();
   });
 
-  it("orden disponible: el resumen del turno se muestra junto a la orden", () => {
-    renderAppConTiempo(FECHA_CON_ORDEN);
+  it("orden disponible: el resumen del turno se muestra junto a la orden", async () => {
+    await renderAppConTiempo(FECHA_CON_ORDEN);
 
     expectTexto("Resumen del turno");
     expect(screen.getByTestId("resumen-tiempo")).toBeTruthy();
@@ -800,7 +810,7 @@ describe("App — ticket 04: resumen del turno (UI)", () => {
 
   it("orden en producción: el resumen del turno se muestra tras iniciar", async () => {
     const user = userEvent.setup();
-    renderAppConTiempo(FECHA_CON_ORDEN);
+    await renderAppConTiempo(FECHA_CON_ORDEN);
 
     await user.type(screen.getByRole("textbox", { name: /operario \(obligatorio\)/i }), "Laura");
     await user.type(screen.getByRole("spinbutton", { name: /lectura inicial/i }), "100");
@@ -812,7 +822,7 @@ describe("App — ticket 04: resumen del turno (UI)", () => {
 
   it("orden finalizada: el resumen del turno se muestra sin campos de orden", async () => {
     const user = userEvent.setup();
-    renderAppConTiempo(FECHA_CON_ORDEN);
+    await renderAppConTiempo(FECHA_CON_ORDEN);
 
     await user.type(screen.getByRole("textbox", { name: /operario \(obligatorio\)/i }), "Laura");
     await user.type(screen.getByRole("spinbutton", { name: /lectura inicial/i }), "100");
@@ -824,12 +834,12 @@ describe("App — ticket 04: resumen del turno (UI)", () => {
     expect(screen.queryByRole("button", { name: /Registrar lectura/i })).toBeNull();
   });
 
-  it("buckets con una actividad (1 h) y una parada (15 min) de la máquina", () => {
+  it("buckets con una actividad (1 h) y una parada (15 min) de la máquina", async () => {
     const paradaRepository = new InMemoryParadaRepository([P1]); // 09:30–09:45
     const actividadRepository = new InMemoryActividadPlanificadaRepository([
       A1_LIMPIEZA_CERRADA, // 07:00–08:00
     ]);
-    renderAppConTiempo(FECHA_CON_ORDEN, { paradaRepository, actividadRepository });
+    await renderAppConTiempo(FECHA_CON_ORDEN, { paradaRepository, actividadRepository });
 
     // jornada 07:00–17:00 = 10 h; planificado = 1 h; incidencias = 15 min;
     // sin solape → productivo = 10h − (1h + 15min) = 8 h 45 min
@@ -839,7 +849,7 @@ describe("App — ticket 04: resumen del turno (UI)", () => {
   it("overtime: extender el fin de jornada aumenta el disponible y el productivo", async () => {
     const hoy = FECHA_CON_ORDEN;
     const jornadaRepository = new InMemoryJornadaRepository([]);
-    renderAppConTiempo(hoy, { jornadaRepository });
+    await renderAppConTiempo(hoy, { jornadaRepository });
 
     // fin editable visible; default 17:00 → 10 h disponibles
     const inputFin = screen.getByLabelText(/fin de jornada \(overtime incluido\)/i) as HTMLInputElement;
@@ -856,7 +866,7 @@ describe("App — ticket 04: resumen del turno (UI)", () => {
   it("fin de jornada inválido: el dominio rechaza y la UI muestra el error, sin mutar el repo", async () => {
     const hoy = FECHA_CON_ORDEN;
     const jornadaRepository = new InMemoryJornadaRepository([]);
-    renderAppConTiempo(hoy, { jornadaRepository });
+    await renderAppConTiempo(hoy, { jornadaRepository });
 
     const inputFin = screen.getByLabelText(/fin de jornada \(overtime incluido\)/i) as HTMLInputElement;
     fireEvent.change(inputFin, { target: { value: "06:00" } });
@@ -867,15 +877,15 @@ describe("App — ticket 04: resumen del turno (UI)", () => {
     expect((await jornadaRepository.obtenerParaFecha(hoy)).fin).toBe("2026-09-11T17:00:00.000Z");
   });
 
-  it("el resumen del turno no muestra «no productivo total» (solo los 4 buckets principales)", () => {
-    renderAppConTiempo(FECHA_CON_ORDEN);
+  it("el resumen del turno no muestra «no productivo total» (solo los 4 buckets principales)", async () => {
+    await renderAppConTiempo(FECHA_CON_ORDEN);
 
     expect(screen.queryByText(/no productivo/i)).toBeNull();
   });
 });
 
 describe("App — ticket 05: daños / eventos (UI)", () => {
-  afterEach(() => {
+  afterEach(async () => {
     vi.useRealTimers();
   });
 
@@ -884,7 +894,7 @@ describe("App — ticket 05: daños / eventos (UI)", () => {
     const repo = new InMemoryOrderRepository();
     const repoDanos = new InMemoryDanoRepository(opciones.danos ?? []);
     const repoParadas = new InMemoryParadaRepository(opciones.paradas ?? []);
-    render(
+    await mountApp(
       <App
         repository={repo}
         danoRepository={repoDanos}
@@ -926,20 +936,20 @@ describe("App — ticket 05: daños / eventos (UI)", () => {
     expect(repoDanos.listarPorMaquina("M1")).toHaveLength(0);
   });
 
-  it("registra un daño que causó parada y lo vincula a la parada abierta de la orden", () => {
+  it("registra un daño que causó parada y lo vincula a la parada abierta de la orden", async () => {
     // Congelamos el reloj ANTES del montaje: el daño inicia en el submit y la parada
     // sembrada debe comenzar no antes que el daño (relación temporal del dominio).
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-11T09:30:00.000Z"));
 
     const repo = new InMemoryOrderRepository();
-    const base = repo.getOrderByFechaOperativa(FECHA_CON_ORDEN)!;
+    const base = (await repo.getOrderByFechaOperativa(FECHA_CON_ORDEN))!;
     const iniciada = iniciarProduccion(base, {
       operatorName: "Laura",
       lecturaInicial: 100,
       timestamp: "2026-09-11T08:00:00.000Z",
     }).orden!;
-    repo.saveOrder(iniciada);
+    await repo.saveOrder(iniciada);
 
     const paradaAbierta: ParadaAbierta = {
       id: "par-activa-danio",
@@ -953,7 +963,7 @@ describe("App — ticket 05: daños / eventos (UI)", () => {
     };
     const repoParadas = new InMemoryParadaRepository([paradaAbierta]);
     const repoDanos = new InMemoryDanoRepository([]);
-    render(
+    await mountApp(
       <App
         repository={repo}
         paradaRepository={repoParadas}
@@ -1009,7 +1019,7 @@ describe("App — ticket 05: daños / eventos (UI)", () => {
     expect(guardado.unidadesSospechadas).toBe(3);
   });
 
-it("cierra el daño activo con solución aplicada y lo mueve al historial", () => {
+it("cierra el daño activo con solución aplicada y lo mueve al historial", async () => {
   // Reloj congelado: el form de cierre precarga el fin al montar y el daño inicia
   // en el submit; congelado, fin (montaje) >= inicio (submit) en vez de quedar
   // anterior por los milisegundos reales entre ambos (el dominio lo rechaza).
@@ -1017,15 +1027,15 @@ it("cierra el daño activo con solución aplicada y lo mueve al historial", () =
   vi.setSystemTime(new Date("2026-09-11T09:30:00.000Z"));
 
   const repo = new InMemoryOrderRepository();
-  const base = repo.getOrderByFechaOperativa(FECHA_CON_ORDEN)!;
+  const base = (await repo.getOrderByFechaOperativa(FECHA_CON_ORDEN))!;
   const iniciada = iniciarProduccion(base, {
     operatorName: "Laura",
     lecturaInicial: 100,
     timestamp: "2026-09-11T08:00:00.000Z",
   }).orden!;
-  repo.saveOrder(iniciada);
+  await repo.saveOrder(iniciada);
   const repoDanos = new InMemoryDanoRepository([]);
-  render(
+  await mountApp(
     <App repository={repo} danoRepository={repoDanos} hoy={FECHA_CON_ORDEN} />,
   );
 
@@ -1047,22 +1057,22 @@ it("cierra el daño activo con solución aplicada y lo mueve al historial", () =
   expectTexto("Historial de daños");
 });
 
-it("cierra sin solución aplicada: error del dominio", () => {
+it("cierra sin solución aplicada: error del dominio", async () => {
   // Mismo reloj congelado: el único error debe ser la solución faltante (el fin
   // precargado es coherente con el inicio del daño).
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-09-11T09:30:00.000Z"));
 
   const repo = new InMemoryOrderRepository();
-  const base = repo.getOrderByFechaOperativa(FECHA_CON_ORDEN)!;
+  const base = (await repo.getOrderByFechaOperativa(FECHA_CON_ORDEN))!;
   const iniciada = iniciarProduccion(base, {
     operatorName: "Laura",
     lecturaInicial: 100,
     timestamp: "2026-09-11T08:00:00.000Z",
   }).orden!;
-  repo.saveOrder(iniciada);
+  await repo.saveOrder(iniciada);
   const repoDanos = new InMemoryDanoRepository([]);
-  render(
+  await mountApp(
     <App repository={repo} danoRepository={repoDanos} hoy={FECHA_CON_ORDEN} />,
   );
 
@@ -1093,13 +1103,13 @@ it("cierra sin solución aplicada: error del dominio", () => {
     );
   });
 
-  it("historial con daños cerrados sembrados en orden disponible", () => {
+  it("historial con daños cerrados sembrados en orden disponible", async () => {
     const repo = new InMemoryOrderRepository();
     const repoDanos = new InMemoryDanoRepository([
       DANO_1_CERRADO_CON_PARADA,
       DANO_2_CERRADO_SIN_PARADA,
     ]);
-    render(<App repository={repo} danoRepository={repoDanos} hoy={FECHA_CON_ORDEN} />);
+    await mountApp(<App repository={repo} danoRepository={repoDanos} hoy={FECHA_CON_ORDEN} />);
 
     expectTexto("Historial de daños");
     expectTexto(/Daño mecánico en eje trasero/);
@@ -1108,21 +1118,21 @@ it("cierra sin solución aplicada: error del dominio", () => {
     expectTexto(/posible 2da \(3 uds\)/);
   });
 
-  it("orden finalizada: histórico de daños sin formulario de registro ni cierre", () => {
+  it("orden finalizada: histórico de daños sin formulario de registro ni cierre", async () => {
     const repo = new InMemoryOrderRepository();
-    const op101 = repo.getOrderByFechaOperativa(FECHA_CON_ORDEN)!;
+    const op101 = (await repo.getOrderByFechaOperativa(FECHA_CON_ORDEN))!;
     const iniciada = iniciarProduccion(op101, {
       operatorName: "Ana",
       lecturaInicial: 50,
       timestamp: "2026-09-11T07:00:00.000Z",
     }).orden!;
     const finalizada = finalizarProduccion(iniciada, "2026-09-11T12:00:00.000Z").orden!;
-    repo.saveOrder(finalizada);
+    await repo.saveOrder(finalizada);
     const repoDanos = new InMemoryDanoRepository([
       DANO_1_CERRADO_CON_PARADA,
       DANO_2_CERRADO_SIN_PARADA,
     ]);
-    render(<App repository={repo} danoRepository={repoDanos} hoy={FECHA_CON_ORDEN} />);
+    await mountApp(<App repository={repo} danoRepository={repoDanos} hoy={FECHA_CON_ORDEN} />);
 
     expectTexto("Finalizada");
     expectTexto("Historial de daños");
@@ -1138,7 +1148,7 @@ describe("App — ticket 06: bloque de proyección de 2da (UI)", () => {
     const user = userEvent.setup();
     const repo = new InMemoryOrderRepository();
     const repoDanos = new InMemoryDanoRepository(opciones.danos ?? []);
-    render(
+    await mountApp(
       <App repository={repo} danoRepository={repoDanos} hoy={FECHA_CON_ORDEN} />,
     );
     await user.type(screen.getByRole("textbox", { name: /operario \(obligatorio\)/i }), "Laura");
@@ -1274,9 +1284,9 @@ describe("App — ticket 06: bloque de proyección de 2da (UI)", () => {
     expect(bloqueCalidad().getByText(/2\s?%/)).toBeTruthy();
   });
 
-  it("orden finalizada: bloque histórico con los datos de cierre", () => {
+  it("orden finalizada: bloque histórico con los datos de cierre", async () => {
     const repo = new InMemoryOrderRepository();
-    const base = repo.getOrderByFechaOperativa(FECHA_CON_ORDEN)!;
+    const base = (await repo.getOrderByFechaOperativa(FECHA_CON_ORDEN))!;
     const iniciada = iniciarProduccion(base, {
       operatorName: "Ana",
       lecturaInicial: 100,
@@ -1287,9 +1297,9 @@ describe("App — ticket 06: bloque de proyección de 2da (UI)", () => {
       timestamp: "2026-09-11T09:00:00.000Z",
     }).orden!;
     const finalizada = finalizarProduccion(conLectura, "2026-09-11T12:00:00.000Z").orden!;
-    repo.saveOrder(finalizada);
+    await repo.saveOrder(finalizada);
     const repoDanos = new InMemoryDanoRepository([DANO_1_CERRADO_CON_PARADA]);
-    render(<App repository={repo} danoRepository={repoDanos} hoy={FECHA_CON_ORDEN} />);
+    await mountApp(<App repository={repo} danoRepository={repoDanos} hoy={FECHA_CON_ORDEN} />);
 
     expectTexto("Finalizada");
     const bloque = bloqueCalidad();
@@ -1297,11 +1307,11 @@ describe("App — ticket 06: bloque de proyección de 2da (UI)", () => {
     expect(bloque.getByText("Buena racha")).toBeTruthy();
   });
 
-  it("NO se muestra en orden disponible ni en día vacío", () => {
-    renderApp(FECHA_CON_ORDEN); // available: OP-101 disponible
+  it("NO se muestra en orden disponible ni en día vacío", async () => {
+    await renderApp(FECHA_CON_ORDEN); // available: OP-101 disponible
     expect(screen.queryByTestId("calidad-seccion")).toBeNull();
 
-    renderApp(FECHA_SIN_ORDEN); // día vacío
+    await renderApp(FECHA_SIN_ORDEN); // día vacío
     expect(screen.queryByTestId("calidad-seccion")).toBeNull();
   });
 });
@@ -1337,7 +1347,7 @@ describe("App — ticket 07: inspección de tela (UI)", () => {
     const user = userEvent.setup();
     const repo = new InMemoryOrderRepository();
     const repoInspecciones = new InMemoryInspeccionRepository(opciones.inspecciones ?? []);
-    render(
+    await mountApp(
       <App
         repository={repo}
         inspeccionRepository={repoInspecciones}
@@ -1368,15 +1378,15 @@ describe("App — ticket 07: inspección de tela (UI)", () => {
     await user.click(seccion.getByRole("button", { name: /Registrar inspección/i }));
   }
 
-  it("día vacío: NO hay sección de inspección de tela", () => {
-    renderApp(FECHA_SIN_ORDEN);
+  it("día vacío: NO hay sección de inspección de tela", async () => {
+    await renderApp(FECHA_SIN_ORDEN);
     expect(screen.queryByTestId("inspeccion-tela-seccion")).toBeNull();
   });
 
   it("orden disponible: registra inspección todo conforme con lote y la persiste", async () => {
     const user = userEvent.setup();
     const repoInspecciones = new InMemoryInspeccionRepository([]);
-    render(
+    await mountApp(
       <App
         repository={new InMemoryOrderRepository()}
         inspeccionRepository={repoInspecciones}
@@ -1516,15 +1526,15 @@ describe("App — ticket 07: inspección de tela (UI)", () => {
     expect(item.queryByLabelText(/Tipo de resolución/i)).toBeNull();
   });
 
-  it("inspección ya resuelta: no ofrece resolver de nuevo (una sola resolución)", () => {
+  it("inspección ya resuelta: no ofrece resolver de nuevo (una sola resolución)", async () => {
     const repo = new InMemoryOrderRepository();
-    const base = repo.getOrderByFechaOperativa(FECHA_CON_ORDEN)!;
+    const base = (await repo.getOrderByFechaOperativa(FECHA_CON_ORDEN))!;
     const iniciada = iniciarProduccion(base, {
       operatorName: "Laura",
       lecturaInicial: 100,
       timestamp: "2026-09-11T07:00:00.000Z",
     }).orden!;
-    repo.saveOrder(iniciada);
+    await repo.saveOrder(iniciada);
 
     const inspeccion = construirInspeccion(iniciada, {
       lote: "L-dev",
@@ -1537,7 +1547,7 @@ describe("App — ticket 07: inspección de tela (UI)", () => {
       timestamp: "2026-09-11T07:31:00.000Z",
     }).inspeccion!;
     const repoInspecciones = new InMemoryInspeccionRepository([devuelta]);
-    render(
+    await mountApp(
       <App
         repository={repo}
         inspeccionRepository={repoInspecciones}
@@ -1551,9 +1561,9 @@ describe("App — ticket 07: inspección de tela (UI)", () => {
     expect(item.queryByLabelText(/Tipo de resolución/i)).toBeNull();
   });
 
-  it("orden finalizada: historial SOLO (sin registrar ni resolver)", () => {
+  it("orden finalizada: historial SOLO (sin registrar ni resolver)", async () => {
     const repo = new InMemoryOrderRepository();
-    const base = repo.getOrderByFechaOperativa(FECHA_CON_ORDEN)!;
+    const base = (await repo.getOrderByFechaOperativa(FECHA_CON_ORDEN))!;
     const iniciada = iniciarProduccion(base, {
       operatorName: "Ana",
       lecturaInicial: 100,
@@ -1564,7 +1574,7 @@ describe("App — ticket 07: inspección de tela (UI)", () => {
       timestamp: "2026-09-11T09:00:00.000Z",
     }).orden!;
     const finalizada = finalizarProduccion(conLectura, "2026-09-11T12:00:00.000Z").orden!;
-    repo.saveOrder(finalizada);
+    await repo.saveOrder(finalizada);
 
     const inspeccion = construirInspeccion(finalizada, {
       lote: "L-hist",
@@ -1572,7 +1582,7 @@ describe("App — ticket 07: inspección de tela (UI)", () => {
       timestamp: "2026-09-11T08:00:00.000Z",
     });
     const repoInspecciones = new InMemoryInspeccionRepository([inspeccion]);
-    render(
+    await mountApp(
       <App
         repository={repo}
         inspeccionRepository={repoInspecciones}
@@ -1591,15 +1601,15 @@ describe("App — ticket 07: inspección de tela (UI)", () => {
 });
 
 describe("App — ticket 08: mantenimiento (UI)", () => {
-  afterEach(() => {
+  afterEach(async () => {
     vi.useRealTimers();
   });
 
-  function renderAppConMantenimiento(
+  async function renderAppConMantenimiento(
     hoy: string,
     opciones: { mantenimientoRepository?: InMemoryMantenimientoRepository } = {},
   ) {
-    return render(
+    return await mountApp(
       <App
         repository={new InMemoryOrderRepository()}
         mantenimientoRepository={opciones.mantenimientoRepository ?? new InMemoryMantenimientoRepository([])}
@@ -1614,7 +1624,7 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
     const user = userEvent.setup();
     const repo = new InMemoryOrderRepository();
     const repoMantenimiento = new InMemoryMantenimientoRepository(opciones.mantenimientos ?? []);
-    render(
+    await mountApp(
       <App
         repository={repo}
         mantenimientoRepository={repoMantenimiento}
@@ -1665,16 +1675,16 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
     await user.click(screen.getByRole("button", { name: /Registrar mantenimiento/i }));
   }
 
-  it("día vacío: muestra la sección de mantenimiento con formulario de registro", () => {
-    renderAppConMantenimiento(FECHA_SIN_ORDEN);
+  it("día vacío: muestra la sección de mantenimiento con formulario de registro", async () => {
+    await renderAppConMantenimiento(FECHA_SIN_ORDEN);
 
     expect(screen.getByTestId("mantenimiento-seccion")).toBeTruthy();
     expect(screen.getByRole("combobox", { name: /tipo de mantenimiento/i })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Registrar mantenimiento/i })).toBeTruthy();
   });
 
-  it("orden disponible: muestra la sección de mantenimiento con formulario", () => {
-    renderAppConMantenimiento(FECHA_CON_ORDEN);
+  it("orden disponible: muestra la sección de mantenimiento con formulario", async () => {
+    await renderAppConMantenimiento(FECHA_CON_ORDEN);
 
     expect(screen.getByTestId("mantenimiento-seccion")).toBeTruthy();
     expect(screen.getByRole("combobox", { name: /tipo de mantenimiento/i })).toBeTruthy();
@@ -1689,17 +1699,17 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
 
   it("orden finalizada: muestra SOLO historial de mantenimiento, sin formulario de registro", async () => {
     const repo = new InMemoryOrderRepository();
-    const base = repo.getOrderByFechaOperativa(FECHA_CON_ORDEN)!;
+    const base = (await repo.getOrderByFechaOperativa(FECHA_CON_ORDEN))!;
     const iniciada = iniciarProduccion(base, {
       operatorName: "Ana",
       lecturaInicial: 50,
       timestamp: "2026-09-11T07:00:00.000Z",
     }).orden!;
     const finalizada = finalizarProduccion(iniciada, "2026-09-11T12:00:00.000Z").orden!;
-    repo.saveOrder(finalizada);
+    await repo.saveOrder(finalizada);
 
     const repoMantenimiento = new InMemoryMantenimientoRepository([]);
-    render(
+    await mountApp(
       <App
         repository={repo}
         mantenimientoRepository={repoMantenimiento}
@@ -1725,7 +1735,7 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
     expect(repoMantenimiento.getMantenimientoAbierto("M1")).not.toBeNull();
   });
 
-  it("registra un mantenimiento completo en un solo paso (reactivo con queSeRevisoReparo)", () => {
+  it("registra un mantenimiento completo en un solo paso (reactivo con queSeRevisoReparo)", async () => {
     // Patrón del codebase: pre-construir el mantenimiento con el dominio y sembrar el repo,
     // luego verificar que la UI lo muestra correctamente como cerrado.
     vi.useFakeTimers();
@@ -1744,7 +1754,7 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
     if (!resultado.mantenimiento) throw new Error("precondition: dominio debería crear el mantenimiento");
 
     const repoMantenimiento = new InMemoryMantenimientoRepository([resultado.mantenimiento]);
-    renderAppConMantenimiento(FECHA_CON_ORDEN, { mantenimientoRepository: repoMantenimiento });
+    await renderAppConMantenimiento(FECHA_CON_ORDEN, { mantenimientoRepository: repoMantenimiento });
 
     // No hay mantenimiento abierto porque se registró completo
     expect(screen.queryByTestId("mantenimiento-abierto")).toBeNull();
@@ -1764,7 +1774,7 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
 
     const repo = new InMemoryOrderRepository();
     const repoMantenimiento = new InMemoryMantenimientoRepository([]);
-    render(
+    await mountApp(
       <App
         repository={repo}
         mantenimientoRepository={repoMantenimiento}
@@ -1774,7 +1784,10 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
 
     fireEvent.change(screen.getByRole("textbox", { name: /operario \(obligatorio\)/i }), { target: { value: "Laura" } });
     fireEvent.change(screen.getByRole("spinbutton", { name: /lectura inicial/i }), { target: { value: "100" } });
-    fireEvent.click(screen.getByRole("button", { name: /Iniciar producción/i }));
+    // handleIniciar es async (ticket 10.4): act descarga la persistencia y el setOrden.
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Iniciar producción/i }));
+    });
 
     // Registrar abierto
     fireEvent.change(screen.getByRole("combobox", { name: /tipo de mantenimiento/i }), { target: { value: "reactivo" } });
@@ -1802,7 +1815,7 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
 
     const repo = new InMemoryOrderRepository();
     const repoMantenimiento = new InMemoryMantenimientoRepository([]);
-    render(
+    await mountApp(
       <App
         repository={repo}
         mantenimientoRepository={repoMantenimiento}
@@ -1812,7 +1825,10 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
 
     fireEvent.change(screen.getByRole("textbox", { name: /operario \(obligatorio\)/i }), { target: { value: "Laura" } });
     fireEvent.change(screen.getByRole("spinbutton", { name: /lectura inicial/i }), { target: { value: "100" } });
-    fireEvent.click(screen.getByRole("button", { name: /Iniciar producción/i }));
+    // handleIniciar es async (ticket 10.4): act descarga la persistencia y el setOrden.
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Iniciar producción/i }));
+    });
 
     fireEvent.change(screen.getByRole("combobox", { name: /tipo de mantenimiento/i }), { target: { value: "reactivo" } });
     fireEvent.change(screen.getByLabelText(/motivo/i), { target: { value: "Fusible quemado" } });
@@ -1887,7 +1903,7 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
       danoId: null,
     };
     const repoMantenimiento = new InMemoryMantenimientoRepository([mantCerrado1, mantCerrado2]);
-    renderAppConMantenimiento(FECHA_CON_ORDEN, { mantenimientoRepository: repoMantenimiento });
+    await renderAppConMantenimiento(FECHA_CON_ORDEN, { mantenimientoRepository: repoMantenimiento });
 
     expectTexto("Historial de mantenimientos");
     expectTexto(/Fuga de tinta/);
@@ -1927,9 +1943,9 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
     expect(repoMantenimiento.listarPorMaquina("M1")).toHaveLength(0);
   });
 
-  it("mantenimiento abierto preexistente se muestra en la sección", () => {
+  it("mantenimiento abierto preexistente se muestra en la sección", async () => {
     const repoMantenimiento = new InMemoryMantenimientoRepository([MANT_4_ABIERTO]);
-    renderAppConMantenimiento(FECHA_CON_ORDEN, { mantenimientoRepository: repoMantenimiento });
+    await renderAppConMantenimiento(FECHA_CON_ORDEN, { mantenimientoRepository: repoMantenimiento });
 
     const activo = screen.getByTestId("mantenimiento-abierto");
     expect(activo.textContent).toContain("Mantenimiento reactivo");
@@ -1942,8 +1958,8 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
 // ---------------------------------------------------------------------------
 
 describe("App — ticket 09: DashboardHome", () => {
-  it("renderiza DashboardHome en día vacío (OCIOSA)", () => {
-    renderApp(FECHA_SIN_ORDEN);
+  it("renderiza DashboardHome en día vacío (OCIOSA)", async () => {
+    await renderApp(FECHA_SIN_ORDEN);
     expect(screen.getByTestId("dashboard-home")).toBeTruthy();
     expectTexto(/OCIOSA/);
     // Sin orden: calidad no visible
@@ -1951,15 +1967,15 @@ describe("App — ticket 09: DashboardHome", () => {
     expect(screen.queryByText(/Alerta/)).toBeNull();
   });
 
-  it("renderiza DashboardHome en orden disponible (OCIOSA)", () => {
-    renderApp(FECHA_CON_ORDEN);
+  it("renderiza DashboardHome en orden disponible (OCIOSA)", async () => {
+    await renderApp(FECHA_CON_ORDEN);
     expect(screen.getByTestId("dashboard-home")).toBeTruthy();
     expectTexto(/OCIOSA/);
   });
 
   it("renderiza DashboardHome en orden en producción (ANDANDO)", async () => {
     const user = userEvent.setup();
-    renderApp(FECHA_CON_ORDEN);
+    await renderApp(FECHA_CON_ORDEN);
     await user.type(screen.getByRole("textbox", { name: /operario \(obligatorio\)/i }), "Laura");
     await user.type(screen.getByRole("spinbutton", { name: /lectura inicial/i }), "100");
     await user.click(screen.getByRole("button", { name: /Iniciar producción/i }));
@@ -1968,14 +1984,14 @@ describe("App — ticket 09: DashboardHome", () => {
     expect(screen.getByTestId("dashboard-home")).toBeTruthy();
   });
 
-  it("renderiza DashboardHome en orden finalizada (OCIOSA)", () => {
-    renderApp(FECHA_CON_ORDEN);
+  it("renderiza DashboardHome en orden finalizada (OCIOSA)", async () => {
+    await renderApp(FECHA_CON_ORDEN);
     // La orden OP-101 con fecha 2026-09-10 ya está finalizada
     expectTexto(/OCIOSA/);
     expect(screen.getByTestId("dashboard-home")).toBeTruthy();
   });
 
-  it("una parada abierta sin orden determina PARADA", () => {
+  it("una parada abierta sin orden determina PARADA", async () => {
     const paradaAbierta: ParadaAbierta = {
       id: "p-sin-orden",
       maquinaId: "M1",
@@ -1987,7 +2003,7 @@ describe("App — ticket 09: DashboardHome", () => {
       fin: null,
     };
     const repoParadas = new InMemoryParadaRepository([paradaAbierta]);
-    render(
+    await mountApp(
       <App
         repository={new InMemoryOrderRepository()}
         paradaRepository={repoParadas}
@@ -2000,13 +2016,13 @@ describe("App — ticket 09: DashboardHome", () => {
 
   it("una parada abierta de la orden determina PARADA", async () => {
     const repo = new InMemoryOrderRepository();
-    const base = repo.getOrderByFechaOperativa(FECHA_CON_ORDEN)!;
+    const base = (await repo.getOrderByFechaOperativa(FECHA_CON_ORDEN))!;
     const iniciada = iniciarProduccion(base, {
       operatorName: "Laura",
       lecturaInicial: 100,
       timestamp: "2026-09-11T08:00:00.000Z",
     }).orden!;
-    repo.saveOrder(iniciada);
+    await repo.saveOrder(iniciada);
     const abierta: ParadaAbierta = {
       id: "par-activa-1",
       maquinaId: "M1",
@@ -2018,16 +2034,16 @@ describe("App — ticket 09: DashboardHome", () => {
       fin: null,
     };
     const repoParadas = new InMemoryParadaRepository([abierta]);
-    render(<App repository={repo} paradaRepository={repoParadas} hoy={FECHA_CON_ORDEN} />);
+    await mountApp(<App repository={repo} paradaRepository={repoParadas} hoy={FECHA_CON_ORDEN} />);
 
     expectTexto(/PARADA/);
     expectTexto(/Falta de color/);
   });
 
-  it("calidad se oculta cuando la orden está finalizada", () => {
+  it("calidad se oculta cuando la orden está finalizada", async () => {
     // Crear una orden finalizada
     const repo = new InMemoryOrderRepository();
-    const op101 = repo.getOrderByFechaOperativa(FECHA_CON_ORDEN)!;
+    const op101 = (await repo.getOrderByFechaOperativa(FECHA_CON_ORDEN))!;
     const iniciada = iniciarProduccion(op101, {
       operatorName: "Ana",
       lecturaInicial: 50,
@@ -2036,9 +2052,9 @@ describe("App — ticket 09: DashboardHome", () => {
     if (!iniciada.orden) throw new Error("precondition failed");
     const finalizada = finalizarProduccion(iniciada.orden, "2026-09-11T12:00:00.000Z");
     if (!finalizada.orden) throw new Error("precondition failed");
-    repo.saveOrder(finalizada.orden);
+    await repo.saveOrder(finalizada.orden);
 
-    render(<App repository={repo} hoy={FECHA_CON_ORDEN} />);
+    await mountApp(<App repository={repo} hoy={FECHA_CON_ORDEN} />);
     expectTexto(/OCIOSA/);
     // Calidad no visible en orden finalizada
     expect(screen.queryByText(/Buena racha/)).toBeNull();
