@@ -7,6 +7,8 @@
  * - Solo lectura de órdenes existentes (llegaron de la programación semanal externa).
  * - saveOrder persiste el PROGRESO de una orden existente (inicio, lecturas, finalización).
  *   No crea, no edita datos de la orden y no reasigna fechas.
+ * - materializeOrder (ticket 10.8) es la ÚNICA vía de creación: materializa la
+ *   fuente externa solo cuando el id no existe (INSERT-only, idempotente).
  */
 import type { LecturaContador, Orden } from "../domain/types";
 
@@ -23,6 +25,19 @@ export interface IOrderRepository {
    * Lanza un error si el id no existe: esta interfaz no crea órdenes.
    */
   saveOrder(orden: Orden): Promise<void>;
+
+  /**
+   * Asegura que una orden EXISTA en el repositorio — materialización de la
+   * fuente externa (programa/fixtures). Idempotente y NO destructiva:
+   * - si el id NO existe -> INSERTA la orden (source exacta del fixture);
+   * - si el id YA existe -> NO hace nada (SQLite es la fuente de verdad;
+   *   nunca sobrescribe, nunca actualiza, nunca recrea).
+   * Devuelve true si insertó, false si ya existía.
+   * Contraste con saveOrder: saveOrder persiste PROGRESO de una orden ya
+   * existente; materializeOrder CREA (solo si falta) y jamás toca filas
+   * existentes. La materialización es la ÚNICA vía de creación.
+   */
+  materializeOrder(orden: Orden): Promise<boolean>;
 }
 
 /**

@@ -5,13 +5,14 @@ import type {
   Dano,
   InspeccionTela,
   JornadaTurno,
+  LecturaContador,
   Mantenimiento,
   Orden,
   Parada,
   ResumenTiempoTurno,
   TipoActividadPlanificada,
 } from "./domain/types";
-import type { IOrderRepository } from "./store/repository";
+import type { IOrderRepository, ILecturaGolpeRepository } from "./store/repository";
 import type { IParadaRepository } from "./store/paradasRepository";
 import { InMemoryParadaRepository } from "./store/inMemoryParadasRepository";
 import type { IActividadPlanificadaRepository } from "./store/actividadesRepository";
@@ -25,6 +26,7 @@ import { InMemoryInspeccionRepository } from "./store/inMemoryInspeccionReposito
 import type { IMantenimientoRepository } from "./store/mantenimientoRepository";
 import { InMemoryMantenimientoRepository } from "./store/inMemoryMantenimientoRepository";
 import { fechaOperativaHoy } from "./store/fixtures";
+import { componerOrdenConLecturas, type RecoveryState } from "./store/sqlite/recovery";
 import {
   finalizarProduccion,
   iniciarProduccion,
@@ -79,6 +81,19 @@ interface AppProps {
   inspeccionRepository?: IInspeccionRepository;
   /** Repositorio de mantenimiento (ticket 08); default vacío (los fixtures son para pruebas del repo). */
   mantenimientoRepository?: IMantenimientoRepository;
+  /**
+   * Repositorio de lecturas de golpe (ticket 10.8). Cuando está presente (producción)
+   * cada lectura real se persiste con la mecánica aprobada de dos fases
+   * (reserveSequence + completeLecture) y, al montar, las lecturas ya persistidas se
+   * componen sobre la orden. Cuando está ausente se conserva el comportamiento previo
+   * (solo saveOrder; las lecturas viven dentro de la orden en memoria).
+   */
+  lecturaRepository?: ILecturaGolpeRepository;
+  /**
+   * Estado YA resuelto por recovery (ticket 10.7/10.8) para la fecha operativa: siembra
+   * orden y jornada. App NUNCA recibe promesas ni calcula recovery.
+   */
+  estadoInicial?: RecoveryState;
   /** Fecha operativa consultada. En runtime se usa el día de hoy; en pruebas se inyecta (sin selector en la UI). */
   hoy?: string;
 }
@@ -91,15 +106,25 @@ function App({
   danoRepository: danoRepositoryProp,
   inspeccionRepository: inspeccionRepositoryProp,
   mantenimientoRepository: mantenimientoRepositoryProp,
+  lecturaRepository,
+  estadoInicial,
   hoy = fechaOperativaHoy(),
 }: AppProps) {
-  const [orden, setOrden] = useState<Orden | undefined>();
+  // Semilla desde el estado recuperado (10.8): el loader de montaje vuelve a leer los
+  // mismos repositorios (relectura idempotente, misma data) y no cambia el resultado.
+  const [orden, setOrden] = useState<Orden | undefined>(() =>
+    estadoInicial?.orden
+      ? componerOrdenConLecturas(estadoInicial.orden, estadoInicial.lecturas)
+      : undefined,
+  );
   const [paradas, setParadas] = useState<Parada[]>([]);
   const [actividades, setActividades] = useState<ActividadPlanificada[]>([]);
   const [danos, setDanos] = useState<Dano[]>([]);
   const [mantenimientos, setMantenimientos] = useState<Mantenimiento[]>([]);
   const [inspecciones, setInspecciones] = useState<InspeccionTela[]>([]);
-  const [jornada, setJornada] = useState<JornadaTurno>(() => jornadaDefault(hoy));
+  const [jornada, setJornada] = useState<JornadaTurno>(
+    () => estadoInicial?.jornada ?? jornadaDefault(hoy),
+  );
 
   // Referencia estable para los defaults: sin esto, los useEffect de paradas/actividades
   // re-dispararían en cada render (nueva instancia cada vez) -> loop infinito.
@@ -132,13 +157,24 @@ function App({
     let cancelled = false;
     async function cargarOrden() {
       const ordenCargada = await repository.getOrderByFechaOperativa(hoy);
-      if (!cancelled) setOrden(ordenCargada);
+      if (cancelled) return;
+      // Con lecturaRepository presente las lecturas persistidas son parte de la
+      // orden: el repositorio de órdenes NUNCA las consulta (10.4/10.5), así que se
+      // componen aquí (misma derivación que mapOrdenRow). Sin ese repositorio no hay
+      // lecturas que componer y el comportamiento previo se mantiene intacto.
+      if (ordenCargada && lecturaRepository) {
+        const lecturas = await lecturaRepository.getLecturasByOrden(ordenCargada.id);
+        if (cancelled) return;
+        setOrden(componerOrdenConLecturas(ordenCargada, lecturas));
+        return;
+      }
+      setOrden(ordenCargada);
     }
     cargarOrden();
     return () => {
       cancelled = true;
     };
-  }, [repository, hoy]);
+  }, [repository, lecturaRepository, hoy]);
 
   useEffect(() => {
     setParadas(paradaRepository.listarPorMaquina("M1"));
@@ -173,6 +209,27 @@ function App({
     setInspecciones(orden ? inspeccionRepository.listarPorOrden(orden.id) : []);
   }, [inspeccionRepository, orden?.id]);
 
+  /**
+   * Persistencia de una operación del operario que dejó una lectura real (10.8).
+   * Orden de escritura: primero la lectura (reserva + completion), después el
+   * progreso de la fila `orden`. No existe transacción cruzada entre tablas
+   * (C3/10.3: atomicidad de una sola sentencia), así que un fallo intermedio
+   * deja la lectura ya persistida como durable — recovery la incluirá; el error
+   * se propaga al operador, nunca se oculta.
+   * Sin `lecturaRepository` (ruta legacy/pruebas) se conserva el saveOrder de siempre.
+   */
+  async function persistirOrdenConLectura(ordenActualizada: Orden, lectura: LecturaContador): Promise<void> {
+    if (lecturaRepository) {
+      // lectureId por intención del operario: es la clave de retry/idempotencia
+      // de la reserva; una intención abandonada queda 'reserved' y se excluye
+      // del recovery (puede dejar huecos de secuencia, que se preservan).
+      const lectureId = crypto.randomUUID();
+      await lecturaRepository.reserveSequence(ordenActualizada.id, lectureId);
+      await lecturaRepository.completeLecture(lectureId, lectura.valor, lectura.timestamp);
+    }
+    await repository.saveOrder(ordenActualizada);
+  }
+
   /** Única vía available -> in_production: dominio + repositorio; React no duplica reglas. */
   async function handleIniciar(operatorName: string, lecturaInicial: number): Promise<string[]> {
     if (!orden || orden.estado !== "available") {
@@ -190,7 +247,9 @@ function App({
       return ["no se pudo iniciar la producción"];
     }
     try {
-      await repository.saveOrder(resultado.orden);
+      // La lectura base es la primera del dominio: es la fuente de la que
+      // (mapOrdenRow) derivan luego iniciadaEn/contadorBase tras un reinicio.
+      await persistirOrdenConLectura(resultado.orden, resultado.orden.lecturas[0]);
     } catch (error) {
       return [error instanceof Error ? error.message : "no se pudo guardar la orden"];
     }
@@ -219,7 +278,12 @@ function App({
       return { errores: ["no se pudo registrar la lectura"], sinIncremento: false };
     }
     try {
-      await repository.saveOrder(resultado.orden);
+      // La lectura nueva es la última del dominio: mismo valor y timestamp
+      // exactos que devuelve la completion (nunca un timestamp distinto).
+      await persistirOrdenConLectura(
+        resultado.orden,
+        resultado.orden.lecturas[resultado.orden.lecturas.length - 1],
+      );
     } catch (error) {
       return {
         errores: [error instanceof Error ? error.message : "no se pudo guardar la lectura"],

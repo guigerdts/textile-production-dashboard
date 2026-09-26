@@ -43,6 +43,12 @@
  *        the domain owns all derivation and transition rules;
  *     5. plugin rejection -> descriptive error with the original cause
  *        (Error cause chain, pattern 10.3).
+ * - materializeOrder(orden) (added in 10.8, saveOrder UNCHANGED): existence
+ *     pre-check by `id`; present -> no-op returning false; absent -> ONE single
+ *     atomic INSERT ... ON CONFLICT(id) DO NOTHING of the same 15 columns
+ *     (mapOrdenToSql). INSERT-only by construction: it can never update an
+ *     existing row, never change estado, never recreate an order, and never
+ *     persists lecturas, creadaExternamenteEn, iniciadaEn or contadorBase.
  * - D-1 persistence: aplica_segunda / porcentaje_2da / tipo_pintura /
  *   finalizada_en ARE persisted; iniciadaEn / contadorBase are DERIVED from
  *   the supplied lecturas[0]; creadaExternamenteEn is NEVER persisted,
@@ -258,5 +264,77 @@ export class SqliteOrderRepository implements IOrderRepository {
       });
     }
     // 3. NUNCA escribe lectura_golpe; 4. no deriva deltas/progreso/tiempo/estado.
+  }
+
+  /**
+   * Materialización de la fuente externa (ticket 10.8): asegura que la orden
+   * EXISTA, y solo si falta. `id` (PK) es la identidad.
+   *
+   * - pre-chequeo `SELECT id FROM orden WHERE id = $1`: si existe -> false
+   *   (no-op absoluto: ni INSERT, ni UPDATE; el estado persistido manda);
+   * - si no existe -> UNA sola sentencia atómica (patrón 10.3, sin
+   *   BEGIN/COMMIT) `INSERT ... ON CONFLICT(id) DO NOTHING`. El DO NOTHING es
+   *   la barrera final: ni siquiera bajo una carrera puede tocar una fila
+   *   existente (misma filosofía que UNIQUE(orden_id, sequence) en 10.5).
+   * - persiste las mismas 15 columnas que saveOrder (mapOrdenToSql) y NADA
+   *   más: sin lecturas, sin creadaExternamenteEn, sin iniciadaEn/contadorBase
+   *   (no hay columnas y no se inventan). Crea solo la fila `orden`.
+   * - NO toca el estado de órdenes ya existentes: no puede revertir
+   *   in_production/finished, ni perder finalizada_en/aplica_segunda/
+   *   porcentaje_2da/tipo_pintura.
+   *
+   * @returns true si insertó, false si la orden ya existía.
+   * @throws Si SQLite/plugin rechaza la escritura (error descriptivo con la
+   *         causa original). El error propaga: nunca se traga un fallo.
+   */
+  async materializeOrder(orden: Orden): Promise<boolean> {
+    // 1. Pre-chequeo de existencia: la fila existente es intocable.
+    const existentes = await this.db.select<Array<{ id: string }>>(
+      "SELECT id FROM orden WHERE id = $1",
+      [orden.id]
+    );
+    if (existentes.length > 0) {
+      return false;
+    }
+
+    // 2. UNA sola sentencia INSERT-only (patrón 10.3). created_at/updated_at
+    //    los gestiona el repositorio; finalizada_en llega null desde el fixture.
+    const v = mapOrdenToSql(orden);
+    try {
+      const result = await this.db.execute(
+        `INSERT INTO orden (id, numero_orden, fecha_operativa, referencia_tela,
+           disenio, unidades_solicitadas, estado, operario, machine_id,
+           created_at, updated_at, aplica_segunda, porcentaje_2da,
+           tipo_pintura, finalizada_en)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+         ON CONFLICT(id) DO NOTHING`,
+        [
+          v.id,
+          v.numero_orden,
+          v.fecha_operativa,
+          v.referencia_tela,
+          v.disenio,
+          v.unidades_solicitadas,
+          v.estado,
+          v.operario,
+          v.machine_id,
+          v.created_at,
+          v.updated_at,
+          v.aplica_segunda,
+          v.porcentaje_2da,
+          v.tipo_pintura,
+          v.finalizada_en,
+        ]
+      );
+      // rowsAffected 1 = insertó; 0 = el DO NOTHING de la barrera final saltó
+      // la sentencia (fila creada por otra materialización entre el pre-chequeo
+      // y el INSERT). Ambos casos son correctos: nunca se actualizó nada.
+      return result.rowsAffected >= 1;
+    } catch (error) {
+      throw new Error(
+        `no se pudo materializar la orden "${orden.id}"`,
+        { cause: error }
+      );
+    }
   }
 }
