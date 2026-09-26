@@ -17,7 +17,7 @@ import { getDatabase } from "../database";
 // ── Migration metadata ───────────────────────────────────────────────────────
 
 /** Current expected migration version */
-export const CURRENT_MIGRATION_VERSION = 2;
+export const CURRENT_MIGRATION_VERSION = 3;
 
 /** Table names created by migrations */
 export const TABLES = {

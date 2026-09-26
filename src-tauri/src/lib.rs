@@ -21,6 +21,12 @@ pub fn run() {
             sql: include_str!("../migrations/002_lectura_orden_sequence_unique.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 3,
+            description: "d1_orden_persistence",
+            sql: include_str!("../migrations/003_d1_orden_persistence.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
