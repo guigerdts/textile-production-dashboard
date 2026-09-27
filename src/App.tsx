@@ -177,7 +177,15 @@ function App({
   }, [repository, lecturaRepository, hoy]);
 
   useEffect(() => {
-    setParadas(paradaRepository.listarPorMaquina("M1"));
+    let cancelled = false;
+    async function cargarParadas() {
+      const paradasCargadas = await paradaRepository.listarPorMaquina("M1");
+      if (!cancelled) setParadas(paradasCargadas);
+    }
+    cargarParadas();
+    return () => {
+      cancelled = true;
+    };
   }, [paradaRepository]);
 
   useEffect(() => {
@@ -321,7 +329,7 @@ function App({
   }
 
   /** Única vía registrar parada: dominio + repositorio; React no duplica reglas. */
-  function handleRegistrarParada(input: RegistrarParadaInput): string[] {
+  async function handleRegistrarParada(input: RegistrarParadaInput): Promise<string[]> {
     if (!orden || orden.estado !== "in_production") {
       return ["solo se registran paradas en una orden en producción"];
     }
@@ -332,17 +340,17 @@ function App({
     if (!resultado.parada) {
       return ["no se pudo registrar la parada"];
     }
-    paradaRepository.insertParada(resultado.parada);
-    setParadas(paradaRepository.listarPorMaquina("M1"));
+    await paradaRepository.insertParada(resultado.parada);
+    setParadas(await paradaRepository.listarPorMaquina("M1"));
     return [];
   }
 
   /** Única vía cerrar parada: dominio + repositorio; React no duplica reglas. */
-  function handleCerrarParada(): string[] {
+  async function handleCerrarParada(): Promise<string[]> {
     if (!orden) {
       return ["no hay orden activa"];
     }
-    const abierta = paradaRepository.getParadaAbierta("M1", orden.id);
+    const abierta = await paradaRepository.getParadaAbierta("M1", orden.id);
     if (!abierta) {
       return ["no hay una parada abierta para cerrar"];
     }
@@ -353,8 +361,8 @@ function App({
     if (!resultado.parada) {
       return ["no se pudo cerrar la parada"];
     }
-    paradaRepository.updateParada(resultado.parada);
-    setParadas(paradaRepository.listarPorMaquina("M1"));
+    await paradaRepository.updateParada(resultado.parada);
+    setParadas(await paradaRepository.listarPorMaquina("M1"));
     return [];
   }
 
@@ -408,7 +416,11 @@ function App({
   function handleRegistrarDano(input: RegistrarDanoInput): string[] {
     // El dominio verifica la parada vinculada con el lookup inyectado;
     // el repositorio solo persiste el daño ya validado.
-    const resultado = registrarDano(danos, input, (id) => paradaRepository.obtenerPorId(id));
+    // El lookup resuelve desde `paradas` (estado ya en memoria) y NO desde el
+    // puerto: `registrarDano` es síncrono y `obtenerPorId` es async, así que
+    // inyectar el puerto entregaría una Promise a una validación síncrona.
+    // M1 es la única máquina, por lo que el estado cubre todo el port.
+    const resultado = registrarDano(danos, input, (id) => paradas.find((p) => p.id === id));
     if (resultado.errores.length > 0) {
       return resultado.errores;
     }

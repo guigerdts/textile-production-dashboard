@@ -18,9 +18,9 @@ interface ParadasSectionProps {
   /** Parada abierta de la orden actual, si existe. */
   paradaActivaDeOrden: ParadaAbierta | null;
   /** Devuelve errores de dominio vacío = éxito. */
-  onRegistrarParada(input: RegistrarParadaInput): string[];
+  onRegistrarParada(input: RegistrarParadaInput): Promise<string[]>;
   /** Devuelve errores de dominio vacío = éxito. */
-  onCerrarParada(): string[];
+  onCerrarParada(): Promise<string[]>;
 }
 
 function formatearHora(iso: string): string {
@@ -73,7 +73,7 @@ export function ParadasSection({
     ? duracionAcumulada(paradaActivaDeOrden, new Date().toISOString())
     : null;
 
-  function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setErroresCierre([]);
     // Sin guard local de causa: el dominio valida "debe seleccionar una causa".
@@ -90,7 +90,7 @@ export function ParadasSection({
             ? parsearCarros(crudo)
             : crudo;
     }
-    const res = onRegistrarParada({
+    const res = await onRegistrarParada({
       maquinaId: "M1",
       ordenId,
       operatorName,
@@ -106,9 +106,9 @@ export function ParadasSection({
     setObservaciones("");
   }
 
-  function handleCerrar() {
+  async function handleCerrar() {
     setErrores([]);
-    setErroresCierre(onCerrarParada());
+    setErroresCierre(await onCerrarParada());
   }
 
   return (

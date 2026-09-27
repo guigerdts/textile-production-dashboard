@@ -337,7 +337,7 @@ describe("App — ticket 02: paradas / incidencias (UI)", () => {
     // 09:30 - 09:00 = 30 min
     expect(activa.textContent).toContain("30 min");
     // El registro lleva el operario de la orden (CRITICAL: parada con operario).
-    expect(repoParadas.getParadaAbierta("M1", iniciada.id)?.operatorName).toBe("Laura");
+    expect((await repoParadas.getParadaAbierta("M1", iniciada.id))?.operatorName).toBe("Laura");
   });
 
   it("registra una parada con carro para rotura de cuadro", async () => {
@@ -402,7 +402,7 @@ describe("App — ticket 02: paradas / incidencias (UI)", () => {
     expectTexto(/detenida por una parada activa/i);
     // Dominio rechaza aunque se registre la parada en el repositorio
     const ordenId = (await repo.getOrderByFechaOperativa(FECHA_CON_ORDEN))!.id;
-    const abierta = repoParadas.getParadaAbierta("M1", ordenId);
+    const abierta = await repoParadas.getParadaAbierta("M1", ordenId);
     expect(abierta).not.toBeNull();
     expect(validarFinalizacionConParadas([abierta!], ordenId).length).toBeGreaterThan(0);
     expect(validarLecturaConParadas([abierta!], ordenId).length).toBeGreaterThan(0);

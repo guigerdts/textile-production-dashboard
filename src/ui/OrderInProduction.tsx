@@ -50,9 +50,9 @@ interface OrderInProductionProps
   /** Parada abierta de la orden actual, si existe; activa bloqueo de lecturas y finalización. */
   paradaActivaDeOrden: ParadaAbierta | null;
   /** Devuelve errores de dominio vacío = éxito. */
-  onRegistrarParada(input: RegistrarParadaInput): string[];
+  onRegistrarParada(input: RegistrarParadaInput): Promise<string[]>;
   /** Devuelve errores de dominio vacío = éxito. */
-  onCerrarParada(): string[];
+  onCerrarParada(): Promise<string[]>;
 }
 
 /** Orden en producción: datos + lecturas + restantes + registro de lectura + paradas + finalización. */

@@ -6,8 +6,9 @@
  * Decisiones de diseño:
  * - INSERT/UPDATE explícitos (no upsert) para mapeo directo a SQLite
  *   con PK, permitiendo rechazar duplicados y updates de ids inexistentes.
- * - Los métodos son síncronos para ser consistentes con IOrderRepository.
- *   Una implementación SQLite real con Tauri plugin requiere adaptación async.
+ * - Los métodos son asíncronos: una implementación SQLite real con el plugin
+ *   de Tauri es I/O y devuelve Promise. Nombres, parámetros y tipos resueltos
+ *   no cambian respecto al contrato síncrono anterior; solo cambia la entrega.
  * - Campos serializables a JSON: camposEspecificos es Record<string, unknown>.
  * - structuredClone en cada persistencia y lectura evita contaminación por
  *   referencias mutables (igual que IOrderRepository).
@@ -24,38 +25,38 @@ import type { Parada, ParadaAbierta } from "../domain/types";
 
 export interface IParadaRepository {
   /**
-   * Inserta una parada nueva. Lanza si el id ya existe.
+   * Inserta una parada nueva. Rechaza si el id ya existe.
    * Uso típico: registrarParada del dominio → insertParada.
    */
-  insertParada(parada: Parada): void;
+  insertParada(parada: Parada): Promise<void>;
 
   /**
-   * Actualiza una parada existente (por id). Lanza si el id no existe.
+   * Actualiza una parada existente (por id). Rechaza si el id no existe.
    * Uso típico: cerrarParada del dominio → updateParada.
    */
-  updateParada(parada: Parada): void;
+  updateParada(parada: Parada): Promise<void>;
 
   /**
    * Devuelve la parada con el id dado, o undefined.
    */
-  obtenerPorId(id: string): Parada | undefined;
+  obtenerPorId(id: string): Promise<Parada | undefined>;
 
   /**
    * Lista todas las paradas de una máquina (orden cronológico).
    * Incluye paradas con y sin orden asociada.
    */
-  listarPorMaquina(maquinaId: string): Parada[];
+  listarPorMaquina(maquinaId: string): Promise<Parada[]>;
 
   /**
    * Lista paradas asociadas a una orden concreta (orden cronológico).
    * NO incluye paradas sin orden (ordenId null).
    */
-  listarPorOrden(ordenId: string): Parada[];
+  listarPorOrden(ordenId: string): Promise<Parada[]>;
 
   /**
    * Devuelve la parada abierta (fin = null) para la máquina (+ orden si se indica),
    * o null si no hay ninguna. Devuelve ParadaAbierta para que el tipo
    * sea utilizable en cerrarParada sin cast.
    */
-  getParadaAbierta(maquinaId: string, ordenId: string | null): ParadaAbierta | null;
+  getParadaAbierta(maquinaId: string, ordenId: string | null): Promise<ParadaAbierta | null>;
 }

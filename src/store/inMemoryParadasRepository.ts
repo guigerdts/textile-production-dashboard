@@ -24,40 +24,40 @@ export class InMemoryParadaRepository implements IParadaRepository {
     }
   }
 
-  insertParada(parada: Parada): void {
+  async insertParada(parada: Parada): Promise<void> {
     if (this.porId.has(parada.id)) {
       throw new Error(`ya existe una parada con el id ${parada.id}`);
     }
     this.porId.set(parada.id, structuredClone(parada));
   }
 
-  updateParada(parada: Parada): void {
+  async updateParada(parada: Parada): Promise<void> {
     if (!this.porId.has(parada.id)) {
       throw new Error(`no existe una parada con el id ${parada.id}`);
     }
     this.porId.set(parada.id, structuredClone(parada));
   }
 
-  obtenerPorId(id: string): Parada | undefined {
+  async obtenerPorId(id: string): Promise<Parada | undefined> {
     const p = this.porId.get(id);
     return p ? structuredClone(p) : undefined;
   }
 
-  listarPorMaquina(maquinaId: string): Parada[] {
+  async listarPorMaquina(maquinaId: string): Promise<Parada[]> {
     return [...this.porId.values()]
       .filter((p) => p.maquinaId === maquinaId)
       .sort((a, b) => a.inicio.localeCompare(b.inicio))
       .map((p) => structuredClone(p));
   }
 
-  listarPorOrden(ordenId: string): Parada[] {
+  async listarPorOrden(ordenId: string): Promise<Parada[]> {
     return [...this.porId.values()]
       .filter((p) => p.ordenId === ordenId)
       .sort((a, b) => a.inicio.localeCompare(b.inicio))
       .map((p) => structuredClone(p));
   }
 
-  getParadaAbierta(maquinaId: string, ordenId: string | null): ParadaAbierta | null {
+  async getParadaAbierta(maquinaId: string, ordenId: string | null): Promise<ParadaAbierta | null> {
     for (const p of this.porId.values()) {
       if (p.fin === null && p.maquinaId === maquinaId && p.ordenId === ordenId) {
         return structuredClone(p) as ParadaAbierta;
