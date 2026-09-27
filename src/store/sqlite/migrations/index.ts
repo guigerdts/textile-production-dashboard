@@ -17,13 +17,18 @@ import { getDatabase } from "../database";
 // ── Migration metadata ───────────────────────────────────────────────────────
 
 /** Current expected migration version */
-export const CURRENT_MIGRATION_VERSION = 3;
+export const CURRENT_MIGRATION_VERSION = 4;
 
 /** Table names created by migrations */
 export const TABLES = {
   JORNADA: "jornada",
   ORDEN: "orden",
   LECTURA_GOLPE: "lectura_golpe",
+  PARADA: "parada",
+  ACTIVIDAD_PLANIFICADA: "actividad_planificada",
+  DANO: "dano",
+  INSPECCION_TELA: "inspeccion_tela",
+  MANTENIMIENTO: "mantenimiento",
 } as const;
 
 // ── Schema verification ──────────────────────────────────────────────────────

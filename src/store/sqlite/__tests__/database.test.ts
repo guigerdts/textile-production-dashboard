@@ -203,12 +203,18 @@ describe("SQLite Infrastructure — Ticket 10.1", () => {
       expect(tables).toEqual(["jornada", "orden", "lectura_golpe"]);
     });
 
-    it("verifySchema checks all Phase 1 tables", async () => {
-      // Mock three sequential calls to tableExists
+    it("verifySchema checks all eight tables", async () => {
+      // Mock eight sequential calls to tableExists: the Phase 1 tables plus
+      // the five operational tables added by migration 004.
       mocks.select
         .mockResolvedValueOnce([{ name: "jornada" }])
         .mockResolvedValueOnce([{ name: "orden" }])
-        .mockResolvedValueOnce([{ name: "lectura_golpe" }]);
+        .mockResolvedValueOnce([{ name: "lectura_golpe" }])
+        .mockResolvedValueOnce([{ name: "parada" }])
+        .mockResolvedValueOnce([{ name: "actividad_planificada" }])
+        .mockResolvedValueOnce([{ name: "dano" }])
+        .mockResolvedValueOnce([{ name: "inspeccion_tela" }])
+        .mockResolvedValueOnce([{ name: "mantenimiento" }]);
 
       await initDatabase();
       const schema = await verifySchema();
@@ -216,6 +222,11 @@ describe("SQLite Infrastructure — Ticket 10.1", () => {
         jornada: true,
         orden: true,
         lectura_golpe: true,
+        parada: true,
+        actividad_planificada: true,
+        dano: true,
+        inspeccion_tela: true,
+        mantenimiento: true,
       });
     });
 

@@ -27,6 +27,12 @@ pub fn run() {
             sql: include_str!("../migrations/003_d1_orden_persistence.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 4,
+            description: "operational_events",
+            sql: include_str!("../migrations/004_operational_events.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
