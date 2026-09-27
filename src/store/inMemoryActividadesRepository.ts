@@ -26,36 +26,36 @@ export class InMemoryActividadPlanificadaRepository
     }
   }
 
-  insertActividad(actividad: ActividadPlanificada): void {
+  async insertActividad(actividad: ActividadPlanificada): Promise<void> {
     if (this.porId.has(actividad.id)) {
       throw new Error(`ya existe una actividad con el id ${actividad.id}`);
     }
     this.porId.set(actividad.id, structuredClone(actividad));
   }
 
-  updateActividad(actividad: ActividadPlanificada): void {
+  async updateActividad(actividad: ActividadPlanificada): Promise<void> {
     if (!this.porId.has(actividad.id)) {
       throw new Error(`no existe una actividad con el id ${actividad.id}`);
     }
     this.porId.set(actividad.id, structuredClone(actividad));
   }
 
-  obtenerPorId(id: string): ActividadPlanificada | undefined {
+  async obtenerPorId(id: string): Promise<ActividadPlanificada | undefined> {
     const a = this.porId.get(id);
     return a ? structuredClone(a) : undefined;
   }
 
-  listarPorMaquina(maquinaId: string): ActividadPlanificada[] {
+  async listarPorMaquina(maquinaId: string): Promise<ActividadPlanificada[]> {
     return [...this.porId.values()]
       .filter((a) => a.maquinaId === maquinaId)
       .sort((a, b) => a.inicio.localeCompare(b.inicio))
       .map((a) => structuredClone(a));
   }
 
-  getActividadAbierta(
+  async getActividadAbierta(
     maquinaId: string,
     tipo: TipoActividadPlanificada,
-  ): ActividadAbierta | null {
+  ): Promise<ActividadAbierta | null> {
     for (const a of this.porId.values()) {
       if (a.fin === null && a.maquinaId === maquinaId && a.tipo === tipo) {
         return structuredClone(a) as ActividadAbierta;

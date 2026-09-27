@@ -21,10 +21,10 @@ export interface ActividadesProps {
   actividades: ActividadPlanificada[];
   /** Actividades abiertas (0..2: limpieza y/o cambio de diseño pueden coexistir). */
   actividadesAbiertas: ActividadAbierta[];
-  /** Devuelve errores de dominio vacío = éxito. */
-  onRegistrarActividad(input: RegistrarActividadInput): string[];
-  /** Devuelve errores de dominio vacío = éxito. */
-  onCerrarActividad(tipo: TipoActividadPlanificada): string[];
+  /** Devuelve errores de dominio vacío = éxito. Async (puerto SQLite) desde la Fase 5. */
+  onRegistrarActividad(input: RegistrarActividadInput): Promise<string[]>;
+  /** Devuelve errores de dominio vacío = éxito. Async (puerto SQLite) desde la Fase 5. */
+  onCerrarActividad(tipo: TipoActividadPlanificada): Promise<string[]>;
 }
 
 /** La limpieza del martes 7:00–8:00 es SOLO una sugerencia editable de UI (decisión aprobada). */
@@ -67,10 +67,10 @@ export function ActividadesSection({
 
   const actividadesCerradas = actividades.filter((a) => a.fin !== null);
 
-  function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setErroresCierre([]);
-    const res = onRegistrarActividad({
+    const res = await onRegistrarActividad({
       maquinaId: "M1",
       tipo,
       inicio: new Date().toISOString(),
@@ -85,9 +85,9 @@ export function ActividadesSection({
     setObservaciones("");
   }
 
-  function handleCerrar(tipoActiva: TipoActividadPlanificada) {
+  async function handleCerrar(tipoActiva: TipoActividadPlanificada) {
     setErrores([]);
-    setErroresCierre(onCerrarActividad(tipoActiva));
+    setErroresCierre(await onCerrarActividad(tipoActiva));
   }
 
   return (

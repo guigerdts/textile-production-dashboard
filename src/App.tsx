@@ -189,7 +189,15 @@ function App({
   }, [paradaRepository]);
 
   useEffect(() => {
-    setActividades(actividadRepository.listarPorMaquina("M1"));
+    let cancelled = false;
+    async function cargarActividades() {
+      const actividadesCargadas = await actividadRepository.listarPorMaquina("M1");
+      if (!cancelled) setActividades(actividadesCargadas);
+    }
+    cargarActividades();
+    return () => {
+      cancelled = true;
+    };
   }, [actividadRepository]);
 
   useEffect(() => {
@@ -367,7 +375,9 @@ function App({
   }
 
   /** Única vía registrar actividad planificada: dominio + repositorio; React no duplica reglas. */
-  function handleRegistrarActividad(input: RegistrarActividadInput): string[] {
+  async function handleRegistrarActividad(
+    input: RegistrarActividadInput,
+  ): Promise<string[]> {
     const resultado = comenzarActividad(actividades, input);
     if (resultado.errores.length > 0) {
       return resultado.errores;
@@ -375,14 +385,16 @@ function App({
     if (!resultado.actividad) {
       return ["no se pudo registrar la actividad"];
     }
-    actividadRepository.insertActividad(resultado.actividad);
-    setActividades(actividadRepository.listarPorMaquina("M1"));
+    await actividadRepository.insertActividad(resultado.actividad);
+    setActividades(await actividadRepository.listarPorMaquina("M1"));
     return [];
   }
 
   /** Única vía cerrar actividad: dominio + repositorio; React no duplica reglas. */
-  function handleCerrarActividad(tipo: TipoActividadPlanificada): string[] {
-    const abierta = actividadRepository.getActividadAbierta("M1", tipo);
+  async function handleCerrarActividad(
+    tipo: TipoActividadPlanificada,
+  ): Promise<string[]> {
+    const abierta = await actividadRepository.getActividadAbierta("M1", tipo);
     if (!abierta) {
       return ["no hay una actividad abierta para cerrar"];
     }
@@ -393,8 +405,8 @@ function App({
     if (!resultado.actividad) {
       return ["no se pudo cerrar la actividad"];
     }
-    actividadRepository.updateActividad(resultado.actividad);
-    setActividades(actividadRepository.listarPorMaquina("M1"));
+    await actividadRepository.updateActividad(resultado.actividad);
+    setActividades(await actividadRepository.listarPorMaquina("M1"));
     return [];
   }
 

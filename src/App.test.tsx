@@ -542,7 +542,7 @@ describe("App — ticket 03: actividades planificadas (UI)", () => {
     const activa = screen.getByTestId("actividad-abierta-limpieza");
     expect(activa.textContent).toContain("Limpieza");
     expect(activa.textContent).toMatch(/desde las/);
-    expect(repoActividades.getActividadAbierta("M1", "limpieza")?.operatorName).toBe("Laura");
+    expect((await repoActividades.getActividadAbierta("M1", "limpieza"))?.operatorName).toBe("Laura");
   });
 
   it("registra un cambio de diseño en orden disponible sin bloquear el inicio", async () => {
@@ -557,7 +557,9 @@ describe("App — ticket 03: actividades planificadas (UI)", () => {
     expect(screen.getByTestId("actividad-abierta-cambio_diseno")).toBeTruthy();
     // la actividad abierta NO bloquea iniciar la orden
     expect(screen.getByRole("button", { name: /Iniciar producción/i }).hasAttribute("disabled")).toBe(false);
-    expect(repoActividades.getActividadAbierta("M1", "cambio_diseno")?.operatorName).toBe("Carlos Gómez");
+    expect((await repoActividades.getActividadAbierta("M1", "cambio_diseno"))?.operatorName).toBe(
+      "Carlos Gómez",
+    );
   });
 
   it("registra una actividad en producción: no bloquea lecturas ni finalización", async () => {
@@ -646,8 +648,8 @@ describe("App — ticket 03: actividades planificadas (UI)", () => {
     expect(screen.getByTestId("actividad-abierta-limpieza")).toBeTruthy();
     expect(screen.getByTestId("actividad-abierta-cambio_diseno")).toBeTruthy();
     expect(screen.getAllByRole("button", { name: /Cerrar actividad/i })).toHaveLength(2);
-    expect(repoActividades.getActividadAbierta("M1", "limpieza")).not.toBeNull();
-    expect(repoActividades.getActividadAbierta("M1", "cambio_diseno")).not.toBeNull();
+    expect(await repoActividades.getActividadAbierta("M1", "limpieza")).not.toBeNull();
+    expect(await repoActividades.getActividadAbierta("M1", "cambio_diseno")).not.toBeNull();
   });
 
   it("cierra una actividad abierta y pasa al historial", async () => {
@@ -664,7 +666,7 @@ describe("App — ticket 03: actividades planificadas (UI)", () => {
     await user.click(screen.getByRole("button", { name: /Cerrar actividad/i }));
 
     expect(screen.queryByTestId("actividad-abierta-limpieza")).toBeNull();
-    expect(repoActividades.getActividadAbierta("M1", "limpieza")).toBeNull();
+    expect(await repoActividades.getActividadAbierta("M1", "limpieza")).toBeNull();
     expectTexto("Historial de actividades");
     expectTexto(/Limpieza/);
   });
@@ -697,7 +699,7 @@ describe("App — ticket 03: actividades planificadas (UI)", () => {
     await user.type(screen.getByLabelText(/operario de la actividad/i), "Laura");
     await user.click(screen.getByRole("button", { name: /Registrar actividad/i }));
 
-    const abierta = repoActividades.getActividadAbierta("M1", "limpieza");
+    const abierta = await repoActividades.getActividadAbierta("M1", "limpieza");
     expect(abierta?.queSeLimpio).toBe("Limpieza estándar (7:00–8:00)");
   });
 
@@ -715,7 +717,7 @@ describe("App — ticket 03: actividades planificadas (UI)", () => {
     await user.click(screen.getByRole("button", { name: /Registrar actividad/i }));
 
     expect(screen.getByTestId("actividad-abierta-limpieza")).toBeTruthy();
-    expect(repoActividades.getActividadAbierta("M1", "limpieza")?.queSeLimpio).toBe(
+    expect((await repoActividades.getActividadAbierta("M1", "limpieza"))?.queSeLimpio).toBe(
       "limpieza programada fuera de martes",
     );
   });
@@ -732,7 +734,7 @@ describe("App — ticket 03: actividades planificadas (UI)", () => {
     await user.click(botonFinalizar);
     expectTexto("Finalizada");
     // la actividad sigue abierta al finalizar la orden (no se cierra sola ni bloquea)
-    expect(repoActividades.getActividadAbierta("M1", "limpieza")?.id).toBe(A3_LIMPIEZA_ABIERTA.id);
+    expect((await repoActividades.getActividadAbierta("M1", "limpieza"))?.id).toBe(A3_LIMPIEZA_ABIERTA.id);
   });
 
   it("dentro del banner de actividad activa: cerrar, y errores de cierre se muestran ahí", async () => {

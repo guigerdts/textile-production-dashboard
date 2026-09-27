@@ -6,9 +6,11 @@
  * Decisiones de diseño (mismas que IParadaRepository):
  * - INSERT/UPDATE explícitos (no upsert) para mapeo directo a SQLite
  *   con PK, permitiendo rechazar duplicados y updates de ids inexistentes.
- * - Los métodos son síncronos para ser consistentes con los repos
- *   anteriores (IOrderRepository, IParadaRepository). Una implementación
- *   SQLite real con Tauri plugin requiere adaptación async.
+ * - Los métodos son asíncronos: una implementación SQLite real con el plugin
+ *   de Tauri es I/O y devuelve Promise. Nombres, parámetros y tipos resueltos
+ *   no cambian respecto al contrato síncrono anterior; solo cambia la entrega,
+ *   y el adaptador en memoria conserva exactamente el mismo comportamiento
+ *   observable que hoy.
  * - Campos serializables a JSON (strings + null; sin funciones ni Map/Set).
  * - structuredClone en cada persistencia y lectura evita contaminación por
  *   referencias mutables (igual que los repos anteriores).
@@ -28,24 +30,24 @@ export interface IActividadPlanificadaRepository {
    * Inserta una actividad nueva. Lanza si el id ya existe.
    * Uso típico: comenzarActividad del dominio → insertActividad.
    */
-  insertActividad(actividad: ActividadPlanificada): void;
+  insertActividad(actividad: ActividadPlanificada): Promise<void>;
 
   /**
    * Actualiza una actividad existente (por id). Lanza si el id no existe.
    * Uso típico: finalizarActividad del dominio → updateActividad.
    */
-  updateActividad(actividad: ActividadPlanificada): void;
+  updateActividad(actividad: ActividadPlanificada): Promise<void>;
 
   /**
    * Devuelve la actividad con el id dado, o undefined.
    */
-  obtenerPorId(id: string): ActividadPlanificada | undefined;
+  obtenerPorId(id: string): Promise<ActividadPlanificada | undefined>;
 
   /**
    * Lista todas las actividades de una máquina (orden cronológico por inicio).
    * Sin filtro por orden: las actividades son independientes de las órdenes.
    */
-  listarPorMaquina(maquinaId: string): ActividadPlanificada[];
+  listarPorMaquina(maquinaId: string): Promise<ActividadPlanificada[]>;
 
   /**
    * Devuelve la actividad abierta (fin = null) para la máquina y tipo,
@@ -53,5 +55,5 @@ export interface IActividadPlanificadaRepository {
    * Devuelve ActividadAbierta para que el tipo sea utilizable en
    * finalizarActividad sin cast.
    */
-  getActividadAbierta(maquinaId: string, tipo: TipoActividadPlanificada): ActividadAbierta | null;
+  getActividadAbierta(maquinaId: string, tipo: TipoActividadPlanificada): Promise<ActividadAbierta | null>;
 }
