@@ -1,27 +1,33 @@
 /**
- * Ticket 10.8 — Composition root (startup)
+ * Ticket 10.8 / G1 — Composition root (startup)
  *
  * Orden de arranque (decidido en 10.8, sin provider/container/framework):
  *   1. initDatabase()                       — infraestructura SQLite (10.1)
- *   2. repositorios SQLite                  — orden/jornada/lecturas (10.3-10.6)
+ *   2. repositorios SQLite                  — OCHO: orden/jornada/lecturas
+ *      (10.3-10.6) + paradas/actividades/daños/inspecciones/mantenimientos
+ *      (adaptadores sobre la migración 004), construidos UNA sola vez
  *   3. materializarPrograma(...)            — fuente externa → SQLite, idempotente
- *   4. recoverPhase1State(...)              — reconstruye jornada + orden + lecturas
+ *   4. recoverPersistedState(...)           — las OCHO fuentes persistidas:
+ *      jornada, orden, lecturas, paradas, actividades, daños, mantenimientos
+ *      e inspecciones (orden de lectura D2e, secuencial)
  *   5. render(<App ...>)                    — con el estado YA resuelto
  * Cualquier fallo de 1-4 renderiza una pantalla explícita de inicialización
- * fallida: la app NUNCA monta con estado parcial. Paradas y actividades siguen
- * en memoria (tickets posteriores).
+ * fallida: la app NUNCA monta con estado parcial.
  */
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
-import { InMemoryParadaRepository } from "./store/inMemoryParadasRepository";
-import { InMemoryActividadPlanificadaRepository } from "./store/inMemoryActividadesRepository";
 import { initDatabase } from "./store/sqlite/database";
 import { SqliteOrderRepository } from "./store/sqlite/sqliteOrderRepository";
 import { SqliteJornadaRepository } from "./store/sqlite/sqliteJornadaRepository";
 import { SqliteLecturaGolpeRepository } from "./store/sqlite/sqliteLecturaGolpeRepository";
+import { SqliteParadaRepository } from "./store/sqlite/sqliteParadaRepository";
+import { SqliteActividadPlanificadaRepository } from "./store/sqlite/sqliteActividadPlanificadaRepository";
+import { SqliteDanoRepository } from "./store/sqlite/sqliteDanoRepository";
+import { SqliteInspeccionTelaRepository } from "./store/sqlite/sqliteInspeccionTelaRepository";
+import { SqliteMantenimientoRepository } from "./store/sqlite/sqliteMantenimientoRepository";
 import { materializarPrograma } from "./store/sqlite/materialize";
-import { recoverPhase1State } from "./store/sqlite/recovery";
+import { recoverPersistedState } from "./store/sqlite/recovery";
 import { crearFixtureOrdenes, fechaOperativaHoy } from "./store/fixtures";
 
 /** Mensaje legible de un fallo de arranque (Error, string u otro valor lanzado). */
@@ -56,22 +62,37 @@ async function main(): Promise<void> {
     // 1. Infraestructura SQLite (10.1).
     const db = await initDatabase();
 
-    // 2. Repositorios SQLite (10.3 / 10.4 / 10.5-10.6).
+    // 2. Repositorios SQLite (10.3 / 10.4 / 10.5-10.6 + los cinco adaptadores
+    //    operativos de la migración 004): ocho instancias, construidas UNA vez.
     const repository = new SqliteOrderRepository(db);
     const jornadaRepository = new SqliteJornadaRepository(db);
     const lecturaRepository = new SqliteLecturaGolpeRepository(db);
+    const paradaRepository = new SqliteParadaRepository(db);
+    const actividadRepository = new SqliteActividadPlanificadaRepository(db);
+    const danoRepository = new SqliteDanoRepository(db);
+    const mantenimientoRepository = new SqliteMantenimientoRepository(db);
+    const inspeccionRepository = new SqliteInspeccionTelaRepository(db);
 
     // 3. Materialización de la fuente externa: solo inserta lo que falta
     //    (fixtures hoy, programación semanal externa mañana). Va ANTES del
     //    recovery para que la orden materializada sea visible para él.
     await materializarPrograma(repository, crearFixtureOrdenes());
 
-    // 4. Recovery: jornada + orden + lecturas ya persistidas.
-    const estadoInicial = await recoverPhase1State(
+    // 4. Recovery: las OCHO fuentes ya persistidas — jornada, orden, lecturas,
+    //    paradas, actividades, daños, mantenimientos e inspecciones (D2e:
+    //    secuencial y fijo). "M1" es la máquina única (ADR 0003), pasada como
+    //    parámetro explícito (D2f), nunca hardcodeada dentro del recovery.
+    const estadoInicial = await recoverPersistedState(
       jornadaRepository,
       repository,
       lecturaRepository,
+      paradaRepository,
+      actividadRepository,
+      danoRepository,
+      mantenimientoRepository,
+      inspeccionRepository,
       fechaOperativaHoy(),
+      "M1",
     );
 
     // 5. Render con el estado YA resuelto (nunca una promesa).
@@ -82,8 +103,11 @@ async function main(): Promise<void> {
           jornadaRepository={jornadaRepository}
           lecturaRepository={lecturaRepository}
           estadoInicial={estadoInicial}
-          paradaRepository={new InMemoryParadaRepository([])}
-          actividadRepository={new InMemoryActividadPlanificadaRepository([])}
+          paradaRepository={paradaRepository}
+          actividadRepository={actividadRepository}
+          danoRepository={danoRepository}
+          inspeccionRepository={inspeccionRepository}
+          mantenimientoRepository={mantenimientoRepository}
         />
       </React.StrictMode>,
     );

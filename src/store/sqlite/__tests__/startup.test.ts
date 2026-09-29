@@ -4,13 +4,13 @@
  * Two layers, no plugin mock and no real SQLite:
  *
  * 1. F — composition of contracts: after `materializarPrograma`, the real
- *    `recoverPhase1State` finds the materialized order AND its persisted
+ *    `recoverPersistedState` finds the materialized order AND its persisted
  *    lecturas. Driven by fakes of the repository interfaces (same style as the
  *    10.7 recovery suite).
  *
  * 2. H / I — the real `src/main.tsx` composition root, with ONLY the SQLite
- *    boundary faked (initDatabase + the three SQLite repository classes +
- *    react-dom/client). `materializarPrograma` and `recoverPhase1State` run
+ *    boundary faked (initDatabase + the EIGHT SQLite repository classes +
+ *    react-dom/client). `materializarPrograma` and `recoverPersistedState` run
  *    for real, so the asserted order is the real startup sequence:
  *    initDatabase -> repos -> materializar -> recovery -> render(App).
  *    I asserts that a failure in materialization or recovery aborts the
@@ -27,9 +27,14 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import type { ReactElement } from "react";
 
 import { materializarPrograma } from "../materialize";
-import { recoverPhase1State, type RecoveryState } from "../recovery";
+import { recoverPersistedState, type RecoveryState } from "../recovery";
 import type { IJornadaRepository } from "../../jornadaRepository";
 import type { IOrderRepository, ILecturaGolpeRepository } from "../../repository";
+import type { IParadaRepository } from "../../paradasRepository";
+import type { IActividadPlanificadaRepository } from "../../actividadesRepository";
+import type { IDanoRepository } from "../../danosRepository";
+import type { IMantenimientoRepository } from "../../mantenimientoRepository";
+import type { IInspeccionRepository } from "../../inspeccionRepository";
 import type { LecturaContador, Orden } from "../../../domain/types";
 import { jornadaDefault } from "../../../domain/tiempo";
 import { FECHA_CON_ORDEN } from "../../fixtures";
@@ -129,7 +134,77 @@ function crearFakes(bitacora: string[] = []) {
     getMaxSequence: vi.fn(async () => 0),
   };
 
-  return { ordenes, lecturas, jornadaRepository, orderRepository, lecturaRepository };
+  // Los cinco dominios operativos (G1): recovery los LEE por contrato; los
+  // métodos de escritura existen para cumplir el contrato y nunca se llaman
+  // en el arranque.
+  const paradaRepository: IParadaRepository = {
+    insertParada: vi.fn(async () => {}),
+    updateParada: vi.fn(async () => {}),
+    obtenerPorId: vi.fn(async () => undefined),
+    listarPorMaquina: vi.fn(async () => {
+      bitacora.push("parada:listarPorMaquina");
+      return [];
+    }),
+    listarPorOrden: vi.fn(async () => []),
+    getParadaAbierta: vi.fn(async () => null),
+  };
+
+  const actividadRepository: IActividadPlanificadaRepository = {
+    insertActividad: vi.fn(async () => {}),
+    updateActividad: vi.fn(async () => {}),
+    obtenerPorId: vi.fn(async () => undefined),
+    listarPorMaquina: vi.fn(async () => {
+      bitacora.push("actividad:listarPorMaquina");
+      return [];
+    }),
+    getActividadAbierta: vi.fn(async () => null),
+  };
+
+  const danoRepository: IDanoRepository = {
+    insertDano: vi.fn(async () => {}),
+    updateDano: vi.fn(async () => {}),
+    obtenerPorId: vi.fn(async () => undefined),
+    listarPorMaquina: vi.fn(async () => {
+      bitacora.push("dano:listarPorMaquina");
+      return [];
+    }),
+    listarPorOrden: vi.fn(async () => []),
+    getDanoAbierto: vi.fn(async () => null),
+  };
+
+  const mantenimientoRepository: IMantenimientoRepository = {
+    insertMantenimiento: vi.fn(async () => {}),
+    updateMantenimiento: vi.fn(async () => {}),
+    obtenerPorId: vi.fn(async () => undefined),
+    listarPorMaquina: vi.fn(async () => {
+      bitacora.push("mantenimiento:listarPorMaquina");
+      return [];
+    }),
+    getMantenimientoAbierto: vi.fn(async () => null),
+  };
+
+  const inspeccionRepository: IInspeccionRepository = {
+    insertInspeccion: vi.fn(async () => {}),
+    updateInspeccion: vi.fn(async () => {}),
+    obtenerPorId: vi.fn(async () => undefined),
+    listarPorOrden: vi.fn(async () => {
+      bitacora.push("inspeccion:listarPorOrden");
+      return [];
+    }),
+  };
+
+  return {
+    ordenes,
+    lecturas,
+    jornadaRepository,
+    orderRepository,
+    lecturaRepository,
+    paradaRepository,
+    actividadRepository,
+    danoRepository,
+    mantenimientoRepository,
+    inspeccionRepository,
+  };
 }
 
 // ── F. Materialización + recovery ───────────────────────────────────────────
@@ -139,7 +214,7 @@ describe("F: materialización + recovery — Ticket 10.8", () => {
     vi.clearAllMocks();
   });
 
-  it("F: tras materializar, recoverPhase1State encuentra la orden y sus lecturas persistidas", async () => {
+  it("F: tras materializar, recoverPersistedState encuentra la orden y sus lecturas persistidas", async () => {
     const bitacora: string[] = [];
     const fakes = crearFakes(bitacora);
 
@@ -159,12 +234,19 @@ describe("F: materialización + recovery — Ticket 10.8", () => {
       operatorName: "Laura",
     });
 
-    // 3. Recovery (restart) encuentra la orden y las lecturas persistidas.
-    const estado: RecoveryState = await recoverPhase1State(
+    // 3. Recovery (restart) encuentra la orden, las lecturas persistidas y los
+    //    cinco dominios operativos (G1: 8 fuentes).
+    const estado: RecoveryState = await recoverPersistedState(
       fakes.jornadaRepository,
       fakes.orderRepository,
       fakes.lecturaRepository,
+      fakes.paradaRepository,
+      fakes.actividadRepository,
+      fakes.danoRepository,
+      fakes.mantenimientoRepository,
+      fakes.inspeccionRepository,
       FECHA,
+      "M1",
     );
 
     expect(estado.orden).toBeDefined();
@@ -173,6 +255,12 @@ describe("F: materialización + recovery — Ticket 10.8", () => {
     expect(estado.orden!.operatorName).toBe("Laura");
     expect(estado.lecturas).toEqual([{ valor: 100, timestamp: TS, deltaGolpes: 0 }]);
     expect(estado.jornada).toEqual(jornadaDefault(FECHA));
+    // Los cinco dominios operativos llegan desde su contrato (vacíos hoy).
+    expect(estado.paradas).toEqual([]);
+    expect(estado.actividades).toEqual([]);
+    expect(estado.danos).toEqual([]);
+    expect(estado.mantenimientos).toEqual([]);
+    expect(estado.inspecciones).toEqual([]);
 
     // Orden de la fuente antes que el de la lectura: materialización primero.
     const fuenteIndex = bitacora.indexOf("orden:materializeOrder");
@@ -185,15 +273,23 @@ describe("F: materialización + recovery — Ticket 10.8", () => {
     const programa = await materializarPrograma(fakes.orderRepository, []);
     expect(programa).toEqual({ insertadas: 0, existentes: 0 });
 
-    const estado = await recoverPhase1State(
+    const estado = await recoverPersistedState(
       fakes.jornadaRepository,
       fakes.orderRepository,
       fakes.lecturaRepository,
+      fakes.paradaRepository,
+      fakes.actividadRepository,
+      fakes.danoRepository,
+      fakes.mantenimientoRepository,
+      fakes.inspeccionRepository,
       FECHA,
+      "M1",
     );
     expect(estado.orden).toBeUndefined();
     expect(estado.lecturas).toEqual([]);
     expect(fakes.lecturaRepository.getLecturasByOrden).not.toHaveBeenCalled();
+    // Sin orden, el guard de inspecciones tampoco consulta (mismo guard que lecturas).
+    expect(fakes.inspeccionRepository.listarPorOrden).not.toHaveBeenCalled();
   });
 });
 
@@ -208,6 +304,8 @@ async function arrancarMain(overrides: {
   fallaMaterializacion?: boolean;
   /** Falla el recovery (repo de órdenes que lanza al leer por fecha). */
   fallaRecovery?: boolean;
+  /** Falla un dominio operativo del recovery (paradas que lanzan al listar). */
+  fallaRecoveryOperativo?: boolean;
 } = {}) {
   vi.resetModules();
 
@@ -259,15 +357,37 @@ async function arrancarMain(overrides: {
       throw new Error("SQLite no disponible");
     });
   }
+  if (overrides.fallaRecoveryOperativo) {
+    vi.spyOn(fakes.paradaRepository, "listarPorMaquina").mockImplementation(async () => {
+      bitacora.push("parada:listarPorMaquina:error");
+      throw new Error("no se pudo recuperar las paradas de la máquina M1");
+    });
+  }
 
   const OrdenRepo = claseFalsa("orden", fakes.orderRepository);
   const JornadaRepo = claseFalsa("jornada", fakes.jornadaRepository);
   const LecturaRepo = claseFalsa("lectura", fakes.lecturaRepository);
+  const ParadaRepo = claseFalsa("parada", fakes.paradaRepository);
+  const ActividadRepo = claseFalsa("actividad", fakes.actividadRepository);
+  const DanoRepo = claseFalsa("dano", fakes.danoRepository);
+  const MantenimientoRepo = claseFalsa("mantenimiento", fakes.mantenimientoRepository);
+  const InspeccionRepo = claseFalsa("inspeccion", fakes.inspeccionRepository);
 
   vi.doMock("../sqliteOrderRepository", () => ({ SqliteOrderRepository: OrdenRepo }));
   vi.doMock("../sqliteJornadaRepository", () => ({ SqliteJornadaRepository: JornadaRepo }));
   vi.doMock("../sqliteLecturaGolpeRepository", () => ({
     SqliteLecturaGolpeRepository: LecturaRepo,
+  }));
+  vi.doMock("../sqliteParadaRepository", () => ({ SqliteParadaRepository: ParadaRepo }));
+  vi.doMock("../sqliteActividadPlanificadaRepository", () => ({
+    SqliteActividadPlanificadaRepository: ActividadRepo,
+  }));
+  vi.doMock("../sqliteDanoRepository", () => ({ SqliteDanoRepository: DanoRepo }));
+  vi.doMock("../sqliteMantenimientoRepository", () => ({
+    SqliteMantenimientoRepository: MantenimientoRepo,
+  }));
+  vi.doMock("../sqliteInspeccionTelaRepository", () => ({
+    SqliteInspeccionTelaRepository: InspeccionRepo,
   }));
 
   await import("../../../main");
@@ -286,7 +406,16 @@ async function arrancarMain(overrides: {
     fakes,
     dbFalso,
     dbsRecibidas,
-    clases: { OrdenRepo, JornadaRepo, LecturaRepo },
+    clases: {
+      OrdenRepo,
+      JornadaRepo,
+      LecturaRepo,
+      ParadaRepo,
+      ActividadRepo,
+      DanoRepo,
+      MantenimientoRepo,
+      InspeccionRepo,
+    },
   };
 }
 
@@ -307,23 +436,43 @@ describe("H/I: secuencia de arranque de main.tsx — Ticket 10.8", () => {
   });
 
   it("H: initDatabase -> repositorios -> materializar -> recovery -> App con el estado resuelto", async () => {
-    const { bitacora, elemento, AppDelArranque, fakes, dbFalso, dbsRecibidas } =
-      await arrancarMain();
+    const {
+      bitacora,
+      elemento,
+      AppDelArranque,
+      fakes,
+      dbFalso,
+      dbsRecibidas,
+      clases: { OrdenRepo, JornadaRepo, LecturaRepo, ParadaRepo, ActividadRepo, DanoRepo, MantenimientoRepo, InspeccionRepo },
+    } = await arrancarMain();
 
-    // La secuencia del arranque, en orden exacto.
+    // La secuencia del arranque, en orden exacto: base -> los OCHO adaptadores.
     expect(bitacora[0]).toBe("initDatabase");
-    expect(bitacora.slice(0, 4)).toEqual([
-      "initDatabase",
+    expect(bitacora.slice(1, 9)).toEqual([
       "construir:orden",
       "construir:jornada",
       "construir:lectura",
+      "construir:parada",
+      "construir:actividad",
+      "construir:dano",
+      "construir:mantenimiento",
+      "construir:inspeccion",
     ]);
-    expect(bitacora[4]).toBe("orden:materializeOrder"); // materialización ANTES del recovery
+    expect(bitacora[9]).toBe("orden:materializeOrder"); // materialización ANTES del recovery
     expect(bitacora).toContain("orden:getOrderByFechaOperativa"); // recovery
     expect(bitacora[bitacora.length - 1]).toBe("render");
 
-    // Los tres repositorios se construyeron con la db de initDatabase.
-    expect(dbsRecibidas).toEqual([dbFalso, dbFalso, dbFalso]);
+    // Los OCHO repositorios se construyeron UNA sola vez y con la db de
+    // initDatabase (nunca una db distinta por repositorio).
+    expect(vi.mocked(OrdenRepo)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(JornadaRepo)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(LecturaRepo)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(ParadaRepo)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(ActividadRepo)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(DanoRepo)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(MantenimientoRepo)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(InspeccionRepo)).toHaveBeenCalledTimes(1);
+    expect(dbsRecibidas).toEqual(Array(8).fill(dbFalso));
 
     // El orden de las fases es el del spec: materializar < recovery < render.
     const materializar = bitacora.indexOf("orden:materializeOrder");
@@ -337,17 +486,27 @@ describe("H/I: secuencia de arranque de main.tsx — Ticket 10.8", () => {
     const props = app.props as Record<string, unknown>;
     expect(props.estadoInicial).toBeDefined();
     expect(typeof (props.estadoInicial as Promise<unknown>).then).toBe("undefined");
-    expect((props.estadoInicial as RecoveryState).jornada).toBeDefined();
-    expect((props.estadoInicial as RecoveryState).orden?.id).toBe("ord-101");
-    expect((props.estadoInicial as RecoveryState).orden?.estado).toBe("available");
-    expect((props.estadoInicial as RecoveryState).lecturas).toEqual([]);
-    // Los repositorios entregados son los construidos en el arranque.
+    const estado = props.estadoInicial as RecoveryState;
+    expect(estado.jornada).toBeDefined();
+    expect(estado.orden?.id).toBe("ord-101");
+    expect(estado.orden?.estado).toBe("available");
+    expect(estado.lecturas).toEqual([]);
+    // Los OCHO dominios operativos llegan desde su contrato, vacíos hoy.
+    expect(estado.paradas).toEqual([]);
+    expect(estado.actividades).toEqual([]);
+    expect(estado.danos).toEqual([]);
+    expect(estado.mantenimientos).toEqual([]);
+    expect(estado.inspecciones).toEqual([]);
+    // Los repositorios entregados son los construidos en el arranque: los cinco
+    // dominios operativos YA no viven en memoria (G1), vienen del SQLite fake.
     expect(props.repository).toBe(fakes.orderRepository);
     expect(props.jornadaRepository).toBe(fakes.jornadaRepository);
     expect(props.lecturaRepository).toBe(fakes.lecturaRepository);
-    // Paradas y actividades siguen en memoria (tickets posteriores).
-    expect(props.paradaRepository).toBeDefined();
-    expect(props.actividadRepository).toBeDefined();
+    expect(props.paradaRepository).toBe(fakes.paradaRepository);
+    expect(props.actividadRepository).toBe(fakes.actividadRepository);
+    expect(props.danoRepository).toBe(fakes.danoRepository);
+    expect(props.inspeccionRepository).toBe(fakes.inspeccionRepository);
+    expect(props.mantenimientoRepository).toBe(fakes.mantenimientoRepository);
     // Toda la fuente externa llegó materializada, en orden y por `id`.
     expect(fakes.orderRepository.materializeOrder).toHaveBeenCalledTimes(2);
     expect(
@@ -368,6 +527,13 @@ describe("H/I: secuencia de arranque de main.tsx — Ticket 10.8", () => {
     const estado = (app.props as Record<string, unknown>).estadoInicial as RecoveryState;
     expect(estado.orden).toBeUndefined();
     expect(estado.lecturas).toEqual([]);
+    // Sin orden no hay lecturas NI inspecciones; los dominios de máquina igual
+    // se recuperan (historial completo de la máquina, vacío en día vacío).
+    expect(estado.paradas).toEqual([]);
+    expect(estado.actividades).toEqual([]);
+    expect(estado.danos).toEqual([]);
+    expect(estado.mantenimientos).toEqual([]);
+    expect(estado.inspecciones).toEqual([]);
   });
 
   it("I: materializeOrder que lanza -> el arranque aborta y se muestra la pantalla de error (App NO monta)", async () => {
@@ -400,6 +566,26 @@ describe("H/I: secuencia de arranque de main.tsx — Ticket 10.8", () => {
 
     const app = elemento.props.children as ReactElement | undefined;
     expect(elemento.props.message).toContain("SQLite no disponible");
+    expect(app).toBeUndefined();
+    expect(elemento.type).not.toBe(AppDelArranque);
+  });
+
+  it("I: un fallo en un dominio operativo (paradas) aborta el arranque y App NO monta", async () => {
+    const { bitacora, elemento, AppDelArranque, renderSpy } = await arrancarMain({
+      fallaRecoveryOperativo: true,
+    });
+
+    // La materialización y la lectura de paradas ocurrieron; el fallo cortó la
+    // secuencia D2e ANTES de los dominios siguientes (mantenimiento/inspecciones).
+    expect(bitacora).toContain("orden:materializeOrder");
+    expect(bitacora).toContain("parada:listarPorMaquina:error");
+    expect(bitacora).not.toContain("mantenimiento:listarPorMaquina");
+    expect(renderSpy).toHaveBeenCalledTimes(1);
+
+    const app = elemento.props.children as ReactElement | undefined;
+    expect(elemento.props.message).toContain(
+      "no se pudo recuperar las paradas de la máquina M1",
+    );
     expect(app).toBeUndefined();
     expect(elemento.type).not.toBe(AppDelArranque);
   });

@@ -1572,3 +1572,77 @@ Key evidence (reproduced):
 | Routing coherence | next recommended: **G1 (Phase 13)** — recovery and startup composition, ≈ 300 lines, within budget; B2 unblocks it (dependency `Phases 3, 5, 6, 7, 8, 9, 10, 11, 12, 12B` now satisfied per `tasks.md`) |
 | Tasks state | B2.1–B2.3 `[x]`; cumulative **48/63** |
 | Delivery | commit as one atomic work unit; **no push** |
+
+---
+
+## Unit G1 — Phase 13 (recovery and startup composition) — CLOSED
+
+**Status**: PASS · **Capability**: `operational-recovery-wiring` · **Size**: 840 insertions / 91
+deletions across 5 files (≈ 300 predicted) — within budget · **Date**: 2026-09-29
+
+### What shipped
+
+- **`src/store/sqlite/recovery.ts`** (13.1/13.2): `recoverPersistedState` (D2a rename; `RecoveryState`
+  name kept) grows from 3 to 8 fields — `jornada`, `orden`, `lecturas`, `paradas`, `actividades`,
+  `danos`, `mantenimientos`, `inspecciones`. Receives the eight repository interfaces only (never a
+  `Database`, no SQL). D2e sequential read order, each awaited, no `Promise.all`; a read failure
+  propagates and is never downgraded to an empty list; `inspecciones = orden ? … : []` (same guard
+  shape as `lecturas`); machine-event lists carry full history with no date predicate; D2f
+  `maquinaId` explicit; no arithmetic beyond assembling lists (no tiempo productivo, duration,
+  projected 2da, alert, buena_racha, machine state, inspection estado). `componerOrdenConLecturas`
+  unchanged.
+- **`src/main.tsx`** (13.3): step 2 constructs the **eight** SQLite adapters once; the hard-wired
+  `InMemoryParadaRepository` / `InMemoryActividadPlanificadaRepository` lines removed; step 4 calls
+  `recoverPersistedState(…, fechaOperativaHoy(), "M1")`; step 5 passes the five operational
+  repositories to `<App>`; numbered header names the eight sources. `try`/`catch` discipline,
+  `mensajeDeError`, `InicializacionFallida` untouched.
+- **`src/store/sqlite/__tests__/recovery.test.ts`** (13.4): 352 → 728 lines; existing assertions
+  **preserved**; 18 tests covering A–G (Phase 1 semantics) + I1–I6 (eight sources by contract, fixed
+  D2e order, absent order guard, full history, no derived values, failure propagation cutting the
+  sequence at the named domain).
+- **`src/store/sqlite/__tests__/startup.test.ts`** (13.5): 406 → 646 lines; asserts **eight**
+  adapters constructed once (one `construir:` entry each, `dbsRecibidas` = 8× the same db), no
+  in-memory operational wiring remaining (the five operational props delivered to `App` are the
+  fakes), recovery failure → `InicializacionFallida` with `App` never mounted, **and** a new I test
+  for an operational-domain read failure (paradas) reaching the same screen and cutting the D2e
+  sequence before later domains. Only the plugin boundary is faked; the suite header keeps the
+  honesty note that the real Tauri binary is not exercised.
+- **`src/__tests__/persistence-integration.test.ts`** (13.6): rename only; `recoverPersistedState`
+  called with the five operational read fakes + `FECHA_CON_ORDEN` + `"M1"`. The restart-survival
+  body stays untouched (Phase 14 owns it).
+
+### Deviations (G1)
+
+1. **Execution route — orphaned sub-agent work (transport)**: the G1 delegated writer hit the same
+   transport failure class as F2/B2 (`task` → `Subagent failed … Provider response headers timed out
+   after 300000ms`); the worker never returned a result, but it HAD mutated three files on disk before
+   dying (`recovery.ts`, `main.tsx`, `recovery.test.ts`). The orchestrator audited that orphaned work
+   against 13.1–13.4 (read the files, verified the D2e order, the 8-field shape, the 8-source header,
+   the preserved A–G assertions, the I1–I6 additions) and completed 13.5/13.6 inline with the same
+   verification bar. Lesson: a transport-dead sub-agent can leave uncommitted, un-reported work; the
+   gatekeeper must treat "no result returned" as "unknown", not "nothing happened".
+2. The gatekeeper-required "no Promise.all / no date predicate / propagates" properties are asserted
+   by I2/I4/I6 in the recovery suite.
+
+### Evidence
+
+- `npx tsc --noEmit` → exit 0 (no unused `maquinaId`/`ordenId` leftovers after simplification).
+- `rg -n "recoverPhase1State" src/` → nothing (exit 1).
+- `npx vitest run src/store/sqlite/__tests__/recovery.test.ts` → **18/18**.
+- `npx vitest run src/store/sqlite/__tests__/startup.test.ts` → **7/7**.
+- `npx vitest run src/__tests__/persistence-integration.test.ts` → **4/4**.
+- `git diff --check` → clean. `git status --porcelain -- src/` → exactly the 5 G1 files.
+- `src/domain/**`, `src/ui/**`, `src/App.tsx`, `src/store/sqlite/database.ts`,
+  `src/store/sqlite/__tests__/fakeSqliteStore.ts` untouched by this unit.
+
+### Gatekeeper (G1) — final: PASS
+
+| Check | Result |
+|---|---|
+| Contract conformance | 13.1–13.6 implemented as written; acceptance criteria verified per task (8 fields, D2a name, D2e order, D2f param, 8 constructions once, in-memory removed, failure → `InicializacionFallida`, no assertion deleted, rename-only in 13.6) |
+| Artifact existence | 5 files on disk; `tasks.md` boxes 13.1–13.6 now `[x]` |
+| No hallucination | tsc 0; three G1 suites green (18+7+4 = **29 tests**); no `recoverPhase1State` residual; diff check clean; only the 5 declared files modified |
+| No drift from inputs | recovery has no SQL, no new repository methods, no derived computation; main.tsx header names eight sources; startup still fakes only the plugin boundary; the restart-survival body of persistence-integration untouched |
+| Routing coherence | next recommended: **G2 (Phase 14)** — `App.tsx` state + handlers + 6 UI files, ≈ 620 lines, **OVER BUDGET → requires `size:exception` or a split decision before apply** (delivery strategy cached: `exception-ok`; user accepted `size:exception` at session preflight) |
+| Tasks state | 13.1–13.6 `[x]`; cumulative **54/63** |
+| Delivery | commit as one atomic work unit; **no push** |

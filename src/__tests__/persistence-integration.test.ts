@@ -5,7 +5,7 @@
  *
  *   arranque (materializar) → flujo del operario (iniciar, registrar lectura,
  *   finalizar) → reinicio SIMULADO (repositorios NUEVOS sobre el mismo almacén
- *   persistente + `recoverPhase1State`) → el estado sigue intacto.
+ *   persistente + `recoverPersistedState`) → el estado sigue intacto.
  *
  * El almacén sobrevive a los repositorios: cada "reinicio" crea instancias
  * nuevas de los contratos sobre el mismo almacén, que es lo que hace un
@@ -20,13 +20,18 @@ import { createElement, type ReactElement } from "react";
 import App from "../App";
 import { materializarPrograma } from "../store/sqlite/materialize";
 import {
-  recoverPhase1State,
+  recoverPersistedState,
   type RecoveryState,
 } from "../store/sqlite/recovery";
 import { FECHA_CON_ORDEN, crearFixtureOrdenes } from "../store/fixtures";
 import { jornadaDefault } from "../domain/tiempo";
 import type { ILecturaGolpeRepository, IOrderRepository } from "../store/repository";
 import type { IJornadaRepository } from "../store/jornadaRepository";
+import type { IParadaRepository } from "../store/paradasRepository";
+import type { IActividadPlanificadaRepository } from "../store/actividadesRepository";
+import type { IDanoRepository } from "../store/danosRepository";
+import type { IMantenimientoRepository } from "../store/mantenimientoRepository";
+import type { IInspeccionRepository } from "../store/inspeccionRepository";
 import type { LecturaContador, Orden } from "../domain/types";
 
 // ── Almacén persistente falso (equivalente conceptual al archivo SQLite) ────
@@ -135,6 +140,61 @@ function crearJornadaFalsa(): IJornadaRepository {
   };
 }
 
+/**
+ * Los cinco contratos operativos vacíos (paradas, actividades, daños,
+ * mantenimientos, inspecciones — G1). El recovery solo LOS LEE; los métodos
+ * de escritura existen para cumplir el contrato y nunca se llaman aquí.
+ */
+function crearOperativosFalsos(): {
+  paradaRepository: IParadaRepository;
+  actividadRepository: IActividadPlanificadaRepository;
+  danoRepository: IDanoRepository;
+  mantenimientoRepository: IMantenimientoRepository;
+  inspeccionRepository: IInspeccionRepository;
+} {
+  const noEscrito = () => {
+    throw new Error("método de escritura no usado por recovery en este test");
+  };
+  return {
+    paradaRepository: {
+      insertParada: noEscrito,
+      updateParada: noEscrito,
+      obtenerPorId: async () => undefined,
+      listarPorMaquina: async () => [],
+      listarPorOrden: async () => [],
+      getParadaAbierta: async () => null,
+    },
+    actividadRepository: {
+      insertActividad: noEscrito,
+      updateActividad: noEscrito,
+      obtenerPorId: async () => undefined,
+      listarPorMaquina: async () => [],
+      getActividadAbierta: async () => null,
+    },
+    danoRepository: {
+      insertDano: noEscrito,
+      updateDano: noEscrito,
+      obtenerPorId: async () => undefined,
+      listarPorMaquina: async () => [],
+      listarPorOrden: async () => [],
+      getDanoAbierto: async () => null,
+    },
+    mantenimientoRepository: {
+      insertMantenimiento: noEscrito,
+      updateMantenimiento: noEscrito,
+      obtenerPorId: async () => undefined,
+      listarPorMaquina: async () => [],
+      getMantenimientoAbierto: async () => null,
+    },
+    inspeccionRepository: {
+      insertInspeccion: noEscrito,
+      updateInspeccion: noEscrito,
+      obtenerPorId: async () => undefined,
+      listarPorOrden: async () => [],
+    },
+  };
+}
+
 // ── Utilidades de UI ────────────────────────────────────────────────────────
 
 async function mountApp(ui: ReactElement) {
@@ -227,11 +287,18 @@ describe("12. flujo completo persiste y sobrevive a un reinicio — Ticket 10.8"
     // ── "Reinicio": repositorios NUEVOS sobre el MISMO almacén. ──
     const ordenRepoTrasReinicio = crearOrdenFalsa(almacen);
     const lecturaRepoTrasReinicio = crearLecturaFalsa(almacen);
-    const estado: RecoveryState = await recoverPhase1State(
+    const operativos = crearOperativosFalsos();
+    const estado: RecoveryState = await recoverPersistedState(
       crearJornadaFalsa(),
       ordenRepoTrasReinicio,
       lecturaRepoTrasReinicio,
+      operativos.paradaRepository,
+      operativos.actividadRepository,
+      operativos.danoRepository,
+      operativos.mantenimientoRepository,
+      operativos.inspeccionRepository,
       FECHA_CON_ORDEN,
+      "M1",
     );
 
     expect(estado.orden?.id).toBe("ord-101");
@@ -263,11 +330,18 @@ describe("12. flujo completo persiste y sobrevive a un reinicio — Ticket 10.8"
     expect(finalizada.finalizadaEn).toEqual(expect.any(String));
 
     // Reinicio: el estado finished NUNCA se revierte.
-    const estado = await recoverPhase1State(
+    const operativos = crearOperativosFalsos();
+    const estado = await recoverPersistedState(
       crearJornadaFalsa(),
       crearOrdenFalsa(almacen),
       crearLecturaFalsa(almacen),
+      operativos.paradaRepository,
+      operativos.actividadRepository,
+      operativos.danoRepository,
+      operativos.mantenimientoRepository,
+      operativos.inspeccionRepository,
       FECHA_CON_ORDEN,
+      "M1",
     );
     expect(estado.orden?.estado).toBe("finished");
     expect(estado.lecturas.map((l) => l.valor)).toEqual([100, 150]);
@@ -300,11 +374,18 @@ describe("13. recovery tras crash preserva los datos — Ticket 10.8", () => {
     expect(reservada.status).toBe("reserved");
 
     // Recovery: solo `persisted`; la reservada se excluye (10.7).
-    const estado = await recoverPhase1State(
+    const operativos = crearOperativosFalsos();
+    const estado = await recoverPersistedState(
       crearJornadaFalsa(),
       crearOrdenFalsa(almacen),
       crearLecturaFalsa(almacen),
+      operativos.paradaRepository,
+      operativos.actividadRepository,
+      operativos.danoRepository,
+      operativos.mantenimientoRepository,
+      operativos.inspeccionRepository,
       FECHA_CON_ORDEN,
+      "M1",
     );
     expect(estado.orden?.estado).toBe("in_production");
     expect(estado.lecturas).toHaveLength(1);
@@ -329,11 +410,18 @@ describe("13. recovery tras crash preserva los datos — Ticket 10.8", () => {
     await iniciarOrden("Laura", "100");
     await registrarLectura("150");
 
-    const estado = await recoverPhase1State(
+    const operativos = crearOperativosFalsos();
+    const estado = await recoverPersistedState(
       crearJornadaFalsa(),
       crearOrdenFalsa(almacen),
       crearLecturaFalsa(almacen),
+      operativos.paradaRepository,
+      operativos.actividadRepository,
+      operativos.danoRepository,
+      operativos.mantenimientoRepository,
+      operativos.inspeccionRepository,
       FECHA_CON_ORDEN,
+      "M1",
     );
     expect(estado.lecturas).toHaveLength(2);
     expect(estado.lecturas.map((l) => l.valor)).toEqual([100, 150]);
