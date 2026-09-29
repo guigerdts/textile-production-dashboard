@@ -1294,3 +1294,75 @@ inspección conversion is green; no claim is made about a full-suite re-run.**
 | Routing coherence | `blockedReasons` empty; next recommended: **E2 (Phase 10)** — `sqliteInspeccionTelaRepository` and its suite, **over budget by ~60 %** under the already-granted `size:exception` |
 | Tasks state | 9.1–9.4 `[x]`; cumulative **35/60** |
 | Delivery | committed as one atomic work unit; **no push** |
+
+## Files changed (Unit E2)
+
+| File | Action | What was done |
+|------|--------|---------------|
+| `src/store/sqlite/sqliteInspeccionTelaRepository.ts` | Created | **693 lines.** 18-column `InspeccionTelaRow`, `InspeccionTelaSqlValues`, pure `mapInspeccionRow` / `mapInspeccionToSql`, `SqliteInspeccionTelaRepository implements IInspeccionRepository` with `private db`. Branch-exclusive resolution write (six columns: discriminator + 5); checklist rebuilt from the literal tuple fixed by 004 and validated per column; corrupt rows raise a descriptive mapping error with `cause`. Adapter prose is English (user-mandated correction). |
+| `src/store/sqlite/__tests__/sqliteInspeccionTelaRepository.test.ts` | Created | **1418 lines, 50 tests.** Round trip with no connection; the 5-item rebuild; tuple pinned to `getItemsChecklist().map(i => i.id)`; both resolution branches; `no_usable` / `conforme` derivation; optional `undefined` not `""`; corrupt-row rejection with `cause`; resolution replaces the row in place; chronological order; error propagation; plus the gatekeeper-mandated invalid-checklist-state rejection and the anti-vacuity / no-business-validation scope guards. |
+
+## Review budget (E2) — OVER the 400-line budget; `size:exception` user-approved
+
+- **Budget:** 400. **Forecast:** ≈ 640. **Result:** **2111 lines** (693 adapter + 1418 suite) at landing.
+- **Reason:** atomicity/verifiability — the adapter and its suite are one checkable unit; splitting them would produce intermediate commits that are neither green nor independently verifiable.
+- **Coverage not reduced:** all 45 tests from the first pass untouched; +5 added by the correction pass.
+- The approval was given at 1920 (634 + 1286); the mandated gatekeeper-correction pass (English prose, real checklist validation, +5 tests) added +191 lines. The exception is recorded at the landing size; no further approval was sought or needed per the user's explicit instruction.
+
+## Work Unit Evidence (E2)
+
+| Command | Result |
+|---|---|
+| `./node_modules/.bin/tsc --noEmit` | **exit 0** (orchestrator re-run, 08:18) |
+| `./node_modules/.bin/vitest run src/store/sqlite/__tests__/sqliteInspeccionTelaRepository.test.ts` | `Test Files 1 passed (1)`, `Tests 50 passed (50)` |
+| `./node_modules/.bin/vitest run …/sqliteDanoRepository.test.ts …/sqliteActividadPlanificadaRepository.test.ts` | `Test Files 2 passed (2)`, `Tests 46 passed (46)` — shared `fakeSqliteStore` double unaffected |
+| `grep -nE ': any\| as any\|<any>'` (both files) | zero matches |
+| `git add -N <2 files> && git diff --check && git reset` | exit 0 — no whitespace errors over the untracked files |
+| `git status --porcelain -- src/` | only the two E2 files untracked; nothing else in `src/` modified |
+
+## The SDD preflight root cause — a literal runtime contract, now documented
+
+The first three `sdd-apply` dispatch attempts were refused with "parent-confirmed SDD preflight is
+missing" even after a canonical-looking preflight. Root cause (read from
+`~/.config/opencode/plugins/sdd-task-result-artifacts.ts`, not guessed): the hook only records
+authority when the one `question` call has **exactly 3 questions** whose `question` text begins with
+the literal `Gentle AI SDD preflight N/3:` marker, with options positionally equal to the canonical
+groups (Pace: Interactive/Automatic · Artifacts: OpenSpec/Engram/Both · PR strategy: Ask me/Single
+PR/Auto). A 4th group (Review) breaks the count; the plugin fixes "Review policy: 400 changed
+lines" itself and it must NOT be asked. Without the literal marker the canonicalizer returns early
+with **no error**, so the later refusal never names the cause. Saved to Engram as the durable fix for
+this session class.
+
+## Deviations (E2)
+
+1. **Language.** The adapter was written with Spanish comments; the first gatekeeper pass flagged it
+   as drift from the sibling's **English header**. The correction pass translated the whole adapter
+   to English per explicit user instruction. Fact corrected during the gatekeeper: `sqliteDanoRepository.ts`
+   and `sqliteActividadPlanificadaRepository.ts` are **header-English / inner-JSDoc-Spanish**, so E2
+   is now the only fully-English store adapter. That is deliberate (user), not an accident; the
+   siblings remain open if full consistency is ever wanted.
+2. **`"travelling"` anglicism.** E2 had copied it from `sqliteDanoRepository.ts:300`, where it still
+   lives (out of scope, untouched). E2's copy was removed.
+3. **Checklist validation beyond task 10.3's literal text.** 10.3 only mandated corruption handling
+   for the resolution branch, while the code asserted `row[columna] as EstadoItemChecklist` — an
+   unchecked assertion, not the narrowing the comment claimed. The user mandated real validation:
+   `estadoItemChecklist` rejects `"CONFORME"`, `""` and any unrecognized value per column with a
+   descriptive mapping error carrying `cause` (same `errorDeMapeo` contract). A scope-guard test pins
+   that this is structural corruption handling, not business validation.
+4. **`tasks.md` 10.2 says "five resolution columns"; the DDL declares six** (discriminator + 5 data
+   columns). Implemented the six-column reading; the plan text is a wording error.
+5. **Plan under-estimation.** Phase 10 forecast ≈ 640; actual ≈ 2111 after corrections. The suite
+   dominates (1418). The same shape repeats in F2 (≈ 420 forecast); worth correcting the forecast
+   methodology before F2 applies.
+
+## Gatekeeper (E2) — final: PASS
+
+| Check | Result |
+|---|---|
+| Contract conformance | 10.1–10.4 implemented as written, plus the user-mandated checklist validation; every acceptance clause mapped to evidence above |
+| Artifact existence | both files verified on disk; `tasks.md` boxes 10.1–10.4 now `[x]` |
+| No hallucination | `tsc` exit 0 and 96/96 tests are the orchestrator's own runs on these exact bytes; zero `any`; `git diff --check` clean; `git status -- src/` shows only the 2 E2 files |
+| No drift from inputs | `src/domain/**`, `App.tsx`, `src/ui/**`, migrations, `fakeSqliteStore.ts` and `vitest.config.ts` untouched; no `BEGIN`/`COMMIT`; no derived state read or cached; error contract (`errorDeMapeo` + `cause`) preserved; no business validation introduced |
+| Routing coherence | `blockedReasons` empty; next recommended: **F1 (Phase 11)** — `mantenimiento` port + in-memory adapter async, ≈ 70 lines, **within budget**, depends on Phase 10 (now satisfied) |
+| Tasks state | 10.1–10.4 `[x]`; cumulative **39/60** |
+| Delivery | committed as one atomic work unit; **no push** |
