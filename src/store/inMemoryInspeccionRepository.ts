@@ -40,7 +40,7 @@ export class InMemoryInspeccionRepository implements IInspeccionRepository {
     }
   }
 
-  insertInspeccion(inspeccion: InspeccionTela): void {
+  async insertInspeccion(inspeccion: InspeccionTela): Promise<void> {
     validarId(inspeccion.id, "insertInspeccion");
     if (this.porId.has(inspeccion.id)) {
       throw new Error(`ya existe una inspección con el id ${inspeccion.id}`);
@@ -48,7 +48,7 @@ export class InMemoryInspeccionRepository implements IInspeccionRepository {
     this.porId.set(inspeccion.id, structuredClone(inspeccion));
   }
 
-  updateInspeccion(inspeccion: InspeccionTela): void {
+  async updateInspeccion(inspeccion: InspeccionTela): Promise<void> {
     validarId(inspeccion.id, "updateInspeccion");
     if (!this.porId.has(inspeccion.id)) {
       throw new Error(`no existe una inspección con el id ${inspeccion.id}`);
@@ -56,12 +56,12 @@ export class InMemoryInspeccionRepository implements IInspeccionRepository {
     this.porId.set(inspeccion.id, structuredClone(inspeccion));
   }
 
-  obtenerPorId(id: string): InspeccionTela | undefined {
+  async obtenerPorId(id: string): Promise<InspeccionTela | undefined> {
     const inspeccion = this.porId.get(id);
     return inspeccion ? structuredClone(inspeccion) : undefined;
   }
 
-  listarPorOrden(ordenId: string): InspeccionTela[] {
+  async listarPorOrden(ordenId: string): Promise<InspeccionTela[]> {
     return [...this.porId.values()]
       .filter((i) => i.ordenId === ordenId)
       .sort((a, b) => a.timestamp.localeCompare(b.timestamp))

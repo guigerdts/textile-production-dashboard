@@ -65,11 +65,11 @@ export interface InspeccionTelaSectionProps {
   /** false = OrderFinished: historial SOLO, sin registrar inspecciones ni resolver. */
   permitirRegistrar: boolean;
   /** Devuelve errores de dominio vacíos = éxito. */
-  onRegistrarInspeccion(input: RegistrarInspeccionInput): string[];
+  onRegistrarInspeccion(input: RegistrarInspeccionInput): Promise<string[]>;
   /** Devuelve errores de dominio vacíos = éxito. */
-  onDevolverInspeccion(inspeccionId: string, input: RegistrarDevolucionInput): string[];
+  onDevolverInspeccion(inspeccionId: string, input: RegistrarDevolucionInput): Promise<string[]>;
   /** Devuelve errores de dominio vacíos = éxito. */
-  onAutorizarInspeccion(inspeccionId: string, input: RegistrarAutorizacionInput): string[];
+  onAutorizarInspeccion(inspeccionId: string, input: RegistrarAutorizacionInput): Promise<string[]>;
 }
 
 // ---------------------------------------------------------------------------
@@ -82,8 +82,8 @@ interface InspeccionItemProps {
   produccionGolpes: number;
   permitirRegistrar: boolean;
   operatorNameInicial?: string;
-  onDevolverInspeccion(inspeccionId: string, input: RegistrarDevolucionInput): string[];
-  onAutorizarInspeccion(inspeccionId: string, input: RegistrarAutorizacionInput): string[];
+  onDevolverInspeccion(inspeccionId: string, input: RegistrarDevolucionInput): Promise<string[]>;
+  onAutorizarInspeccion(inspeccionId: string, input: RegistrarAutorizacionInput): Promise<string[]>;
 }
 
 function InspeccionItem({
@@ -109,12 +109,12 @@ function InspeccionItem({
     setRegistradaPor(operatorNameInicial ?? "");
   }, [operatorNameInicial]);
 
-  function handleResolver(e: FormEvent) {
+  async function handleResolver(e: FormEvent) {
     e.preventDefault();
     setErrores([]);
 
     if (tipoResolucion === "devolucion") {
-      const res = onDevolverInspeccion(inspeccion.id, {
+      const res = await onDevolverInspeccion(inspeccion.id, {
         motivo: motivo.trim(),
         registradaPor: registradaPor.trim(),
         timestamp: new Date().toISOString(),
@@ -128,7 +128,7 @@ function InspeccionItem({
     }
 
     if (tipoResolucion === "autorizacion_gerencia") {
-      const res = onAutorizarInspeccion(inspeccion.id, {
+      const res = await onAutorizarInspeccion(inspeccion.id, {
         autorizadoPor: autorizadoPor.trim(),
         timestamp: new Date().toISOString(),
         observaciones: obsAutorizacion.trim() === "" ? undefined : obsAutorizacion,
@@ -313,7 +313,7 @@ export function InspeccionTelaSection({
 
   const produccionGolpes = golpesProducidosDesdeLecturas(orden.lecturas ?? []);
 
-  function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setErrores([]);
 
@@ -326,7 +326,7 @@ export function InspeccionTelaSection({
       observaciones: observaciones.trim() === "" ? undefined : observaciones,
     };
 
-    const res = onRegistrarInspeccion(input);
+    const res = await onRegistrarInspeccion(input);
     setErrores(res);
     if (res.length > 0) {
       return;

@@ -1421,7 +1421,7 @@ describe("App — ticket 07: inspección de tela (UI)", () => {
     expect(seccion.getByText(/Lote: L-77/)).toBeTruthy();
     expect(seccion.getByText("Conforme")).toBeTruthy();
 
-    const lista = repoInspecciones.listarPorOrden("ord-101");
+    const lista = await repoInspecciones.listarPorOrden("ord-101");
     expect(lista).toHaveLength(1);
     expect(lista[0].lote).toBe("L-77");
     expect(lista[0].operatorName).toBe("Laura");
@@ -1444,7 +1444,7 @@ describe("App — ticket 07: inspección de tela (UI)", () => {
     expect(seccion.getByText("No usable")).toBeTruthy();
     expect(seccion.getByText(/manchas de aceite/)).toBeTruthy();
 
-    const lista = repoInspecciones.listarPorOrden("ord-101");
+    const lista = await repoInspecciones.listarPorOrden("ord-101");
     expect(lista).toHaveLength(1);
     expect(lista[0].lote).toBe("L-80");
     expect(lista[0].items.find((i) => i.id === "manchas")?.estado).toBe("anomalia");
@@ -1480,7 +1480,7 @@ describe("App — ticket 07: inspección de tela (UI)", () => {
     expect(item.getByText("Devuelta")).toBeTruthy();
     expect(item.getByText(/absorción insuficiente/)).toBeTruthy();
 
-    const guardada = repoInspecciones.listarPorOrden("ord-101")[0];
+    const guardada = (await repoInspecciones.listarPorOrden("ord-101"))[0];
     const resolucionDevolucion = guardada.resolucion;
     expect(resolucionDevolucion?.tipo).toBe("devolucion");
     if (resolucionDevolucion?.tipo !== "devolucion") {
@@ -1516,14 +1516,14 @@ describe("App — ticket 07: inspección de tela (UI)", () => {
     // sin autorizadoPor → error del dominio, no se resuelve
     await user.click(item.getByRole("button", { name: /Resolver inspección/i }));
     expect(item.getByRole("alert").textContent).toContain("autorizadoPor es obligatorio");
-    expect(repoInspecciones.listarPorOrden("ord-101")[0].resolucion).toBeNull();
+    expect((await repoInspecciones.listarPorOrden("ord-101"))[0].resolucion).toBeNull();
 
     // con autorizadoPor → éxito
     await user.type(item.getByLabelText(/Autorizado por \(obligatorio\)/i), "Gerencia");
     await user.click(item.getByRole("button", { name: /Resolver inspección/i }));
 
     expect(item.getByText("Uso autorizado")).toBeTruthy();
-    const guardadaAutorizada = repoInspecciones.listarPorOrden("ord-101")[0];
+    const guardadaAutorizada = (await repoInspecciones.listarPorOrden("ord-101"))[0];
     const resolucionAutorizacion = guardadaAutorizada.resolucion;
     expect(resolucionAutorizacion?.tipo).toBe("autorizacion_gerencia");
     if (resolucionAutorizacion?.tipo !== "autorizacion_gerencia") {

@@ -10,7 +10,9 @@
  *   registrarDevolucion/registrarAutorizacionGerencia (dominio) → updateInspeccion
  *   con la inspección devuelta (mismo id, con resolución). La resolución NUNCA
  *   muta la inspección persistida: el dominio devuelve una copia nueva.
- * - Los métodos son síncronos, consistentes con los repos anteriores.
+ * - Los métodos son asíncronos: una implementación SQLite real con el plugin
+ *   de Tauri es I/O y devuelve Promise. Nombres, parámetros y tipos resueltos
+ *   no cambian respecto al contrato síncrono anterior; solo cambia la entrega.
  * - Campos serializables a JSON (strings, arrays, objetos planos, null).
  * - structuredClone en cada persistencia y lectura: mutar un resultado o un
  *   input no contamina el repositorio.
@@ -42,24 +44,24 @@ export interface IInspeccionRepository {
    * Inserta una inspección nueva. Lanza si el id ya existe o el id es inválido.
    * Uso típico: registrarInspeccion del dominio → insertInspeccion.
    */
-  insertInspeccion(inspeccion: InspeccionTela): void;
+  insertInspeccion(inspeccion: InspeccionTela): Promise<void>;
 
   /**
    * Reemplaza una inspección existente (por id). Lanza si el id no existe o
    * es inválido. Uso típico: registrarDevolucion / registrarAutorizacionGerencia
    * del dominio → updateInspeccion con la copia resuelta (mismo id).
    */
-  updateInspeccion(inspeccion: InspeccionTela): void;
+  updateInspeccion(inspeccion: InspeccionTela): Promise<void>;
 
   /**
    * Devuelve la inspección con el id dado (copia defensiva), o undefined.
    */
-  obtenerPorId(id: string): InspeccionTela | undefined;
+  obtenerPorId(id: string): Promise<InspeccionTela | undefined>;
 
   /**
    * Lista TODAS las inspecciones asociadas a una orden concreta, en orden
    * cronológico estable por `timestamp`. Las inspecciones de otras órdenes
    * nunca se mezclan.
    */
-  listarPorOrden(ordenId: string): InspeccionTela[];
+  listarPorOrden(ordenId: string): Promise<InspeccionTela[]>;
 }

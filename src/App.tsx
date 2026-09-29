@@ -230,7 +230,19 @@ function App({
 
   useEffect(() => {
     // La inspección siempre pertenece a su orden: se recarga al cambiar la orden.
-    setInspecciones(orden ? inspeccionRepository.listarPorOrden(orden.id) : []);
+    let cancelled = false;
+    async function cargarInspecciones() {
+      if (orden) {
+        const cargadas = await inspeccionRepository.listarPorOrden(orden.id);
+        if (!cancelled) setInspecciones(cargadas);
+      } else if (!cancelled) {
+        setInspecciones([]);
+      }
+    }
+    cargarInspecciones();
+    return () => {
+      cancelled = true;
+    };
   }, [inspeccionRepository, orden?.id]);
 
   /**
@@ -471,7 +483,7 @@ function App({
   }
 
   /** Única vía registrar inspección de tela (ticket 07): dominio + repositorio; React no duplica reglas. */
-  function handleRegistrarInspeccion(input: RegistrarInspeccionInput): string[] {
+  async function handleRegistrarInspeccion(input: RegistrarInspeccionInput): Promise<string[]> {
     if (!orden) {
       return ["la inspección de tela debe estar asociada a una orden de producción"];
     }
@@ -482,20 +494,20 @@ function App({
     if (!resultado.inspeccion) {
       return ["no se pudo registrar la inspección"];
     }
-    inspeccionRepository.insertInspeccion(resultado.inspeccion);
-    setInspecciones(inspeccionRepository.listarPorOrden(orden.id));
+    await inspeccionRepository.insertInspeccion(resultado.inspeccion);
+    setInspecciones(await inspeccionRepository.listarPorOrden(orden.id));
     return [];
   }
 
   /** Única vía resolver una inspección con devolución (ticket 07): dominio + repositorio. */
-  function handleDevolverInspeccion(
+  async function handleDevolverInspeccion(
     inspeccionId: string,
     input: RegistrarDevolucionInput,
-  ): string[] {
+  ): Promise<string[]> {
     if (!orden) {
       return ["la inspección de tela debe estar asociada a una orden de producción"];
     }
-    const existente = inspeccionRepository.obtenerPorId(inspeccionId);
+    const existente = await inspeccionRepository.obtenerPorId(inspeccionId);
     if (!existente) {
       return ["la inspección ya no existe"];
     }
@@ -507,20 +519,20 @@ function App({
     if (!resultado.inspeccion) {
       return ["no se pudo registrar la devolución"];
     }
-    inspeccionRepository.updateInspeccion(resultado.inspeccion);
-    setInspecciones(inspeccionRepository.listarPorOrden(orden.id));
+    await inspeccionRepository.updateInspeccion(resultado.inspeccion);
+    setInspecciones(await inspeccionRepository.listarPorOrden(orden.id));
     return [];
   }
 
   /** Única vía resolver una inspección con autorización de gerencia (ticket 07): dominio + repositorio. */
-  function handleAutorizarInspeccion(
+  async function handleAutorizarInspeccion(
     inspeccionId: string,
     input: RegistrarAutorizacionInput,
-  ): string[] {
+  ): Promise<string[]> {
     if (!orden) {
       return ["la inspección de tela debe estar asociada a una orden de producción"];
     }
-    const existente = inspeccionRepository.obtenerPorId(inspeccionId);
+    const existente = await inspeccionRepository.obtenerPorId(inspeccionId);
     if (!existente) {
       return ["la inspección ya no existe"];
     }
@@ -531,8 +543,8 @@ function App({
     if (!resultado.inspeccion) {
       return ["no se pudo registrar la autorización"];
     }
-    inspeccionRepository.updateInspeccion(resultado.inspeccion);
-    setInspecciones(inspeccionRepository.listarPorOrden(orden.id));
+    await inspeccionRepository.updateInspeccion(resultado.inspeccion);
+    setInspecciones(await inspeccionRepository.listarPorOrden(orden.id));
     return [];
   }
 

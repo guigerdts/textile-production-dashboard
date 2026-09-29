@@ -13,7 +13,13 @@ Work units implemented: **A1 — Migration 004 DDL and registration** (tasks 1.1
 and **C2 — the first SQLite operational adapter `SqliteActividadPlanificadaRepository`**
 (tasks 6.1–6.3) — **closed** (see their sections at the end): C1 under the environmental
 timeout class separation the user approved; C2 under pre-authorized `size:exception`.
-Task-by-task status and the full cumulative count (23/58) live in the Cumulative task state
+**D1 — `daño` port async + the daño-only App/UI landing** (tasks 7.1–7.5, CORRECTION 7.5),
+**D2 — `sqliteDanoRepository` and its suite** (tasks 8.1–8.3) and
+**E1 — `inspección de tela` port async + the inspección-only App/UI landing** (tasks 9.1–9.4,
+CORRECTION 8) — all **closed** (see their sections at the end): D1 and E1 inside the 400-line
+budget, D2 under the maintainer-approved `size:exception` (real footprint 1198 lines, no natural
+split without degrading atomicity).
+Task-by-task status and the full cumulative count (35/60) live in the Cumulative task state
 section and `tasks.md`.
 
 ---
@@ -34,6 +40,13 @@ under the approved plan (user approved D1 with 7.5 incorporated; no `size:except
 miss in this change, after S (≈250 → 712) and C2 (≈410 → 742) — but the unit still landed well
 inside the 400 budget. S and C2 keep their original forecast text above: those are the original
 predictions, not results, and the calibration history is preserved on purpose.
+**D2** closed on 2026-09-29 at **1198 changed lines / 2 files** under the maintainer-approved
+`size:exception` (real size was 750–900, not the ≈520 forecast; no natural split exists without
+degrading atomicity or coverage). **E1** closed on 2026-09-29 at **220 changed lines / 6 files**
+(`+117 / −103`, measured with `git diff --numstat`), inside the 400 budget. Its ≈ 95-line
+forecast was false **by its own admission** once CORRECTION 8 landed: the 3 store files were only
+part of the boundary, the same class of forecast miss as S, C2 and D1, and for the same reason —
+the port-async forecast counted the port and forgot its synchronous consumers.
 
 > Count reconciliation: A2's entry said *"7/56"*, but `tasks.md` actually holds **57** task
 > checkboxes (50 pending at that point, not 49) — a pre-existing off-by-one in that line, not a task
@@ -47,6 +60,10 @@ by direct count (see the C2 Gatekeeper section).
 **D1** then flipped 5 pending boxes (7.1–7.5, including CORRECTION 7.5 added this batch) to `[x]`,
 giving **28 `[x]` + 31 `[ ]` = 59** (CORRECTION 7.5 added one box to Phase 7, moving the total
 from 58 to 59). Verified by direct count over `^- \[[ x]\]` (see the D1 Gatekeeper section).
+**D2** then flipped 3 pending boxes (8.1–8.3) to `[x]`, giving **31 `[x]` + 28 `[ ]` = 59**.
+**E1** then added one box (task 9.4, CORRECTION 8) and flipped 4 pending boxes (9.1–9.4) to `[x]`,
+giving **35 `[x]` + 25 `[ ]` = 60**. Verified by direct count over `^- \[[ x]\]` (see the E1
+Gatekeeper section).
 
 | # | Task | Status |
 |---|------|--------|
@@ -73,7 +90,19 @@ from 58 to 59). Verified by direct count over `^- \[[ x]\]` (see the D1 Gatekeep
 | 6.1 | `sqliteActividadPlanificadaRepository.ts` — row/values types, pure mappers, adapter class | `[x]` |
 | 6.2 | Prescribed statement shapes: `obtenerPorId` / `listarPorMaquina` / `getActividadAbierta` / `insert`+pre-check / `update`+pre-check | `[x]` |
 | 6.3 | `sqliteActividadPlanificadaRepository.test.ts` — 15 tests over the shared fake store | `[x]` |
-| 7.x+ | All later phases | `[ ]` — not assigned to this batch |
+| 7.1 | `danosRepository.ts` — 6 methods → `Promise` | `[x]` |
+| 7.2 | `inMemoryDanosRepository.ts` — 6 async bodies, clone/messages identical | `[x]` |
+| 7.3 | `danosRepository.test.ts` — awaits everywhere, assertions preserved | `[x]` |
+| 7.4 | `calidad.test.ts` — the 2 await ripples the `daño` conversion forced | `[x]` |
+| 7.5 | `App.tsx` + `App.test.tsx` + `DanoSection.tsx` — daño-only await landing (CORRECTION 7.5) | `[x]` |
+| 8.1 | `sqliteDanoRepository.ts` — 14-column row/values, pure mappers, adapter class | `[x]` |
+| 8.2 | Prescribed statement shapes, independent 0/1 flags, verbatim `parada_id` binding (D2b) | `[x]` |
+| 8.3 | `sqliteDanoRepository.test.ts` — 31 tests over the shared fake store | `[x]` |
+| 9.1 | `inspeccionRepository.ts` — 4 methods → `Promise`, no `listarPorMaquina` | `[x]` |
+| 9.2 | `inMemoryInspeccionRepository.ts` — 4 async bodies, `validarId` + clone preserved | `[x]` |
+| 9.3 | `inMemoryInspeccionRepository.test.ts` — awaits everywhere, 19 assertions preserved | `[x]` |
+| 9.4 | `App.tsx` + `App.test.tsx` + `InspeccionTelaSection.tsx` — inspección-only await landing (CORRECTION 8) | `[x]` |
+| 10.x+ | All later phases | `[ ]` — not assigned to this batch |
 
 ---
 
@@ -1180,4 +1209,88 @@ passes with `--testTimeout=30000`. `src/` was restored clean afterwards — veri
 | No drift from inputs | 0 / 1 flag convention copied from `aplica_segunda`; the 8.2 **out-of-scope** guard honoured — `listarPorOrden` uses plain `= $1`, never `IS $2`; no domain source touched; no business validation added; no FK-off mode introduced; no E1/F1/G1/G2 work pulled in |
 | Routing coherence | next recommended: **E1 (Phase 9)** — `inspección de tela` port and in-memory adapter go async |
 | Tasks state | 8.1–8.3 `[x]` in `tasks.md`; cumulative **31/59** |
+| Delivery | committed as one atomic work unit; **no push** |
+
+---
+
+# Unit E1 — `inspección de tela` port async + the inspección-only App/UI landing (tasks 9.1–9.4)
+
+**Closed** 2026-09-29 at **220 changed lines / 6 files** (`+117 / −103`, `git diff --numstat`),
+inside the 400-line budget — no `size:exception` needed. The **next assigned unit is E2
+(Phase 10)**, the `sqliteInspeccionTelaRepository` adapter.
+
+## Files changed (E1)
+
+| File | Action | What was done |
+|------|--------|---------------|
+| `src/store/inspeccionRepository.ts` | Modified | All **4** methods now return `Promise`. No `listarPorMaquina` added — an inspection is always an order event, and the port does not grow a machine query. Module doc comment rewritten to state *why* (a real Tauri SQLite implementation is I/O) and to pin the invariant that **names, parameters and resolved types do not change** — only the delivery. |
+| `src/store/inMemoryInspeccionRepository.ts` | Modified | 4 `async` bodies, `+4 / −4`. `validarId` **preserved** verbatim, `structuredClone` both directions preserved, duplicate/unknown-id error messages untouched, `listarPorOrden` still returns **every** inspection of the order ordered by `timestamp` — multiple inspections per order are legal in the approved ticket 07 model and were not narrowed. |
+| `src/store/inMemoryInspeccionRepository.test.ts` | Modified | `+65 / −65`: every call awaited, every rejection assertion converted from `expect(() => …).toThrow()` to `await expect(…).rejects.toThrow()`. **Zero assertions deleted, zero weakened, zero `it` blocks removed.** This is the largest port suite in the change and the most tempting to trim; it was not trimmed. |
+| `src/App.tsx` | Modified | `+26 / −14`. The `inspecciones` load effect became an async inner function carrying the **same `cancelled` guard** `cargarParadas` / `cargarActividades` / `cargarDanos` already use, so a late `setInspecciones` cannot fire after unmount. `handleRegistrarInspeccion`, `handleDevolverInspeccion` and `handleAutorizarInspeccion` became `async … Promise<string[]>`, each awaiting the port **before** the reload and returning the same domain error arrays. |
+| `src/ui/InspeccionTelaSection.tsx` | Modified | `+10 / −10`. **Both** prop interfaces declare the three handlers as `Promise<string[]>` (it is two interfaces, not one — the `InspeccionItem` internal one is easy to miss), and the three un-awaited call sites await them exactly as `DanoSection.tsx` does for `onRegistrarDano` / `onCerrarDano`. |
+| `src/App.test.tsx` | Modified | `+5 / −5`: one `await` per direct `repoInspecciones.listarPorOrden(…)` call at 5 sites (`:1424`, `:1447`, `:1483`, `:1519`, `:1526`), including the two indexed forms that needed `(await …)[0]`. **Type-level only — not one assertion was rewritten.** |
+
+## The plan premise that was false, and what it cost
+
+Phase 9 as written enumerated **3 store files** at a **≈ 95-line** forecast with **no App/UI task at
+all**, while task 9.1's own Verify was `npx tsc --noEmit` — unsatisfiable inside a 3-file boundary,
+because awaiting the port breaks every consumer that still expects a resolved value. That is the
+identical contradiction CORRECTION 4 proved for `parada`, CORRECTION 6 for `actividad planificada`
+and CORRECTION 7.5 for `daño`, and it was already **predicted** in this plan's own line 128, which
+names E1 as an owner of an await landing. The plan simply failed to enumerate what it had already
+decided. CORRECTION 8 (added during this unit) makes it say so, and adds task 9.4.
+
+**The correction that mattered most inside it:** CORRECTION 8's first draft asserted that
+`App.test.tsx` *"calls no port method directly"*. That claim was false, and had it been trusted,
+`tsc` would have failed inside the newly declared 6-file boundary. `App.test.tsx` calls
+`repoInspecciones.listarPorOrden(…)` directly at **5 sites** to assert post-hoc results such as
+`expect(lista[0].lote).toBe("L-77")`; a `Promise` indexed without `await` fails with
+TS7053/TS7006. The draft was corrected before the boundary was declared, and the 5 edits landed as
+awaits. This is the second time in this change that a plan claim about a test file had to be
+grep-verified rather than believed (the first was the `parada` App ripple in CORRECTION 4).
+
+## Work Unit Evidence (E1)
+
+| Command | Result |
+|---|---|
+| `npx tsc --noEmit` | **exit 0** — every TS2345 / TS2740 / TS2339 / TS7053 / TS7006 from the conversión is gone |
+| `npx vitest run src/store/inMemoryInspeccionRepository.test.ts src/App.test.tsx --testTimeout=30000` | `Test Files 2 passed (2)`, **`Tests 122 passed (122)`** (19 port + 103 App), exit 0, 228 s, with **no** `[vitest-pool]: Failed to start forks worker` line in the output |
+
+### Why the full suite was not re-run — stated, not assumed
+
+The instruction to avoid redundant verification applies only when the **verified object did not
+change**, so the blast radius was measured before deciding. `grep -rln "IInspeccionRepository\|inspeccionRepository" src`
+returns exactly **4 files**: the 3 port/store files, `App.tsx` and `App.test.tsx` — all inside the
+E1 boundary, all four exercised by the two commands above (the 4th, the port's own suite, was run
+in the same invocation). No other suite, double or UI file implements or consumes the
+`inspección de tela` port, so there is no unexercised consumer. `src/domain/**` is byte-unchanged
+(`git diff --stat -- src/domain/` is empty). D2's run had already established all **31 files /
+811 tests** green; nothing outside the 6 changed files moved since, so a re-run would exercise the
+same bytes under a new name. The claim being made is therefore narrow and checkable: **the
+inspección conversion is green; no claim is made about a full-suite re-run.**
+
+## Deviations (E1)
+
+1. **CORRECTION 8 and task 9.4 were added during this unit**, not before it. They are plan
+   corrections, documented in `tasks.md` in the same commit as the code they justify, so the
+   artifact trail records why the boundary is 6 files and not 3.
+2. **`inspeccionRepository.ts` ends without a trailing newline** — pre-existing, preserved. Not
+   "fixed" here: an unrelated whitespace change in a work-unit commit is exactly the kind of noise
+   that makes a diff hard to read.
+3. **No behavioural test change was needed in `App.test.tsx`.** The 5 edits are awaits on direct
+   port calls; the tests drive the UI, whose call sites now await, and `userEvent` + `act` drain
+   the microtask chain. Same outcome as the `daño` conversion, verified rather than presumed —
+   9.4's Verify requires that any test genuinely needing an added `await` be reported here, and
+   none did.
+
+## Gatekeeper (E1) — final: PASS
+
+| Check | Result |
+|---|---|
+| Contract conformance | 9.1–9.4 implemented as written; every acceptance clause mapped to evidence above |
+| Artifact existence | 6 files verified on disk and in the diff; `tasks.md` boxes 9.1–9.4 now `[x]` |
+| No hallucination | `tsc` exit 0 and 122/122 tests are this session's own runs on these exact bytes; the 4-file blast radius was measured, not assumed |
+| No drift from inputs | `validarId` preserved; clone both directions preserved; multiple inspections per order still allowed; `conAnomalia` / `estadoInspeccion` not read or cached anywhere; **no `await` added to the `mantenimiento` consumption** (that lands with F1); `src/domain/**` byte-unchanged; no `any`; no `Promise` reaches React state or a synchronous prop; no E2 / F1 / G1 / G2 work pulled in; `vitest.config.ts` untouched |
+| Routing coherence | `blockedReasons` empty; next recommended: **E2 (Phase 10)** — `sqliteInspeccionTelaRepository` and its suite, **over budget by ~60 %** under the already-granted `size:exception` |
+| Tasks state | 9.1–9.4 `[x]`; cumulative **35/60** |
 | Delivery | committed as one atomic work unit; **no push** |

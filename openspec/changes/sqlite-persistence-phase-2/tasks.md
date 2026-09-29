@@ -235,6 +235,57 @@ it is **not** G2's *"11 async handlers"* deliverable, and it does **not** pull f
 evolution. D1's real footprint is **7 files, +119 / −93 = 212 changed lines**, inside the 400 budget with
 no `size:exception`.
 
+### CORRECTION 8 — E1 owns the inspección-only App/UI landing (9.1's Verify was false, same contradiction as CORRECTION 4, 6 and 7.5)
+
+**Conflict.** Phase 9 as enumerated (tasks 9.1–9.3) converts the 4 `inspección de tela` port methods to
+`Promise` and enumerates **3 store files** at a **≈ 95-line** forecast, with **no App/UI task at all**. That
+premise is false for the reason CORRECTION 4 proved for `parada`, CORRECTION 6 for `actividad planificada`
+and CORRECTION 7.5 for `daño`: awaiting the port makes its **synchronous** consumers fail
+type-assignability, so a green port suite is still not evidence that the app compiles or boots — and task
+9.1's own Verify (`npx tsc --noEmit`) is unsatisfiable inside the planned 3-file boundary.
+
+Note this is **not** a new discovery. Line 128 of this plan already declares that *"mantenimiento
+consumptions each get their own landing in their own port-async unit (C1, D1, **E1**, F1)"*. Phase 9
+simply failed to enumerate the landing its own dependency table promised, exactly as Phases 3, 5 and 7
+did. This correction makes the plan say what it already decided.
+
+`App.tsx` consumes the inspección port synchronously at **9 call sites across 4 places** — the
+`setInspecciones(inspeccionRepository.listarPorOrden(orden.id))` load effect at `:233`, and then
+`handleRegistrarInspeccion` (`:485` insert + `:486` reload), `handleDevolverInspeccion` (`:498`
+`obtenerPorId` + `:510` update + `:511` reload) and `handleAutorizarInspeccion` (`:523` `obtenerPorId` +
+`:534` update + `:535` reload). `InspeccionTelaSection.tsx` **declares and consumes all three** handlers
+as synchronous `string[]` in **two** prop interfaces (`:68`/`:85` and `:72`/`:86`) with three un-awaited
+call sites (`:117`, `:131`, `:329`).
+
+**Resolution.** E1 therefore owns the **inspección-only** await landing, recorded as task **9.4**. The real
+boundary is **6 files, not 3**: the 3 store files (9.1–9.3), `src/App.tsx`, and
+`src/ui/InspeccionTelaSection.tsx`. The landing is: the `inspecciones` load effect becomes an async inner
+function carrying the `cancelled` guard already used by `cargarParadas`, `cargarActividades` and `cargarDanos`,
+so a late `setInspecciones` cannot fire after unmount; the three handlers become
+`async … Promise<string[]>`; both `InspeccionProps` interfaces in `InspeccionTelaSection.tsx` declare
+`Promise<string[]>`; and every `setInspecciones` receives a **resolved** `InspeccionTela[]`, never a
+`Promise`.
+
+A 6th file is therefore in scope: **`src/App.test.tsx`**, which calls `repoInspecciones.listarPorOrden(...)`
+**directly at 5 sites** (`:1424`, `:1447`, `:1483`, `:1519`, `:1526`) to assert post-hoc results such as
+`expect(lista[0].lote).toBe(...)`. Those calls must be `await`ed, or `tsc` fails with TS7053/TS7006
+because a `Promise` gets indexed. The real boundary is **6 files, not 3**: the 3 store files
+(9.1–9.3), `src/App.tsx`, `src/ui/InspeccionTelaSection.tsx` and `src/App.test.tsx`.
+
+Those 5 edits are **type-level only** — the tests drive the UI, whose call sites now `await`, so no
+behavioural `await`/`waitFor` was needed. That is verified, not assumed: 9.4's Verify runs `App.test.tsx`
+and reports any test that genuinely needs an added `await` rather than presuming none does.
+
+**Scope discipline preserved.** The `mantenimiento` handlers at `:540`/`:562` and the
+`mantenimientoRepository` consumption at `:228`, `:556`, `:557`, `:563`, `:574`, `:575`, `:641` are
+**sync and stay sync** — they land with F1, not here. `src/domain/**` production source stays
+**byte-unchanged**. No `any`; no `Promise` reaches React state or a synchronous prop; no
+`inspeccionRepository.*` call site is left un-awaited; **zero assertions deleted or weakened**. No E2
+work, no SQLite adapter, no `main.tsx`, no `recovery.ts`, no migration, no other port, no
+`vitest.config.ts`, no `DanoSection.tsx` and no other UI file is touched. This is the same forced-compile
+situation CORRECTION 4, 6 and 7.5 already accepted, one domain along — it is **not** G2's *"11 async
+handlers"* deliverable and does not pull forward G2's full App/UI evolution.
+
 ---
 
 ## Verification strategy — what each layer can and cannot prove
@@ -481,14 +532,19 @@ behaviour.
 **Depends on.** Phase 8.
 **Design decisions.** Requirement 1 (4 methods). The port gains **no** `listarPorMaquina` — an
 inspection is always an order event.
-**Estimated changed lines.** ≈ 95 — **within budget**.
+**Estimated changed lines.** ≈ 95 — **false, see CORRECTION 8.** The real boundary is **6 files** and
+the ≈ 95 counted only the 3 store files; the inspección-only App/UI landing (9.4) adds
+`src/App.tsx`, `src/ui/InspeccionTelaSection.tsx` and 5 direct port calls in `src/App.test.tsx`; the 9 App
+call sites, 5 UI prop declarations, 3 UI call sites and 5 test call sites cannot be left un-awaited.
 **Capability.** `operational-repository-contracts`.
 
-- [ ] 9.1 Modify `src/store/inspeccionRepository.ts`: all **4** methods return `Promise`; doc comment updated. **Acceptance:** exactly `insertInspeccion`, `updateInspeccion`, `obtenerPorId`, `listarPorOrden`; **no** `listarPorMaquina` is added. **Out of scope:** any machine query. **Verify:** `npx tsc --noEmit`.
+- [x] 9.1 Modify `src/store/inspeccionRepository.ts`: all **4** methods return `Promise`; doc comment updated. **Acceptance:** exactly `insertInspeccion`, `updateInspeccion`, `obtenerPorId`, `listarPorOrden`; **no** `listarPorMaquina` is added. **Out of scope:** any machine query. **Verify:** `npx tsc --noEmit`.
 
-- [ ] 9.2 Modify `src/store/inMemoryInspeccionRepository.ts`: `async` bodies, identical semantics, `validarId` **preserved**. **Acceptance:** defensive clone both directions; `listarPorOrden` returns every inspection of the order ordered by `timestamp` — the approved ticket 07 model has no one-inspection-per-order restriction, so the adapter must support multiple inspections per order. **Out of scope:** checklist completeness validation, resolution exclusivity — both are domain rules. **Verify:** `npx vitest run src/store/inMemoryInspeccionRepository.test.ts`.
+- [x] 9.2 Modify `src/store/inMemoryInspeccionRepository.ts`: `async` bodies, identical semantics, `validarId` **preserved**. **Acceptance:** defensive clone both directions; `listarPorOrden` returns every inspection of the order ordered by `timestamp` — the approved ticket 07 model has no one-inspection-per-order restriction, so the adapter must support multiple inspections per order. **Out of scope:** checklist completeness validation, resolution exclusivity — both are domain rules. **Verify:** `npx vitest run src/store/inMemoryInspeccionRepository.test.ts`.
 
-- [ ] 9.3 Modify `src/store/inMemoryInspeccionRepository.test.ts` (338 lines): `await` every call, **zero assertions deleted or weakened** — this is the largest port suite and the most tempting to trim. **Verify:** as 9.2.
+- [x] 9.3 Modify `src/store/inMemoryInspeccionRepository.test.ts` (338 lines): `await` every call, **zero assertions deleted or weakened** — this is the largest port suite and the most tempting to trim. **Verify:** as 9.2.
+
+- [x] 9.4 Modify `src/App.tsx`, `src/ui/InspeccionTelaSection.tsx` and the 5 direct port calls in `src/App.test.tsx` — the **inspección-only** await landing (see CORRECTION 8). `App.tsx`: the `inspecciones` load effect at `:231-234` becomes an async inner function with the `cancelled` guard already used by `cargarParadas` / `cargarActividades` / `cargarDanos` (`let cancelled = false; async function cargarInspecciones() { if (orden) { const cargadas = await inspeccionRepository.listarPorOrden(orden.id); if (!cancelled) setInspecciones(cargadas); } else if (!cancelled) { setInspecciones([]); } } cargarInspecciones(); return () => { cancelled = true; };`) so a late `setInspecciones` cannot fire after unmount; `handleRegistrarInspeccion` becomes `async … Promise<string[]>`, `await`ing `insertInspeccion` before the reload; `handleDevolverInspeccion` and `handleAutorizarInspeccion` become `async … Promise<string[]>`, `await`ing `obtenerPorId` before the domain call and `updateInspeccion` before the reload. `InspeccionTelaSection.tsx`: **both** prop interfaces declare the three handlers as `Promise<string[]>` (`:68`, `:72`, `:85`, `:86`) and the three un-awaited call sites (`:117`, `:131`, `:329`) `await` them exactly as `DanoSection.tsx` does for `onRegistrarDano` / `onCerrarDano`. Plus 5 `await`s on the direct `repoInspecciones.listarPorOrden(...)` calls in `src/App.test.tsx` (`:1424`, `:1447`, `:1483`, `:1519`, `:1526`) — type-level only, no assertion touched. **Acceptance:** `npx tsc --noEmit` exit 0 — every TS2345/TS2740/TS2339/TS7053/TS7006 from the inspección conversion gone; `src/domain/**` byte-unchanged; **zero `Promise` reaches React state or a synchronous prop**; every `setInspecciones` receives a resolved `InspeccionTela[]`; **no** `await` added for the `mantenimiento` consumption (`:228`, `:540`, `:562`, `:641`) — that lands with F1. **Out of scope:** all other port landings, App/UI evolution beyond inspecciones, Approach A work, any handler refactor beyond the type/await choreography. **Verify:** `npx tsc --noEmit` + `npx vitest run src/store/inMemoryInspeccionRepository.test.ts` + `npx vitest run src/App.test.tsx --testTimeout=30000` + `npm test`; any App test that genuinely needs an added `await` is reported in apply-progress.md rather than assumed unnecessary.
 
 ---
 
