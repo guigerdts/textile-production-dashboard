@@ -6,9 +6,10 @@
  * Decisiones de diseño (mismas que IDanoRepository):
  * - INSERT/UPDATE explícitos (no upsert) para mapeo directo a SQLite
  *   con PK, permitiendo rechazar duplicados y updates de ids inexistentes.
- * - Los métodos son síncronos para ser consistentes con los repos
- *   anteriores. Una implementación SQLite real con Tauri plugin requiere
- *   adaptación async.
+ * - Los métodos son asíncronos: una implementación SQLite real con el plugin
+ *   de Tauri es I/O y devuelve Promise. Nombres, parámetros y tipos resueltos
+ *   no cambian respecto al contrato síncrono anterior; solo cambia la entrega:
+ *   el dominio sigue siendo síncrono y puro.
  * - Campos serializables a JSON (strings, null, números, booleanos).
  * - structuredClone en cada persistencia y lectura evita contaminación por
  *   referencias mutables.
@@ -17,9 +18,15 @@
  * - insertMantenimiento: registra un mantenimiento nuevo (genera el id el dominio).
  * - updateMantenimiento: cierra o modifica un mantenimiento existente (mismo id).
  * - listarPorMaquina: todos los mantenimientos de la máquina (orden cronológico).
+ *   NO existe listarPorOrden: el mantenimiento es un registro de MÁQUINA, nunca de
+ *   una orden (docs/adr/0006-maintenance-on-machine-not-chemistry.md), así que el
+ *   dominio no tiene orden_id y el puerto no tiene esa consulta.
  * - obtenerPorId: por id directo, útil para operaciones de cierre.
  * - getMantenimientoAbierto: busca el mantenimiento sin cerrar de la máquina
  *   (consulta estructural).
+ * - NINGÚN campo derivado se persiste (duración, estado de máquina, alerta): el
+ *   mantenimiento es documental y nunca descuenta tiempo productivo
+ *   (docs/adr/0007-maintenance-documentary-no-time-deduction.md).
  *
  * Qué NO hace el repositorio:
  * - NO valida existencias ni coherencia de daños vinculados. Esa regla de
@@ -37,27 +44,27 @@ export interface IMantenimientoRepository {
    * Inserta un mantenimiento nuevo. Lanza si el id ya existe.
    * Uso típico: registrarMantenimiento del dominio → insertMantenimiento.
    */
-  insertMantenimiento(mantenimiento: Mantenimiento): void;
+  insertMantenimiento(mantenimiento: Mantenimiento): Promise<void>;
 
   /**
    * Actualiza un mantenimiento existente (por id). Lanza si el id no existe.
    * Uso típico: cerrarMantenimiento del dominio → updateMantenimiento.
    */
-  updateMantenimiento(mantenimiento: Mantenimiento): void;
+  updateMantenimiento(mantenimiento: Mantenimiento): Promise<void>;
 
   /**
    * Devuelve el mantenimiento con el id dado, o undefined.
    */
-  obtenerPorId(id: string): Mantenimiento | undefined;
+  obtenerPorId(id: string): Promise<Mantenimiento | undefined>;
 
   /**
    * Lista todos los mantenimientos de una máquina (orden cronológico por inicio).
    */
-  listarPorMaquina(maquinaId: string): Mantenimiento[];
+  listarPorMaquina(maquinaId: string): Promise<Mantenimiento[]>;
 
   /**
    * Devuelve el mantenimiento abierto (fin = null) de la máquina, o null si no hay.
    * Devuelve MantenimientoAbierto para que el tipo sea utilizable en cerrarMantenimiento sin cast.
    */
-  getMantenimientoAbierto(maquinaId: string): MantenimientoAbierto | null;
+  getMantenimientoAbierto(maquinaId: string): Promise<MantenimientoAbierto | null>;
 }

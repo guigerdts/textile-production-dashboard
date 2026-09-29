@@ -225,7 +225,15 @@ function App({
   }, [danoRepository]);
 
   useEffect(() => {
-    setMantenimientos(mantenimientoRepository.listarPorMaquina("M1"));
+    let cancelled = false;
+    async function cargarMantenimientos() {
+      const mantenimientosCargados = await mantenimientoRepository.listarPorMaquina("M1");
+      if (!cancelled) setMantenimientos(mantenimientosCargados);
+    }
+    cargarMantenimientos();
+    return () => {
+      cancelled = true;
+    };
   }, [mantenimientoRepository]);
 
   useEffect(() => {
@@ -549,7 +557,9 @@ function App({
   }
 
   /** Única vía registrar mantenimiento: dominio + repositorio; React no duplica reglas. */
-  function handleRegistrarMantenimiento(input: RegistrarMantenimientoInput): string[] {
+  async function handleRegistrarMantenimiento(
+    input: RegistrarMantenimientoInput,
+  ): Promise<string[]> {
     const resultado = registrarMantenimiento(
       mantenimientos,
       input,
@@ -565,14 +575,17 @@ function App({
     if (!resultado.mantenimiento) {
       return ["no se pudo registrar el mantenimiento"];
     }
-    mantenimientoRepository.insertMantenimiento(resultado.mantenimiento);
-    setMantenimientos(mantenimientoRepository.listarPorMaquina("M1"));
+    await mantenimientoRepository.insertMantenimiento(resultado.mantenimiento);
+    setMantenimientos(await mantenimientoRepository.listarPorMaquina("M1"));
     return [];
   }
 
   /** Única vía cerrar mantenimiento: dominio + repositorio; React no duplica reglas. */
-  function handleCerrarMantenimiento(fin: string, queSeRevisoReparo: string): string[] {
-    const abierto = mantenimientoRepository.getMantenimientoAbierto("M1");
+  async function handleCerrarMantenimiento(
+    fin: string,
+    queSeRevisoReparo: string,
+  ): Promise<string[]> {
+    const abierto = await mantenimientoRepository.getMantenimientoAbierto("M1");
     if (!abierto) {
       return ["no hay un mantenimiento abierto para cerrar"];
     }
@@ -583,8 +596,8 @@ function App({
     if (!resultado.mantenimiento) {
       return ["no se pudo cerrar el mantenimiento"];
     }
-    mantenimientoRepository.updateMantenimiento(resultado.mantenimiento);
-    setMantenimientos(mantenimientoRepository.listarPorMaquina("M1"));
+    await mantenimientoRepository.updateMantenimiento(resultado.mantenimiento);
+    setMantenimientos(await mantenimientoRepository.listarPorMaquina("M1"));
     return [];
   }
 
@@ -650,7 +663,10 @@ function App({
     maquinaId: "M1" as const,
     operatorNameInicial: orden?.operatorName ?? "",
     mantenimientosDeMaquina: mantenimientos,
-    mantenimientoAbiertoDeMaquina: mantenimientoRepository.getMantenimientoAbierto("M1"),
+    // Lectura derivada del estado, NO del puerto: `getMantenimientoAbierto` es
+    // async y el cuerpo del render es síncrono. Misma forma que `danoAbierto` en
+    // danosProps; `mantenimientos` llega del puerto ya resuelto.
+    mantenimientoAbiertoDeMaquina: mantenimientoAbierto(mantenimientos, "M1"),
     danosDeMaquina: danos,
     permitirRegistrar: orden?.estado !== "finished",
     onRegistrarMantenimiento: handleRegistrarMantenimiento,

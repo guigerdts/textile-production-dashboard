@@ -288,6 +288,50 @@ handlers"* deliverable and does not pull forward G2's full App/UI evolution.
 
 ---
 
+### CORRECTION 9 — F1 owns the mantenimiento-only App/UI landing (11.1's Verify was false, same contradiction as CORRECTION 4, 6, 7.5 and 8)
+
+**Conflict.** Phase 11 as enumerated (tasks 11.1–11.3) converts the 5 `mantenimiento` port methods to
+`Promise` and enumerates **3 store files** at a **≈ 70-line** forecast, with **no App/UI task at all**. That
+premise is false for the reason CORRECTION 4 proved for `parada`, CORRECTION 6 for `actividad
+planificada`, CORRECTION 7.5 for `daño` and CORRECTION 8 for `inspección de tela`: awaiting the port
+makes its **synchronous** consumers fail type-assignability, so a green port suite is still not evidence
+that the app compiles — and task 11.1's own Verify (`npx tsc --noEmit`) is unsatisfiable inside the
+planned 3-file boundary. Line 128 of this plan already declares that the *"mantenimiento consumptions
+each get their own landing in their own port-async unit (…**F1**)"*; Phase 11 simply failed to enumerate
+the landing its own dependency table promised, the same omission every prior port unit made. This
+correction makes the plan say what it already decided.
+
+`App.tsx` consumes the mantenimiento port synchronously at: the `setMantenimientos(
+mantenimientoRepository.listarPorMaquina("M1"))` load effect at `:228`; `handleRegistrarMantenimiento`
+(`:565` insert + `:573` reload); `handleCerrarMantenimiento` (`:587` `getMantenimientoAbierto` + `:598`
+update + `:601` reload); and the render-body `getMantenimientoAbierto("M1")` at `:663`, which must become
+a derived read from resolved state (`mantenimientoAbierto(mantenimientos, "M1")`), the same shape
+`danoAbierto(danos, "M1")` already uses. `MantenimientoSection.tsx` **declares both handlers as
+synchronous `string[]`** (`:23`/`:24`) with two un-awaited call sites (`:119`, `:136`).
+
+**Resolution.** F1 therefore owns the **mantenimiento-only** await landing. The real boundary is **6
+files, not 3**: the 3 store files (11.1–11.3), `src/App.tsx`, `src/ui/MantenimientoSection.tsx` and
+`src/App.test.tsx`. The landing is: the load effect becomes an async inner function carrying the
+`cancelled` guard already used by the other loaders, so a late `setMantenimientos` cannot fire after
+unmount; the two handlers become `async … Promise<string[]>`; `MantenimientoSectionProps` declares both
+handlers as `Promise<string[]>` and the two call sites `await` them exactly as `DanoSection.tsx` does;
+and every `setMantenimientos` receives a **resolved** `Mantenimiento[]`, never a `Promise`.
+
+`App.test.tsx` calls the repo directly at 5 sites (all `await`ed) and drives the close flow with
+`fireEvent.click` under fake timers. Two close tests (and the two register steps inside them) needed the
+existing `await act(async () => { fireEvent.click(...) })` choreography (the same one the file already
+uses around `handleIniciar`) so the DOM asserts after the async handler resolves; this is a **forced
+choreography adaptation**, not a test weakening — zero assertions deleted or altered, test count
+unchanged (103).
+
+**Scope discipline preserved.** No other port, no `Order*` component (they receive the section props by
+extension and needed no edit), no domain file, no SQLite adapter, no migration, no `vitest.config.ts`.
+`src/domain/**` production source stays **byte-unchanged**. No `any`; no `Promise` reaches React state or
+a synchronous prop; zero assertions weakened. Same forced-compile situation CORRECTION 4, 6, 7.5 and 8
+already accepted, one domain along — and **not** G2's full App/UI evolution.
+
+---
+
 ## Verification strategy — what each layer can and cannot prove
 
 | Layer | Command | Proves | Does NOT prove |
@@ -581,11 +625,11 @@ maintenance is machine-level, never per chemistry, and documentary only.
 **Estimated changed lines.** ≈ 70 — **within budget**.
 **Capability.** `operational-repository-contracts`.
 
-- [ ] 11.1 Modify `src/store/mantenimientoRepository.ts`: all **5** methods return `Promise`; doc comment updated; the existing note that **linked-entity existence is a domain rule supplied through an injected lookup** is preserved. **Acceptance:** `obtenerPorId` resolves `undefined`; `getMantenimientoAbierto(maquinaId)` takes one parameter; no method added. **Out of scope:** a `listarPorOrden` — this domain has no `orden_id` column by design (ADR 0006). **Verify:** `npx tsc --noEmit`.
+- [x] 11.1 Modify `src/store/mantenimientoRepository.ts`: all **5** methods return `Promise`; doc comment updated; the existing note that **linked-entity existence is a domain rule supplied through an injected lookup** is preserved. **Acceptance:** `obtenerPorId` resolves `undefined`; `getMantenimientoAbierto(maquinaId)` takes one parameter; no method added. **Out of scope:** a `listarPorOrden` — this domain has no `orden_id` column by design (ADR 0006). **Verify:** `npx tsc --noEmit`.
 
-- [ ] 11.2 Modify `src/store/inMemoryMantenimientoRepository.ts`: `async` bodies, identical semantics; duration stays **derived** from `inicio`/`fin` and is never stored. **Acceptance:** one open maintenance per machine remains a domain rule, not a store constraint. **Verify:** `npx vitest run src/store/mantenimientoRepository.test.ts`.
+- [x] 11.2 Modify `src/store/inMemoryMantenimientoRepository.ts`: `async` bodies, identical semantics; duration stays **derived** from `inicio`/`fin` and is never stored. **Acceptance:** one open maintenance per machine remains a domain rule, not a store constraint. **Verify:** `npx vitest run src/store/mantenimientoRepository.test.ts`.
 
-- [ ] 11.3 Modify `src/store/mantenimientoRepository.test.ts` (184 lines): `await` every call, **zero assertions deleted or weakened**. **Verify:** as 11.2.
+- [x] 11.3 Modify `src/store/mantenimientoRepository.test.ts` (184 lines): `await` every call, **zero assertions deleted or weakened**. **Verify:** as 11.2.
 
 ---
 

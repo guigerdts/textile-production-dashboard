@@ -26,33 +26,33 @@ export class InMemoryMantenimientoRepository implements IMantenimientoRepository
     }
   }
 
-  insertMantenimiento(mantenimiento: Mantenimiento): void {
+  async insertMantenimiento(mantenimiento: Mantenimiento): Promise<void> {
     if (this.porId.has(mantenimiento.id)) {
       throw new Error(`ya existe un mantenimiento con el id ${mantenimiento.id}`);
     }
     this.porId.set(mantenimiento.id, structuredClone(mantenimiento));
   }
 
-  updateMantenimiento(mantenimiento: Mantenimiento): void {
+  async updateMantenimiento(mantenimiento: Mantenimiento): Promise<void> {
     if (!this.porId.has(mantenimiento.id)) {
       throw new Error(`no existe un mantenimiento con el id ${mantenimiento.id}`);
     }
     this.porId.set(mantenimiento.id, structuredClone(mantenimiento));
   }
 
-  obtenerPorId(id: string): Mantenimiento | undefined {
+  async obtenerPorId(id: string): Promise<Mantenimiento | undefined> {
     const m = this.porId.get(id);
     return m ? structuredClone(m) : undefined;
   }
 
-  listarPorMaquina(maquinaId: string): Mantenimiento[] {
+  async listarPorMaquina(maquinaId: string): Promise<Mantenimiento[]> {
     return [...this.porId.values()]
       .filter((m) => m.maquinaId === maquinaId)
       .sort((a, b) => a.inicio.localeCompare(b.inicio))
       .map((m) => structuredClone(m));
   }
 
-  getMantenimientoAbierto(maquinaId: string): MantenimientoAbierto | null {
+  async getMantenimientoAbierto(maquinaId: string): Promise<MantenimientoAbierto | null> {
     for (const m of this.porId.values()) {
       if (m.fin === null && m.maquinaId === maquinaId) {
         return structuredClone(m) as MantenimientoAbierto;

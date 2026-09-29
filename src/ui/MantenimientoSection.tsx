@@ -20,8 +20,8 @@ export interface MantenimientoSectionProps {
   mantenimientoAbiertoDeMaquina: MantenimientoAbierto | null;
   danosDeMaquina: Dano[];
   permitirRegistrar: boolean;
-  onRegistrarMantenimiento(input: RegistrarMantenimientoInput): string[];
-  onCerrarMantenimiento(fin: string, queSeRevisoReparo: string): string[];
+  onRegistrarMantenimiento(input: RegistrarMantenimientoInput): Promise<string[]>;
+  onCerrarMantenimiento(fin: string, queSeRevisoReparo: string): Promise<string[]>;
 }
 
 /** Formatea un ISO a hora local es-AR (presentación). */
@@ -100,7 +100,7 @@ export function MantenimientoSection({
     return Math.max(0, hasta - desde);
   }
 
-  function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setErrores([]);
 
@@ -116,7 +116,7 @@ export function MantenimientoSection({
       observaciones: observaciones.trim() === "" ? undefined : observaciones,
     };
 
-    const res = onRegistrarMantenimiento(input);
+    const res = await onRegistrarMantenimiento(input);
     setErrores(res);
     if (res.length > 0) return;
 
@@ -129,11 +129,11 @@ export function MantenimientoSection({
     setQueSeRevisoReparo("");
   }
 
-  function handleCerrar(e: FormEvent) {
+  async function handleCerrar(e: FormEvent) {
     e.preventDefault();
     setErroresCierre([]);
     const finIso = finInput ? new Date(finInput).toISOString() : "";
-    setErroresCierre(onCerrarMantenimiento(finIso, queSeRevisoCierre));
+    setErroresCierre(await onCerrarMantenimiento(finIso, queSeRevisoCierre));
   }
 
   return (

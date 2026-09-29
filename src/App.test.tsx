@@ -1747,7 +1747,7 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
     expect(activo.textContent).toContain("Mantenimiento reactivo");
     expect(activo.textContent).toContain("Fusible quemado");
     expect(activo.textContent).toMatch(/desde las/);
-    expect(repoMantenimiento.getMantenimientoAbierto("M1")).not.toBeNull();
+    expect(await repoMantenimiento.getMantenimientoAbierto("M1")).not.toBeNull();
   });
 
   it("registra un mantenimiento completo en un solo paso (reactivo con queSeRevisoReparo)", async () => {
@@ -1773,7 +1773,7 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
 
     // No hay mantenimiento abierto porque se registró completo
     expect(screen.queryByTestId("mantenimiento-abierto")).toBeNull();
-    const guardados = repoMantenimiento.listarPorMaquina("M1");
+    const guardados = await repoMantenimiento.listarPorMaquina("M1");
     expect(guardados).toHaveLength(1);
     expect(guardados[0].fin).not.toBeNull();
     expect(guardados[0].queSeRevisoReparo).toBe("Cambio de rodamiento");
@@ -1804,10 +1804,12 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
       fireEvent.click(screen.getByRole("button", { name: /Iniciar producción/i }));
     });
 
-    // Registrar abierto
+    // Registrar abierto — handleRegistrarMantenimiento es async: act descarga la persistencia.
     fireEvent.change(screen.getByRole("combobox", { name: /tipo de mantenimiento/i }), { target: { value: "reactivo" } });
     fireEvent.change(screen.getByLabelText(/motivo/i), { target: { value: "Fusible quemado" } });
-    fireEvent.click(screen.getByRole("button", { name: /Registrar mantenimiento/i }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Registrar mantenimiento/i }));
+    });
     expect(screen.getByTestId("mantenimiento-abierto")).toBeTruthy();
 
     // Avanzar el reloj para que fin > inicio
@@ -1816,10 +1818,13 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
     // Cerrar — scoped al banner de mantenimiento abierto
     const abierto = screen.getByTestId("mantenimiento-abierto");
     fireEvent.change(within(abierto).getByLabelText(/qué se revisó/i), { target: { value: "Cambio de fusible" } });
-    fireEvent.click(within(abierto).getByRole("button", { name: /Cerrar mantenimiento/i }));
+    // handleCerrarMantenimiento es async: act descarga la persistencia y el setMantenimientos.
+    await act(async () => {
+      fireEvent.click(within(abierto).getByRole("button", { name: /Cerrar mantenimiento/i }));
+    });
 
     expect(screen.queryByTestId("mantenimiento-abierto")).toBeNull();
-    const guardados = repoMantenimiento.listarPorMaquina("M1");
+    const guardados = await repoMantenimiento.listarPorMaquina("M1");
     expect(guardados[0].fin).not.toBeNull();
     expect(guardados[0].queSeRevisoReparo).toBe("Cambio de fusible");
   });
@@ -1845,17 +1850,23 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
       fireEvent.click(screen.getByRole("button", { name: /Iniciar producción/i }));
     });
 
+    // Registrar abierto — handleRegistrarMantenimiento es async: act descarga la persistencia.
     fireEvent.change(screen.getByRole("combobox", { name: /tipo de mantenimiento/i }), { target: { value: "reactivo" } });
     fireEvent.change(screen.getByLabelText(/motivo/i), { target: { value: "Fusible quemado" } });
-    fireEvent.click(screen.getByRole("button", { name: /Registrar mantenimiento/i }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Registrar mantenimiento/i }));
+    });
     expect(screen.getByTestId("mantenimiento-abierto")).toBeTruthy();
 
     // Intentar cerrar sin queSeRevisoReparo — scoped al banner
     const abierto = screen.getByTestId("mantenimiento-abierto");
-    fireEvent.click(within(abierto).getByRole("button", { name: /Cerrar mantenimiento/i }));
+    // handleCerrarMantenimiento es async: act descarga la persistencia y el setErroresCierre.
+    await act(async () => {
+      fireEvent.click(within(abierto).getByRole("button", { name: /Cerrar mantenimiento/i }));
+    });
 
     expect(screen.getByRole("alert").textContent).toContain("queSeRevisoReparo es obligatorio");
-    expect(repoMantenimiento.getMantenimientoAbierto("M1")).not.toBeNull();
+    expect(await repoMantenimiento.getMantenimientoAbierto("M1")).not.toBeNull();
   });
 
   it("tipo preventivo: NO muestra el selector de daño vinculado", async () => {
@@ -1941,7 +1952,7 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
     await user.click(screen.getByRole("button", { name: /Registrar mantenimiento/i }));
 
     expect(screen.getByRole("alert").textContent).toContain("debe seleccionar un tipo");
-    expect(repoMantenimiento.listarPorMaquina("M1")).toHaveLength(0);
+    expect(await repoMantenimiento.listarPorMaquina("M1")).toHaveLength(0);
   });
 
   it("sin motivo: no registra y muestra error del dominio", async () => {
@@ -1955,7 +1966,7 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
     await user.click(screen.getByRole("button", { name: /Registrar mantenimiento/i }));
 
     expect(screen.getByRole("alert").textContent).toContain("el motivo es obligatorio");
-    expect(repoMantenimiento.listarPorMaquina("M1")).toHaveLength(0);
+    expect(await repoMantenimiento.listarPorMaquina("M1")).toHaveLength(0);
   });
 
   it("mantenimiento abierto preexistente se muestra en la sección", async () => {

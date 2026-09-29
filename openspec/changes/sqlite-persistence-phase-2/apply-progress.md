@@ -1366,3 +1366,73 @@ this session class.
 | Routing coherence | `blockedReasons` empty; next recommended: **F1 (Phase 11)** — `mantenimiento` port + in-memory adapter async, ≈ 70 lines, **within budget**, depends on Phase 10 (now satisfied) |
 | Tasks state | 10.1–10.4 `[x]`; cumulative **39/60** |
 | Delivery | committed as one atomic work unit; **no push** |
+
+---
+
+# Unit F1 (LANDED) — `mantenimiento` port async + the mantenimiento App/UI landing (tasks 11.1–11.3, CORRECTION 9)
+
+**Status.** **Landed.** The 5 `mantenimiento` port methods (`insertMantenimiento`, `updateMantenimiento`,
+`obtenerPorId`, `listarPorMaquina`, `getMantenimientoAbierto`) return `Promise`; the in-memory adapter is
+`async` with identical semantics; `App.tsx` consumes the port asynchronously; `MantenimientoSection.tsx`
+declares and awaits the async handlers. This unit was **first dispatched on 2026-09-29**: the child
+wrote the store files + `App.tsx` + `App.test.tsx` (partial UI ripple) and then died, producing a
+terminal `sdd_task_result_empty` transport failure (`GENTLE_AI_SDD_FAILURE`, code
+`sdd_task_result_empty`). Per the failure contract the coordinator inspected the retained state, found
+real on-disk work (not "nothing written"), surfaced the failure, and the user directed **"sigue en lo
+que falte"** — the orchestrator completed the missing UI ripple and test choreography directly (not a
+new SDD launch; the session dispatch is latched) and ran the full verification loop. No artifact was
+promoted on the failed dispatch; nothing below was written before this landing.
+
+## Files changed (F1)
+
+| File | Change | Notes |
+|---|---|---|
+| `src/store/mantenimientoRepository.ts` | Modified | 5 methods → `Promise`; doc comment updated to *"los métodos son asíncronos"* + ADR 0006 (`NO existe listarPorOrden`) + ADR 0007 (no derived field persisted) cited. Written by the crashed child, gatekeeper-verified. |
+| `src/store/inMemoryMantenimientoRepository.ts` | Modified | `async` bodies, identical behaviour; `structuredClone` both directions; errors verbatim. Written by the crashed child, gatekeeper-verified. |
+| `src/store/mantenimientoRepository.test.ts` | Modified | All calls `await`ed; `rejects.toThrow` for the two rejection tests; **13 tests, zero deleted or weakened**. Written by the crashed child, gatekeeper-verified. |
+| `src/App.tsx` | Modified | Load effect → async inner fn with `cancelled` guard; `handleRegistrarMantenimiento` / `handleCerrarMantenimiento` → `async … Promise<string[]>`; render-body `getMantenimientoAbierto` → derived `mantenimientoAbierto(mantenimientos, "M1")` (same shape as `danoAbierto`). Written by the crashed child, gatekeeper-verified. |
+| `src/ui/MantenimientoSection.tsx` | Modified | **Completed by the orchestrator (the child did not reach it).** Both props (`:23`/`:24`) → `Promise<string[]>`; `handleSubmit` / `handleCerrar` → `async`; `await` at `:119` and `:136`, exactly as `DanoSection.tsx` / `InspeccionTelaSection.tsx` do. |
+| `src/App.test.tsx` | Modified | 5 direct repo calls `await`ed (child); close-flow tests + their register steps wrapped in the file's existing `await act(async () => { fireEvent.click(...) })` choreography (same as around `handleIniciar`) because the handlers are now async under fake timers — **test count unchanged (103), zero assertions weakened** (orchestrator). |
+
+**Why the plan did not own the 6-file boundary.** `tasks.md:128` already promised the mantenimiento
+landing would ride with F1; Phase 11's own enumeration (3 files, ≈ 70 lines) was the same unsatisfiable
+Verify class CORRECTION 4, 6, 7.5 and 8 corrected before. Recorded as **CORRECTION 9** (added during
+this unit; follows the same precedents, not a new drift).
+
+## Work Unit Evidence (F1)
+
+| Command | Result |
+|---|---|
+| `./node_modules/.bin/tsc --noEmit` | **exit 0** |
+| `./node_modules/.bin/vitest run src/store/mantenimientoRepository.test.ts` | `Test Files 1 passed (1)`, `Tests 13 passed (13)` |
+| `./node_modules/.bin/vitest run src/App.test.tsx` | `Test Files 1 passed (1)`, `Tests 103 passed (103)` |
+| `./node_modules/.bin/vitest run src/domain/mantenimiento.test.ts src/domain/danos.test.ts` | `Test Files 2 passed (2)`, `Tests 86 passed (86)` — domain untouched |
+| `./node_modules/.bin/vitest run src/store/danosRepository.test.ts` | `Test Files 1 passed (1)`, `Tests 13 passed (13)` — sibling port, unaffected |
+| `grep -nE ': any\| as any\|<any>'` (all 6 files) | zero matches |
+| `git diff --check` | exit 0 |
+| `git status --porcelain -- src/` | only the 6 F1 files modified; nothing else in `src/` |
+
+> Note: the vitest forks pool silently drops files under memory pressure; each suite above was run
+> individually and reported with its real `Test Files` / `Tests` counts.
+
+## Deviations (F1)
+
+1. **Terminal transport failure on first dispatch** (`sdd_task_result_empty`). The child wrote 5 of
+   the 6 files and died without a result envelope. Not a provider or plan defect; no report handoff per
+   contract. Recovered through the user's instruction ("sigue en lo que falte") + direct completion.
+2. **Plan under-enumeration again** (3 files declared; 6 really needed) — the same class CORRECTION 4
+   through 8 documented; now recorded as **CORRECTION 9**. Forecast ≈ 70; measured 6 files.
+3. **No test weakening** — the two `act` wrappers were forced by the async handlers under fake timers;
+   assertions, test count (103) and the 5 `await`ed repo calls are type/`act` choreography only.
+
+## Gatekeeper (F1) — final: PASS
+
+| Check | Result |
+|---|---|
+| Contract conformance | 11.1–11.3 implemented as written (5 methods, `obtenerPorId` → `undefined`, one parameter, no `listarPorOrden`, duration derived never stored, zero assertions weakened) plus the CORRECTION 9 landing |
+| Artifact existence | all 6 files on disk; `tasks.md` boxes 11.1–11.3 now `[x]` |
+| No hallucination | `tsc` exit 0; 13 + 103 + 86 + 13 = **215 tests green** on these exact bytes; zero `any`; `git diff --check` clean; `git status -- src/` shows only the 6 F1 files |
+| No drift from inputs | `src/domain/**` byte-unchanged; no `Order*` component touched (they receive section props by extension); no SQLite adapter, no migration, no `vitest.config.ts`; error messages verbatim; no business validation moved into the store |
+| Routing coherence | `blockedReasons` empty; next recommended: **F2 (Phase 12)** — `sqliteMantenimientoRepository` ≈ 420 lines, **OVER BUDGET**, requires a `size:exception` or split decision before apply (its own task text + the review workload guard) |
+| Tasks state | 11.1–11.3 `[x]`; cumulative **42/60** |
+| Delivery | commit as one atomic work unit; **no push** |
