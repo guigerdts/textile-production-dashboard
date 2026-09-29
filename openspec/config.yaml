@@ -1,0 +1,107 @@
+schema: spec-driven
+
+project: textile-production-dashboard
+package_name: estampado-dashboard
+
+context: |
+  Domain: Estampado (printing) area — single flatbed machine, 7 numbered carros, 1 golpe = 3 toallas.
+  Frontend: Vite 8 + React 19 + TypeScript 6 (strict), hexagonal layering src/domain -> src/store -> src/ui.
+  Persistence: repository ports (I*Repository) with in-memory and SQLite adapters, via tauri-plugin-sql.
+  Rust: src-tauri is a thin Tauri 2 shell (lib.rs/main.rs) with no domain logic and no tests.
+  Language: prose in English, domain terms in Spanish (orden, golpe, parada, daño, 2da, tela, cuadro).
+  Domain vocabulary is authoritative in CONTEXT.md; decisions are recorded in docs/adr/ (7 ADRs).
+  Prose artifacts (docs, ADR, spec) follow English-with-Spanish-terms; code identifiers and code
+  comments follow Spanish, matching the existing codebase.
+
+# Resolved by sdd-init on 2026-09-26. See risks: no explicit workspace-level test command exists,
+# because `npm run test` (vitest run) covers only the root project and src-tauri has no test target.
+strict_tdd: false
+
+testing:
+  detected: 2026-09-26
+  workspace_level_command: null
+  workspace_level_command_note: >-
+    No single command runs the complete in-scope set from the workspace root. Do not synthesize or
+    concatenate the per-project commands below. Run them per project when a change touches it.
+  strict_tdd_fallback: >-
+    Failed closed. The discovered project set is non-empty, but no explicit workspace-level test
+    command covers both `.` and `src-tauri`, so strict TDD is disabled for SDD phases. To enable it,
+    add a root package.json script that runs both project suites, then re-run sdd-init.
+  projects:
+    - path: .
+      stack: TypeScript 6 / React 19 / Vite 8 / Vitest 5 (jsdom + Testing Library)
+      test_command: npm run test
+      test_command_expanded: vitest run
+      test_watch_command: npm run test:watch
+      framework: Vitest 5
+      layers:
+        unit: Vitest 5 — src/**/*.test.ts(x), 30 test files
+        integration: Vitest 5 — in-memory repositories plus SQLite test doubles (src/__tests__/persistence-integration.test.ts, src/store/sqlite/__tests__/*)
+        e2e: none — no Playwright, Cypress or Selenium
+      coverage:
+        available: false
+        command: null
+        note: no @vitest/coverage-v8 or c8 in devDependencies
+      quality:
+        linter: none — no ESLint, Oxlint or Biome config
+        type_checker: npx tsc --noEmit
+        type_checker_note: also runs as part of `npm run build` (tsc && vite build)
+        formatter: none — no Prettier or Biome config
+    - path: src-tauri
+      stack: Rust 2021 / Tauri 2 / tauri-plugin-sql (SQLite) / serde
+      test_command: null
+      framework: none
+      layers:
+        unit: none — no #[cfg(test)] modules, no tests/ directory
+        integration: none
+        e2e: none
+      coverage:
+        available: false
+        command: null
+        note: no cargo-llvm-cov or tarpaulin configured
+      quality:
+        linter: cargo clippy
+        linter_note: cargo built-in (clippy 0.1.98), not wired to a package.json script
+        type_checker: cargo check
+        type_checker_note: cargo built-in, not wired to a package.json script
+        formatter: cargo fmt
+        formatter_note: cargo built-in (rustfmt 1.9.0), not wired to a package.json script
+
+rules:
+  proposal:
+    - "State which in-scope project(s) the change touches: `.` (frontend) and/or `src-tauri` (Rust shell)."
+    - Include a rollback plan for risky changes.
+  specs:
+    - Use Given/When/Then for scenarios.
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY).
+    - Keep domain terms in Spanish (orden, golpe, parada, daño, 2da, tela) and prose in English.
+  design:
+    - Document architecture decisions with rationale.
+    - Respect the existing hexagonal layering: src/domain is pure, src/store holds ports and adapters, src/ui holds React.
+    - Never let domain logic leak into src/ui or into repository adapters.
+  tasks:
+    - Group by phase, use hierarchical numbering.
+    - Keep tasks completable in one session.
+    - Reference the ticket number (NN) used in .scratch/estampado-dashboard/issues/ when one exists.
+  apply:
+    guidelines:
+      - Follow existing code patterns.
+      - Write code comments and identifiers in Spanish, matching the existing codebase.
+      - Add or update tests alongside the change, even though strict_tdd is disabled.
+    # Empty on purpose: no workspace-level test command exists. See testing.workspace_level_command.
+    # For frontend-only changes use `npm run test`; for Rust changes use `cargo test` in src-tauri.
+    tdd: false
+    test_command: ""
+  verify:
+    # Same reason as apply.test_command: no workspace-wide command.
+    test_command: ""
+    # Covers the root TypeScript project only; the Rust shell builds separately with `cargo build`.
+    build_command: npm run build
+    coverage_threshold: 0
+  archive:
+    - Warn before merging destructive deltas.
+
+registry:
+  skill_registry: .atl/skill-registry.md
+  indexed_skills: 77
+  last_refreshed: 2026-09-26
