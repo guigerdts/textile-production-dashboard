@@ -1503,3 +1503,72 @@ drop a red unit into the tree. Recorded, not re-asked.
 | Routing coherence | next recommended: **G1 (Phase 13)** — recovery and startup composition, ≈ 300 lines, **within budget** |
 | Tasks state | 12.1–12.3 `[x]`; cumulative **45/60** |
 | Delivery | commit as one atomic work unit; **no push** |
+
+---
+
+## Unit B2 — `sqliteParadaRepository` + suite (CORRECTION 10) — CLOSED
+
+Status: **PASS** — closed by the phase gatekeeper on 2026-09-29.
+
+Scope: 2 files (adapter + suite), ≈ 468 lines, **over the 400-line review budget** — covered by the
+maintainer's pre-authorized `size:exception` for this cycle (the user approved the slice in advance
+and instructed no further slice-approval pauses).
+
+What B2 covers (per CORRECTION 10 and tasks B2.1–B2.3):
+- `src/store/sqlite/sqliteParadaRepository.ts` — the durable adapter for `IParadaRepository` over
+  the `parada` table of migration 004 (9 columns). Pure mappers; D1 vocabulary swap
+  (`machine_id`/`operario`/`orden_id` ↔ `maquinaId`/`operatorName`/`ordenId`); D2j pre-check +
+  one statement; `campos_especificos` JSON text (`JSON.stringify` on the way in, `JSON.parse` on the
+  way out, invalid or non-object JSON → mapping error with `cause`, never a silent `{}`); `causa_id`
+  narrowed by VALIDATION against the 10-cause catalog (E2 standard, not the weaker `as`); null
+  preserved for `ordenId`/`fin`; and the null-safe `orden_id IS $2` bind in `getParadaAbierta` —
+  ONE branchless statement, exactly the shape the shared double documents as "the correct form"
+  (`fakeSqliteStore.ts:120-121`).
+- `src/store/sqlite/__tests__/sqliteParadaRepository.test.ts` — 31 tests over the shared double,
+  following the F2 suite discipline (mappers pure without connection, statements fixed by text,
+  verbatim reject messages, wrapped I/O with `cause`, domain-driven open/close flow via
+  `registrarParada`/`cerrarParada`).
+
+Key evidence (reproduced):
+- `./node_modules/.bin/tsc --noEmit` → exit 0.
+- `vitest run src/store/sqlite/__tests__/sqliteParadaRepository.test.ts` → **31/31** green.
+- Port contract + neighbor suites → **70/70** (`src/store/paradasRepository.test.ts`,
+  `sqliteDanoRepository.test.ts`, `sqliteMantenimientoRepository.test.ts`): the in-memory port
+  contract is untouched.
+- `rg ': any| as any|<any>'` on the two new files → zero matches.
+- `git diff --check` → clean.
+- `git status --porcelain` → only the two new B2 files untracked under `src/`.
+- Statement shapes fixed by text (D2j): 2-query writes (pre-check + INSERT/UPDATE), `id` only in
+  `WHERE`, 9-column INSERT matching DDL order, 8-column SET, `getParadaAbierta` with
+  `IS $2` + `LIMIT 1`, chronological `ORDER BY inicio ASC` listados, `obtenerPorId` → `undefined`
+  never null.
+
+## Deviations (B2)
+
+1. **Execution route**: same environmental class as G1/F2 — the delegated writer was unavailable
+   (task transport down 2/2: `Cannot connect to API: Unable to connect`), so B2 was implemented
+   inline by the orchestrator with the same verification bar. No plan contradiction surfaced during
+   implementation.
+2. **B2.2 wording corrected before implementation**: the task first said the `orden_id` predicate in
+   `getParadaAbierta` appears "only when the port receives a non-null `ordenId`". The shared double
+   (`fakeSqliteStore.ts:120-121`) explicitly documents the null-safe `IS $2` as "the correct form
+   for getParadaAbierta", and the in-memory contract is `p.ordenId === ordenId` (a null bind matches
+   only orden-free rows). Omitting the predicate on null would return an open parada OF ANY ORDER —
+   a real semantic difference from the port. The task now prescribes `AND orden_id IS $2` always
+   (one branchless statement) and the implementation follows the double's documented shape. No
+   domain or design change; no implementation depended on the earlier wording.
+3. **This unit closes the correction backlog for the parada adapter**: CORRECTION 10 added +3 tasks
+   (60 → 63 checkboxes) and the missing Phase 12B dependency; Phase 13's dependency line in
+   `tasks.md` now includes 12B.
+
+## Gatekeeper (B2) — final: PASS
+
+| Check | Result |
+|---|---|
+| Contract conformance | B2.1–B2.3 implemented as written (9 columns matching migration 004 DDL, JSON text round trip, D2j statements fixed by text, `IS $2` null-safe open-parada lookup, chronological listados, verbatim reject messages `ya existe una parada…` / `no existe una parada…`, wrapped I/O failures with `cause`, pure mappers, closing in place, honesty note in suite header) |
+| Artifact existence | both files on disk; `tasks.md` boxes B2.1–B2.3 now `[x]` |
+| No hallucination | `tsc` exit 0; new suite 31/31 + port/neighbors 70/70 = **101 tests green**; zero `any`; `git diff --check` clean; `git status -- src/` shows only the 2 B2 files |
+| No drift from inputs | `src/domain/**` byte-unchanged; no `App.tsx`, no `src/ui/**`, no `database.ts`, no `fakeSqliteStore.ts`, no migration; error messages verbatim; no business validation moved into the store; narrowing by validation (E2), not assertion |
+| Routing coherence | next recommended: **G1 (Phase 13)** — recovery and startup composition, ≈ 300 lines, within budget; B2 unblocks it (dependency `Phases 3, 5, 6, 7, 8, 9, 10, 11, 12, 12B` now satisfied per `tasks.md`) |
+| Tasks state | B2.1–B2.3 `[x]`; cumulative **48/63** |
+| Delivery | commit as one atomic work unit; **no push** |

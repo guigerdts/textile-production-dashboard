@@ -330,6 +330,33 @@ extension and needed no edit), no domain file, no SQLite adapter, no migration, 
 a synchronous prop; zero assertions weakened. Same forced-compile situation CORRECTION 4, 6, 7.5 and 8
 already accepted, one domain along — and **not** G2's full App/UI evolution.
 
+### CORRECTION 10 — `sqliteParadaRepository.ts` was ratified by D3 but never scheduled (B2 is missing)
+
+**Conflict.** `design.md` D3 (*"Ratify the five adapter filenames from `§Affected Areas`"*) ratifies
+**five** adapter files: `sqliteParadaRepository.ts`, `sqliteActividadPlanificadaRepository.ts`,
+`sqliteDanoRepository.ts`, `sqliteInspeccionTelaRepository.ts`, `sqliteMantenimientoRepository.ts`. The
+design's file table lists `src/store/sqlite/sqliteParadaRepository.ts` as **Create** with
+`ParadaRow`/`ParadaSqlValues`, `mapParadaRow`/`mapParadaToSql`, JSON TEXT handling, and a suite with
+"Mapper round trip, JSON + invalid-JSON, duplicate/unknown, ordering, open query". D2b already models
+`parada.orden_id → orden.id` in the fake store, and migration 004 already creates the 9-column
+`parada` table. Yet **no task in this plan schedules creating that adapter**: Phase 3 (`Unit B`) is
+port-only (3.1–3.4) and never owns the SQLite implementation, while Phases 6/8/10/12 own the other
+four adapters (C2/D2/E2/F2). `grep -c sqliteParadaRepository tasks.md` → **0**. The missing adapter
+only surfaces when Phase 13 (G1) demands **eight** repository constructions in `src/main.tsx` (task
+13.3) — `main.tsx` cannot call `new SqliteParadaRepository(db)` over a class that does not exist, and
+G1's D2f signature (`recoverPersistedState(…, paradaRepository, …, fechaOperativa, maquinaId)`)
+cannot be satisfied any other way (the only compiling substitute would be
+`new InMemoryParadaRepository([])`, which task 13.3 explicitly forbids). `tsc` stays red for any
+partial G1 landing, so there is **no green intermediate state**.
+
+**Resolution.** The parada adapter becomes its own work unit, **Phase 12B / Unit B2**, scheduled
+immediately before the G1 recovery composition that consumes it. This lands the fifth D3-ratified
+adapter the plan already decided to build, mirroring the C2/D2/E2/F2 pattern (mapper purity, D2j
+pre-check statements, `campos_especificos` JSON TEXT, FK enforcement via the shared double). The
+unit is estimated ≈ 400–460 changed lines and **requires the cycle's pre-approved `size:exception`**
+(the same user directive that covered E2 and F2). G1's `Depends on` gains Phase 12B; the work-unit
+count grows from 14 to 15 and the task total from 60 to 63.
+
 ---
 
 ## Verification strategy — what each layer can and cannot prove
@@ -656,11 +683,72 @@ adapter and the adapter hides nothing worth exposing as a separate PR.
 
 ---
 
+## Phase 12B / Unit B2 — `sqliteParadaRepository` and its suite (CORRECTION 10)
+
+**Objective.** Land the fifth D3-ratified SQLite adapter that the plan approved but never scheduled:
+the `parada` adapter the G1 recovery composition needs as its eighth repository.
+**Depends on.** Phase 3 (port contract), Phase 4 (shared FK double — `parada.orden_id → orden.id`
+already modelled).
+**Design decisions.** **D3** (`sqliteParadaRepository.ts` / `SqliteParadaRepository`). **D1**
+(`machine_id` / `operario` columns, translation in the mappers). **D2j** — explicit pre-check
+INSERT/UPDATE, verbatim vocabulary preserved: duplicate `ya existe una parada con el id <id>`,
+unknown `no existe una parada con el id <id>`. The nullable `orden_id` FK imposes no requirement
+on an unlinked parada. JSON `campos_especificos` is one `TEXT NOT NULL` column, serialized with
+`JSON.stringify` / parsed with `JSON.parse`; invalid JSON is a mapper error carrying `cause` — the
+adapter is a pure storage boundary, it does not validate the cause-shaped payload. **D2d** (honesty
+note in the suite header: the double models SQLite, it does not execute it).
+**Estimated changed lines.** ≈ 420 — **OVER BUDGET. Covered by the cycle's pre-approved
+`size:exception`** (same user directive that covered E2 and F2).
+**Capability.** `operational-repository-contracts`.
+
+- [x] B2.1 Create `src/store/sqlite/sqliteParadaRepository.ts`. 9-column `ParadaRow`
+  (`id`, `machine_id`, `orden_id`, `operario`, `causa_id`, `campos_especificos` as `string`,
+  `observaciones`, `inicio`, `fin`), `ParadaSqlValues`, pure `mapParadaRow` / `mapParadaToSql`,
+  `class SqliteParadaRepository implements IParadaRepository { constructor(private db: Database) {} }`.
+  **Acceptance:** `camposEspecificos: Record<string, unknown>` round-trips through JSON exactly
+  (undefined keys never persist); `maquinaId` ↔ `machine_id`, `operatorName` ↔ `operario` via D1;
+  `ordenId` `null` ↔ SQL `null` (the nullable FK imposes no requirement); `observaciones` reads back
+  `?? undefined`; the module contains **no** business validation, no per-cause column and no derived
+  value. **Out of scope:** splitting the JSON into per-cause columns, enforcing `getParadaAbierta`
+  uniqueness as a database constraint. **Verify:** `npx tsc --noEmit`. See task B2.2 for the
+  statement set.
+
+- [x] B2.2 Implement the prescribed statements: `INSERT INTO parada (…9 columns…) VALUES (…9
+  placeholders…)` / `UPDATE parada SET …(8 non-PK) WHERE id = $1` after the pre-check
+  `SELECT id FROM parada WHERE id = $1` (D2j); `obtenerPorId` `WHERE id = $1`; `listarPorMaquina`
+  `WHERE machine_id = $1 ORDER BY inicio ASC`; `listarPorOrden` `WHERE orden_id = $1 ORDER BY inicio
+  ASC`; `getParadaAbierta` `WHERE machine_id = $1 AND fin IS NULL AND orden_id IS $2 ORDER BY inicio
+  ASC LIMIT 1` — `IS $2` is the null-safe shape the shared double documents as *"the correct form"
+  for `getParadaAbierta`, because its second parameter may be `null`: a `null` bind matches only
+  `orden_id`-free rows and a specific id matches only that order, exactly the in-memory predicate
+  (`p.ordenId === ordenId`), in ONE statement with no branching. **Acceptance:**
+  the update sets all non-PK columns and never rewrites `id`; `id` appears only in `WHERE`;
+  `campos_especificos` is stored as JSON text and read back parsed; a parada with no `orden_id`
+  persists (null FK accepted). **Out of scope:** the D2b "dangling link" question — `parada` has no
+  FK out of another table's link column beyond `orden_id`, whose nullability is the designed escape
+  hatch. **Verify:** B2.3.
+
+- [x] B2.3 Create `src/store/sqlite/__tests__/sqliteParadaRepository.test.ts` over the shared double.
+  **Acceptance:** covers the mapper round trip with exact `JSON.stringify` of a cause-shaped
+  `camposEspecificos` payload and invalid-JSON mapper error carrying `cause`; insert-then-read;
+  duplicate insert rejected with the record unchanged (verbatim message); unknown-id update rejected
+  creating nothing (verbatim message); chronological ordering owned by the adapter (rows inserted out
+  of order); `obtenerPorId` resolving `undefined`; `getParadaAbierta` with a null `ordenId` and with a
+  specific `ordenId` (and `null` when none open); the `listarPorOrden` per-order filter excluding
+  `ordenId: null`; the FK-rejection shape on an unresolvable `orden_id` (message contains
+  `FOREIGN KEY constraint failed`, `cause` presents) and the accepted case with a primed `orden`;
+  descriptive error propagation with `cause`; the update-in-place close flowing `inicio` unchanged,
+  `fin` set, no extra row, `campos_especificos` preserved. Suite header carries the honesty note.
+  **Out of scope:** business validation, real SQLite execution. **Verify:** `npx vitest run
+  src/store/sqlite/__tests__/sqliteParadaRepository.test.ts`.
+
+---
+
 ## Phase 13 / Unit G1 — recovery and startup composition
 
 **Objective.** Rename recovery to what it promises, grow `RecoveryState` from 3 to 8 sources, read
 in the one correct order, and construct all eight adapters once at startup.
-**Depends on.** Phases 3, 5, 6, 7, 8, 9, 10, 11, 12 (all five domains must be async **simultaneously**).
+**Depends on.** Phases 3, 5, 6, 7, 8, 9, 10, 11, 12, **12B (B2 — see CORRECTION 10)** (all five domains must be async **simultaneously**).
 **Design decisions.** **D2a** (rename `recoverPhase1State` → `recoverPersistedState`; `RecoveryState`
 keeps its name). **D2e** (sequential fixed read order, one declared dependency). **D2f**
 (`maquinaId` as an explicit parameter; 8 repositories first, then the two scalars). **D2d**
