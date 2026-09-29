@@ -26,40 +26,40 @@ export class InMemoryDanoRepository implements IDanoRepository {
     }
   }
 
-  insertDano(dano: Dano): void {
+  async insertDano(dano: Dano): Promise<void> {
     if (this.porId.has(dano.id)) {
       throw new Error(`ya existe un daño con el id ${dano.id}`);
     }
     this.porId.set(dano.id, structuredClone(dano));
   }
 
-  updateDano(dano: Dano): void {
+  async updateDano(dano: Dano): Promise<void> {
     if (!this.porId.has(dano.id)) {
       throw new Error(`no existe un daño con el id ${dano.id}`);
     }
     this.porId.set(dano.id, structuredClone(dano));
   }
 
-  obtenerPorId(id: string): Dano | undefined {
+  async obtenerPorId(id: string): Promise<Dano | undefined> {
     const d = this.porId.get(id);
     return d ? structuredClone(d) : undefined;
   }
 
-  listarPorMaquina(maquinaId: string): Dano[] {
+  async listarPorMaquina(maquinaId: string): Promise<Dano[]> {
     return [...this.porId.values()]
       .filter((d) => d.maquinaId === maquinaId)
       .sort((a, b) => a.inicio.localeCompare(b.inicio))
       .map((d) => structuredClone(d));
   }
 
-  listarPorOrden(ordenId: string): Dano[] {
+  async listarPorOrden(ordenId: string): Promise<Dano[]> {
     return [...this.porId.values()]
       .filter((d) => d.ordenId === ordenId)
       .sort((a, b) => a.inicio.localeCompare(b.inicio))
       .map((d) => structuredClone(d));
   }
 
-  getDanoAbierto(maquinaId: string): DanoAbierto | null {
+  async getDanoAbierto(maquinaId: string): Promise<DanoAbierto | null> {
     for (const d of this.porId.values()) {
       if (d.fin === null && d.maquinaId === maquinaId) {
         return structuredClone(d) as DanoAbierto;

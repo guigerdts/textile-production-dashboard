@@ -923,7 +923,7 @@ describe("App — ticket 05: daños / eventos (UI)", () => {
     const activo = screen.getByTestId("dano-abierto");
     expect(activo.textContent).toContain("Daño activo:");
     expect(activo.textContent).toContain("eje trasero");
-    const guardado = repoDanos.listarPorMaquina("M1")[0]!;
+    const guardado = (await repoDanos.listarPorMaquina("M1"))[0]!;
     expect(guardado.tipo).toBe("mecanico");
     expect(guardado.operatorName).toBe("Laura");
   });
@@ -935,7 +935,7 @@ describe("App — ticket 05: daños / eventos (UI)", () => {
     await user.click(screen.getByRole("button", { name: /Registrar daño/i }));
 
     expect(screen.getByRole("alert").textContent).toContain("debe seleccionar un tipo de daño");
-    expect(repoDanos.listarPorMaquina("M1")).toHaveLength(0);
+    expect(await repoDanos.listarPorMaquina("M1")).toHaveLength(0);
   });
 
   it("registra un daño que causó parada y lo vincula a la parada abierta de la orden", async () => {
@@ -978,9 +978,14 @@ describe("App — ticket 05: daños / eventos (UI)", () => {
     fireEvent.change(screen.getByLabelText(/componente afectado/i), { target: { value: "eje trasero" } });
     fireEvent.click(screen.getByLabelText(/este daño causó una parada/i));
     fireEvent.change(screen.getByLabelText(/parada vinculada/i), { target: { value: "par-activa-danio" } });
-    fireEvent.click(screen.getByRole("button", { name: /Registrar daño/i }));
+    // El submit del daño es un handler async (persiste y refresca el estado):
+    // con reloj falso no podemos usar user.click, así que envolvemos en act async
+    // para drenar las microtareas del handler antes de leer el repositorio.
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Registrar daño/i }));
+    });
 
-    const guardado = repoDanos.listarPorMaquina("M1")[0]!;
+    const guardado = (await repoDanos.listarPorMaquina("M1"))[0]!;
     expect(guardado.causoParada).toBe(true);
     expect(guardado.paradaId).toBe("par-activa-danio");
     expect(screen.getByTestId("dano-abierto").textContent).toContain("eje trasero");
@@ -1000,7 +1005,7 @@ describe("App — ticket 05: daños / eventos (UI)", () => {
     expect(screen.getByRole("alert").textContent).toContain(
       "si el daño causó una parada, debe indicar la parada vinculada",
     );
-    expect(repoDanos.listarPorMaquina("M1")).toHaveLength(0);
+    expect(await repoDanos.listarPorMaquina("M1")).toHaveLength(0);
   });
 
   it("registra sospecha de segunda con unidades: muestra el campo solo al marcar la sospecha", async () => {
@@ -1016,7 +1021,7 @@ describe("App — ticket 05: daños / eventos (UI)", () => {
     await user.type(screen.getByLabelText(/unidades sospechadas/i), "3");
     await user.click(screen.getByRole("button", { name: /Registrar daño/i }));
 
-    const guardado = repoDanos.listarPorMaquina("M1")[0]!;
+    const guardado = (await repoDanos.listarPorMaquina("M1"))[0]!;
     expect(guardado.posibleSegunda).toBe(true);
     expect(guardado.unidadesSospechadas).toBe(3);
   });
@@ -1043,17 +1048,21 @@ it("cierra el daño activo con solución aplicada y lo mueve al historial", asyn
 
   fireEvent.change(screen.getByLabelText(/tipo de daño/i), { target: { value: "mecanico" } });
   fireEvent.change(screen.getByLabelText(/componente afectado/i), { target: { value: "eje trasero" } });
-  fireEvent.click(screen.getByRole("button", { name: /Registrar daño/i }));
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: /Registrar daño/i }));
+  });
   expect(screen.getByTestId("dano-abierto")).toBeTruthy();
 
   // el cierre del daño EXIGE fin + solución; prellenado el fin con ahora, se indica la solución
   fireEvent.change(screen.getByLabelText(/solución aplicada/i), {
     target: { value: "Cambio de eje y lubricación" },
   });
-  fireEvent.click(screen.getByRole("button", { name: /Cerrar daño/i }));
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: /Cerrar daño/i }));
+  });
 
   expect(screen.queryByTestId("dano-abierto")).toBeNull();
-  const guardado = repoDanos.listarPorMaquina("M1")[0]!;
+  const guardado = (await repoDanos.listarPorMaquina("M1"))[0]!;
   expect(guardado.fin).not.toBeNull();
   expect(guardado.solucionAplicada).toBe("Cambio de eje y lubricación");
   expectTexto("Historial de daños");
@@ -1080,11 +1089,15 @@ it("cierra sin solución aplicada: error del dominio", async () => {
 
   fireEvent.change(screen.getByLabelText(/tipo de daño/i), { target: { value: "mecanico" } });
   fireEvent.change(screen.getByLabelText(/componente afectado/i), { target: { value: "eje trasero" } });
-  fireEvent.click(screen.getByRole("button", { name: /Registrar daño/i }));
-  fireEvent.click(screen.getByRole("button", { name: /Cerrar daño/i }));
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: /Registrar daño/i }));
+  });
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: /Cerrar daño/i }));
+  });
 
   expect(screen.getByRole("alert").textContent).toContain("debe indicar la solución aplicada");
-  expect(repoDanos.listarPorMaquina("M1")[0]!.fin).toBeNull();
+  expect((await repoDanos.listarPorMaquina("M1"))[0]!.fin).toBeNull();
 });
 
   it("un daño abierto preexistente de la máquina bloquea registrar otro", async () => {

@@ -19,9 +19,9 @@ export interface DanoSectionProps {
   /** false = OrderFinished: historial + abiertos pendientes, SIN registrar daño nuevo. */
   permitirRegistrar: boolean;
   /** Devuelve errores de dominio vacíos = éxito. */
-  onRegistrarDano(input: RegistrarDanoInput): string[];
+  onRegistrarDano(input: RegistrarDanoInput): Promise<string[]>;
   /** Devuelve errores de dominio vacíos = éxito. */
-  onCerrarDano(fin: string, solucionAplicada: string): string[];
+  onCerrarDano(fin: string, solucionAplicada: string): Promise<string[]>;
 }
 
 /** Formatea un ISO a hora local es-AR (solo presentación, no afecta al dominio). */
@@ -114,7 +114,7 @@ export function DanoSection({
     return Math.max(0, hasta - desde);
   }
 
-  function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setErrores([]);
 
@@ -136,7 +136,7 @@ export function DanoSection({
       observaciones: observaciones.trim() === "" ? undefined : observaciones,
     };
 
-    const res = onRegistrarDano(input);
+    const res = await onRegistrarDano(input);
     setErrores(res);
     if (res.length > 0) {
       return;
@@ -151,12 +151,12 @@ export function DanoSection({
     setTipo("");
   }
 
-  function handleCerrar(e: FormEvent) {
+  async function handleCerrar(e: FormEvent) {
     e.preventDefault();
     setErroresCierre([]);
     // Reúne fin (datetime-local → ISO "Z") y solución; el dominio valida.
     const finIso = finInput ? new Date(finInput).toISOString() : "";
-    setErroresCierre(onCerrarDano(finIso, solucionAplicada));
+    setErroresCierre(await onCerrarDano(finIso, solucionAplicada));
   }
 
   return (

@@ -44,7 +44,7 @@ import {
 import type { RegistrarParadaInput } from "./domain/paradas";
 import { comenzarActividad, finalizarActividad } from "./domain/actividades";
 import type { RegistrarActividadInput } from "./domain/actividades";
-import { cerrarDano, registrarDano } from "./domain/danos";
+import { cerrarDano, danoAbierto, registrarDano } from "./domain/danos";
 import type { RegistrarDanoInput } from "./domain/danos";
 import { registrarMantenimiento, cerrarMantenimiento, mantenimientoAbierto } from "./domain/mantenimiento";
 import type { RegistrarMantenimientoInput } from "./domain/mantenimiento";
@@ -213,7 +213,15 @@ function App({
   }, [jornadaRepository, hoy]);
 
   useEffect(() => {
-    setDanos(danoRepository.listarPorMaquina("M1"));
+    let cancelled = false;
+    async function cargarDanos() {
+      const danosCargados = await danoRepository.listarPorMaquina("M1");
+      if (!cancelled) setDanos(danosCargados);
+    }
+    cargarDanos();
+    return () => {
+      cancelled = true;
+    };
   }, [danoRepository]);
 
   useEffect(() => {
@@ -425,7 +433,7 @@ function App({
   }
 
   /** Única vía registrar daño: dominio + repositorio; React no duplica reglas. */
-  function handleRegistrarDano(input: RegistrarDanoInput): string[] {
+  async function handleRegistrarDano(input: RegistrarDanoInput): Promise<string[]> {
     // El dominio verifica la parada vinculada con el lookup inyectado;
     // el repositorio solo persiste el daño ya validado.
     // El lookup resuelve desde `paradas` (estado ya en memoria) y NO desde el
@@ -439,14 +447,14 @@ function App({
     if (!resultado.dano) {
       return ["no se pudo registrar el daño"];
     }
-    danoRepository.insertDano(resultado.dano);
-    setDanos(danoRepository.listarPorMaquina("M1"));
+    await danoRepository.insertDano(resultado.dano);
+    setDanos(await danoRepository.listarPorMaquina("M1"));
     return [];
   }
 
   /** Única vía cerrar daño: dominio + repositorio; React no duplica reglas. */
-  function handleCerrarDano(fin: string, solucionAplicada: string): string[] {
-    const abierto = danoRepository.getDanoAbierto("M1");
+  async function handleCerrarDano(fin: string, solucionAplicada: string): Promise<string[]> {
+    const abierto = await danoRepository.getDanoAbierto("M1");
     if (!abierto) {
       return ["no hay un daño abierto para cerrar"];
     }
@@ -457,8 +465,8 @@ function App({
     if (!resultado.dano) {
       return ["no se pudo cerrar el daño"];
     }
-    danoRepository.updateDano(resultado.dano);
-    setDanos(danoRepository.listarPorMaquina("M1"));
+    await danoRepository.updateDano(resultado.dano);
+    setDanos(await danoRepository.listarPorMaquina("M1"));
     return [];
   }
 
@@ -533,7 +541,11 @@ function App({
     const resultado = registrarMantenimiento(
       mantenimientos,
       input,
-      (id) => danoRepository.obtenerPorId(id),
+      // Approach A: el lookup del daño vinculado resuelve desde `danos` (estado ya
+      // en memoria), NO desde el puerto: `registrarMantenimiento` es síncrono y
+      // `obtenerPorId` es async, así que inyectar el puerto entregaría una Promise
+      // a una validación síncrona. M1 es la única máquina: el estado cubre el port.
+      (id) => danos.find((d) => d.id === id),
     );
     if (resultado.errores.length > 0) {
       return resultado.errores;
@@ -604,7 +616,7 @@ function App({
     ordenId: orden?.id ?? null,
     operatorNameInicial: orden?.operatorName ?? "",
     danosDeMaquina: danos,
-    danoAbiertoDeMaquina: danoRepository.getDanoAbierto("M1"),
+    danoAbiertoDeMaquina: danoAbierto(danos, "M1"),
     paradasVinculables: paradas.filter((p) => p.ordenId === (orden?.id ?? null)),
     permitirRegistrar: orden?.estado !== "finished",
     onRegistrarDano: handleRegistrarDano,
@@ -640,14 +652,14 @@ function App({
   };
 
   /**
-   * Proyección de 2da integrada SOLO cuando hay orden activa: la consulta vieja
-   * `danoRepository.listarPorOrden(orden.id)` y el seam de dominio derivan el
-   * resultado. En producción se recalcula con cada render (alerta viva); en
-   * finalizada queda fija con los datos de cierre (histórica). No se pasa a
-   * EmptyDay ni OrderAvailable.
+   * Proyección de 2da integrada SOLO cuando hay orden activa: los daños de la
+   * orden ya están en `danos` (estado, cargado desde el puerto) y el seam de
+   * dominio deriva el resultado. En producción se recalcula con cada render
+   * (alerta viva); en finalizada queda fija con los datos de cierre (histórica).
+   * No se pasa a EmptyDay ni OrderAvailable.
    */
   const integracion2da = orden
-    ? proyeccionSegundaDeOrden(orden, danoRepository.listarPorOrden(orden.id))
+    ? proyeccionSegundaDeOrden(orden, danos.filter((d) => d.ordenId === orden.id))
     : null;
 
   // ---------------------------------------------------------------------------

@@ -256,7 +256,7 @@ describe("ticket 06 ciclo 2: proyeccionSegundaDeOrden (integracion calculada)", 
     expect(r.proyeccion.pct).toBe(0.03);
   });
 
-  it("integra la consulta real del repositorio (listarPorOrden) con el seam", () => {
+  it("integra la consulta real del repositorio (listarPorOrden) con el seam", async () => {
     const repo = new InMemoryDanoRepository([
       DANO_1_CERRADO_CON_PARADA, // ord-101, posibleSegunda true, 3 unidades
       DANO_2_CERRADO_SIN_PARADA, // ord-101, posibleSegunda false
@@ -264,7 +264,7 @@ describe("ticket 06 ciclo 2: proyeccionSegundaDeOrden (integracion calculada)", 
       DANO_4_SIN_ORDEN_CERRADO, // sin orden → nunca aparece en listarPorOrden
     ]);
     const orden = ordenEnProduccion300(); // 300 unidades
-    const danosDeOrden = repo.listarPorOrden(orden.id);
+    const danosDeOrden = await repo.listarPorOrden(orden.id);
     expect(danosDeOrden.map((d) => d.id)).toEqual(["dan-001", "dan-002"]);
     const r = proyeccionSegundaDeOrden(orden, danosDeOrden);
     expect(r.danosConSospechaSinUnidades).toBe(0);
@@ -273,7 +273,7 @@ describe("ticket 06 ciclo 2: proyeccionSegundaDeOrden (integracion calculada)", 
     expect(r.proyeccion.estado).toBe("buena_racha");
   });
 
-  it("integra daños sin unidades reales del repositorio: visibles, sin aporte numérico", () => {
+  it("integra daños sin unidades reales del repositorio: visibles, sin aporte numérico", async () => {
     const sospechaSinUnidades: Dano = {
       ...DANO_3_ABIERTO, // inicialmente otra orden
       id: "dan-c2-99",
@@ -281,7 +281,7 @@ describe("ticket 06 ciclo 2: proyeccionSegundaDeOrden (integracion calculada)", 
     };
     const repo = new InMemoryDanoRepository([sospechaSinUnidades]);
     const orden = ordenEnProduccion300();
-    const r = proyeccionSegundaDeOrden(orden, repo.listarPorOrden(orden.id));
+    const r = proyeccionSegundaDeOrden(orden, await repo.listarPorOrden(orden.id));
     expect(r.danosConSospechaSinUnidades).toBe(1);
     expect(r.unidadesSospechadas).toBe(0);
     expect(r.proyeccion.pct).toBe(0);

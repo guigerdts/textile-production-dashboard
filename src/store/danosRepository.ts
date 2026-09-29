@@ -6,9 +6,9 @@
  * Decisiones de diseño (mismas que IParadaRepository / IActividadRepository):
  * - INSERT/UPDATE explícitos (no upsert) para mapeo directo a SQLite
  *   con PK, permitiendo rechazar duplicados y updates de ids inexistentes.
- * - Los métodos son síncronos para ser consistentes con los repos
- *   anteriores (IOrderRepository, IParadaRepository). Una implementación
- *   SQLite real con Tauri plugin requiere adaptación async.
+ * - Los métodos son asíncronos: una implementación SQLite real con el plugin
+ *   de Tauri es I/O y devuelve Promise. Nombres, parámetros y tipos resueltos
+ *   no cambian respecto al contrato síncrono anterior; solo cambia la entrega.
  * - Campos serializables a JSON (strings, null, números, booleanos).
  * - structuredClone en cada persistencia y lectura evita contaminación por
  *   referencias mutables (igual que los repos anteriores).
@@ -37,34 +37,34 @@ export interface IDanoRepository {
    * Inserta un daño nuevo. Lanza si el id ya existe.
    * Uso típico: registrarDano del dominio → insertDano.
    */
-  insertDano(dano: Dano): void;
+  insertDano(dano: Dano): Promise<void>;
 
   /**
    * Actualiza un daño existente (por id). Lanza si el id no existe.
    * Uso típico: cerrarDano del dominio → updateDano.
    */
-  updateDano(dano: Dano): void;
+  updateDano(dano: Dano): Promise<void>;
 
   /**
    * Devuelve el daño con el id dado, o undefined.
    */
-  obtenerPorId(id: string): Dano | undefined;
+  obtenerPorId(id: string): Promise<Dano | undefined>;
 
   /**
    * Lista todos los daños de una máquina (orden cronológico por inicio).
    * Incluye daños con y sin orden asociada.
    */
-  listarPorMaquina(maquinaId: string): Dano[];
+  listarPorMaquina(maquinaId: string): Promise<Dano[]>;
 
   /**
    * Lista daños asociados a una orden concreta (orden cronológico).
    * NO incluye daños sin orden (ordenId null).
    */
-  listarPorOrden(ordenId: string): Dano[];
+  listarPorOrden(ordenId: string): Promise<Dano[]>;
 
   /**
    * Devuelve el daño abierto (fin = null) de la máquina, o null si no hay.
    * Devuelve DanoAbierto para que el tipo sea utilizable en cerrarDano sin cast.
    */
-  getDanoAbierto(maquinaId: string): DanoAbierto | null;
+  getDanoAbierto(maquinaId: string): Promise<DanoAbierto | null>;
 }
