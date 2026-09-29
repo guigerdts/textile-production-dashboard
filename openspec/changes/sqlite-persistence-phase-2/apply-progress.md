@@ -1059,3 +1059,125 @@ parent completed verification and tracking after the session was interrupted.
 | Routing coherence | `blockedReasons` empty; next recommended: **D2 (Phase 8)** — `sqliteDanoRepository` adapter + suite, over budget (≈520) — requires `size:exception` or a further split decision before apply |
 | Tasks state | 7.1–7.5 `[x]` in `tasks.md` (incl. new CORRECTION 7.5 box); cumulative **28/59** (verified: 28 `[x]` + 31 `[ ]` = 59) |
 | Delivery | **No commit, no push, no PR** — per user instruction, awaiting review of this D1 report |
+
+---
+
+# Unit D2 (LANDED 2026-09-29) — `sqliteDanoRepository` and its suite (tasks 8.1–8.3)
+
+## Files changed (Unit D2)
+
+| File | Lines | Nature |
+|---|---|---|
+| `src/store/sqlite/sqliteDanoRepository.ts` | 400 | new |
+| `src/store/sqlite/__tests__/sqliteDanoRepository.test.ts` | 798 | new |
+
+**Measured:** 2 files, **+1198 / −0 = 1198 changed lines**.
+
+## Review budget (D2) — over budget, `size:exception` pre-authorized in-session
+
+The maintainer authorized D2 whole at an estimated **750–900** lines, on the explicit condition
+that it not be re-sliced to fit a number. Actual: **1198**, i.e. **298 over the maintainer's own
+estimate**. Reported rather than absorbed silently.
+
+The overrun is structural, not padding. `dano` is the widest table in the unit — 14 columns, 6 port
+methods, 2 nullable foreign keys and 2 independent flags — and the C2 documentation discipline
+scales with that surface. Each of the following is a required artefact, not filler:
+
+- the honest header + the D2b note that a dangling `parada_id` is persisted **verbatim with no
+  lookup of its own** (which is what later makes the Phase 14 A1 control meaningful);
+- the two `0`/`1` flag conventions stated in both directions;
+- the six per-decision rationale blocks (pure boundary, mappers own vocabulary, two independent
+  flags, nullable FKs, explicit insert vs update, honesty note);
+- the D2b white-box assertion and its bind-deduction helper.
+
+A conforming adapter cannot reach 900 lines without dropping one of those. The alternative —
+splitting D2 to fit the estimate — was the one option the maintainer ruled out, and correctly: a
+half-adapter would break the atomicity of the work unit for an arbitrary line count.
+
+## Work Unit Evidence (D2)
+
+`npx tsc --noEmit` → **exit 0**.
+
+Focused suite `src/store/sqlite/__tests__/sqliteDanoRepository.test.ts` → **31/31 green**, in 12
+describe blocks mirroring C2's eight pinned behaviours plus D2's own three:
+
+| Pinned | Where |
+|---|---|
+| mapper round trip with no `Database` in scope | block 1 |
+| exactly the 14 columns of 004, and the domain's 14 keys on read | block 1 |
+| optionals written `null`, read `undefined`; `ordenId`/`paradaId` stay `null` | block 1 |
+| all four `causoParada × posibleSegunda` combinations, independent | block 2 |
+| flags stored as `0`/`1`; `unidadesSospechadas` never derived either way | block 2 |
+| a real `0` survives `?? undefined` (zero ≠ absence) | block 2 |
+| insert-then-read; unlinked daño persists with `null` links | block 3 |
+| duplicate insert rejected, stored row **unchanged**, message verbatim, not wrapped | block 4 |
+| unknown-id update rejected, **nothing** created, message verbatim | block 5 |
+| chronological ordering owned by the adapter, not the insertion order | block 6 |
+| `listarPorOrden` never returns an unlinked record | block 7 |
+| `getDanoAbierto` resolves the `DanoAbierto` alias consumed by `cerrarDano` with no cast; `null` when none; deterministic under several open | block 8 |
+| **D2b white box:** dangling `paradaId` bound **verbatim**, exactly 2 statements, no `FROM parada`/`FROM orden` | block 9 |
+| unresolvable `orden_id`/`parada_id` fail loudly with the cause preserved; A1b proves the double is not a reject-everything fake | block 10 |
+| error propagation with `cause`, never a swallowed success | block 11 |
+| update in place, no second row, 13 non-PK columns, `id` only in the `WHERE` | block 12 |
+
+## Two DDL facts the implementation would have gotten wrong by assumption
+
+Both were caught by reading migration 004 rather than inferring the schema:
+
+1. The operator column is **`operario`**, not `operator_name` (the C2 vocabulary). Guessing it
+   wrong compiles fine and fails only at runtime.
+2. `operario` is **`NOT NULL`**. The first draft typed it `string | null` and read it with `?? ""` —
+   a lie that manufactures an empty string for a value the column cannot hold, and exactly the
+   `""`-for-NULL smell the surrounding code forbids. Corrected to `string` with a plain copy, and
+   the mapper doc now says why it is the one field that is not in the `?? undefined` rule.
+
+## Broader verification run (D2)
+
+| Batch | Result |
+|---|---|
+| `npx tsc --noEmit` | exit 0 |
+| D2 focused suite | 31/31 |
+| Full suite (`--testTimeout=30000`) | **27 of 31 files ran, 711 tests green** |
+| The 4 files the vitest pool dropped, run in isolation | **4/4 files, 100 tests green** |
+
+**All 31 test files / 811 tests are green**, D2 included.
+
+### The environmental class, isolated and not excused
+
+The full-suite runs repeatedly reported `Test Files 30 passed (30)` / `27 passed (27)` alongside
+`[vitest-pool]: Failed to start forks worker for test files …` — the forks pool silently **drops a
+file per run** under memory pressure while still printing a green-looking total. There are **31**
+test files, so "30 passed" was never a complete run and must not be read as one. Every dropped file
+was therefore re-run in isolation and is green. This is the same environmental timeout class C1
+already recorded, now with a sharper edge: it can hide a whole file, not just one slow test.
+
+Separately, `App.test.tsx > registra un daño en producción…` times out at the default 5000 ms in
+this environment. It is **pre-existing and not a D1 or D2 regression**: it fails identically with
+`src/` restored to the pre-D1 commit `3ce686c` (whose `src` is byte-identical to `origin/main`), and
+passes with `--testTimeout=30000`. `src/` was restored clean afterwards — verified with
+`git status --short src/`, which showed only the two new untracked D2 files.
+
+## Deviations (D2)
+
+1. **Line count 1198 vs the maintainer's ≈900 estimate** — see the review-budget section. Disclosed,
+   not silently absorbed.
+2. **Added one acceptance case beyond the literal 8.3 list**: a real `0` in `unidadesSospechadas`
+   must survive `?? undefined`, so "zero suspected units" stays distinguishable from "no datum".
+   8.3 says the value reads back `?? undefined`, **never `0`**; pinning only the absence case would
+   have left the mirror-image bug — a fabricated `undefined` for a genuine zero — untested.
+3. **The D2b assertion is stricter than "binds verbatim"**: it also pins the statement **count** (2)
+   and the absence of any `FROM parada` / `FROM orden`. A dangling link is the only cheap way to
+   prove the adapter performs *no lookup*, so the test exploits it rather than merely checking the
+   bind value.
+
+## Gatekeeper (D2) — final: PASS
+
+| Check | Result |
+|---|---|
+| Contract conformance | 8.1–8.3 implemented as written; every acceptance clause mapped to a named test in the evidence table above |
+| Artifact existence | 2 new files verified on disk: adapter (400 lines) + suite (798 lines) |
+| No hallucination | `npx tsc --noEmit` exit 0; D2 suite 31/31; every one of the 31 repo test files green (711 + 100 across the full run and the isolated re-runs) |
+| No drift from inputs | 0 / 1 flag convention copied from `aplica_segunda`; the 8.2 **out-of-scope** guard honoured — `listarPorOrden` uses plain `= $1`, never `IS $2`; no domain source touched; no business validation added; no FK-off mode introduced; no E1/F1/G1/G2 work pulled in |
+| Routing coherence | next recommended: **E1 (Phase 9)** — `inspección de tela` port and in-memory adapter go async |
+| Tasks state | 8.1–8.3 `[x]` in `tasks.md`; cumulative **31/59** |
+| Delivery | committed as one atomic work unit; **no push** |
