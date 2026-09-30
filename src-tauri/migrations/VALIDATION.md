@@ -30,7 +30,13 @@ environment). It validates, with a non-zero exit and no invented pass:
    connection: a `dano` row referencing a nonexistent `parada_id` is rejected
    with error code **787 (SQLITE_CONSTRAINT_FOREIGNKEY)**, while a valid
    reference is accepted and a nullable FK (`parada.orden_id`) accepts NULL.
-6. The sha384 checksum of each file — the exact value sqlx 0.8.6 records
+6. The **other `applyPragmas()` PRAGMAs** take effect on a fresh connection
+   (the real startup shape — `PRAGMA journal_mode` cannot change inside a
+   transaction, and the FK probe above leaves one pending): `journal_mode` =
+   `wal` and `synchronous` = `1` (NORMAL), the exact values
+   `getJournalMode()` / `getSynchronous()` would return. Recorded as engine
+   evidence; they are not part of the R5/R6 contracts themselves.
+7. The sha384 checksum of each file — the exact value sqlx 0.8.6 records
    (`Sha384::digest(sql.as_bytes())`, confirmed at
    `sqlx-core-0.8.6/src/migrate/migration.rs:25` in the local cargo registry):
 

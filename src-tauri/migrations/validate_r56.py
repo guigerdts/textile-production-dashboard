@@ -165,7 +165,26 @@ def main() -> int:
     )
     print("  ok dano referencing an existing parada accepted (FK chain dano->parada works)")
 
-    print("\n== 7. sha384 checksums (the value sqlx 0.8.6 records per Migration) ==")
+    print("\n== 7. other applyPragmas PRAGMAs take effect on the real engine ==")
+    # applyPragmas() runs right after Database.load() on a FRESH connection with
+    # no open transaction (PRAGMA journal_mode cannot change inside a transaction).
+    # The FK-violation probe above left a pending transaction, so validate these
+    # PRAGMAs on a clean, freshly opened connection — the real startup shape.
+    con.close()
+    con = sqlite3.connect(DB_PATH)
+    con.execute("PRAGMA journal_mode = WAL")
+    jm = con.execute("PRAGMA journal_mode").fetchone()[0]
+    if jm != "wal":
+        fail(f"PRAGMA journal_mode = {jm!r} (expected 'wal' after applyPragmas)")
+    print(f"  ok PRAGMA journal_mode = {jm} (what getJournalMode() returns after applyPragmas)")
+
+    con.execute("PRAGMA synchronous = NORMAL")
+    sync = con.execute("PRAGMA synchronous").fetchone()[0]
+    if sync != 1:
+        fail(f"PRAGMA synchronous = {sync!r} (expected 1 = NORMAL after applyPragmas)")
+    print(f"  ok PRAGMA synchronous = {sync} (NORMAL; what getSynchronous() returns after applyPragmas)")
+
+    print("\n== 8. sha384 checksums (the value sqlx 0.8.6 records per Migration) ==")
     for version, desc, fname in MIGRATIONS:
         print(f"  v{version} {desc}: {sha[version]}")
     print("  (hex = Sha384::digest(sql.as_bytes()), per sqlx-core-0.8.6 migration.rs)")
