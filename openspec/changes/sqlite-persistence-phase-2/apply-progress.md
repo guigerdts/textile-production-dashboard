@@ -1723,4 +1723,4 @@ this session), all green:**
 
 **Delivery.** Single atomic commit (English, no push), exclusions as documented:
 `.atl/skill-registry.md`, `.gitignore`, `CONTEXT.md`, `README.md`, `.codegraph/`,
-`.scratch/estampado-dashboard/...`. Commit `b3b0d0b`.
+`.scratch/estampado-dashboard/...`. Commit `dff0cf1`.
