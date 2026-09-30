@@ -5,10 +5,13 @@
  * persisted sources after an application restart: the Phase 1 sources
  * (jornada, orden, persisted lecturas) plus the five operational domains
  * (paradas, actividades, daños, mantenimientos, inspecciones) — eight fields
- * in total. Recovery returns SOURCES only; derived states (deltaGolpes,
- * progreso, time summary, machine state, projected 2da, alert, buena_racha,
- * inspection estado) are computed AFTER recovery by the existing domain layer
- * — never here.
+ * in total. Recovery returns SOURCES only; derived states (progreso, time
+ * summary, machine state, projected 2da, alert, buena_racha, inspection
+ * estado) are computed AFTER recovery by the existing domain layer — never
+ * here. `state.lecturas` keeps the read projection (`deltaGolpes: 0`
+ * placeholder, ticket 10.8): the delta is recomputed at COMPOSITION time by
+ * `componerOrdenConLecturas` / `mapOrdenRow(row, lecturas)` (G2 correction),
+ * so the placeholder never reaches the domain layer.
  *
  * Design decisions:
  * - Contract-based composition: receives the EIGHT repository interfaces,
@@ -37,6 +40,10 @@
  * - No derived computation here: `getLecturasByOrden` returns `deltaGolpes: 0`
  *   (documented placeholder); recovery must not compute deltaGolpes, progreso,
  *   machine state, time, durations, projected 2da, alerts or inspection estado.
+ * - The COMPOSITION callers recompute `deltaGolpes` from the absolute values
+ *   with the shared `derivarDeltaGolpes` (G2 correction — the 10.8 placeholder
+ *   is consumed there, never propagated): `componerOrdenConLecturas` below and
+ *   `mapOrdenRow(row, lecturas)` apply the SAME derivation.
  * - iniciadaEn / contadorBase are sourced downstream by the existing
  *   `mapOrdenRow(row, lecturas)` composition from the FIRST persisted lectura;
  *   for the already-mapped Orden recovered here, `componerOrdenConLecturas`
@@ -66,6 +73,7 @@ import type { IActividadPlanificadaRepository } from "../actividadesRepository";
 import type { IDanoRepository } from "../danosRepository";
 import type { IMantenimientoRepository } from "../mantenimientoRepository";
 import type { IInspeccionRepository } from "../inspeccionRepository";
+import { derivarDeltaGolpes } from "./sqliteOrderRepository";
 
 /**
  * Estado reconstruido: las OCHO fuentes persistidas (D2a: el nombre de la
@@ -155,8 +163,10 @@ export async function recoverPersistedState(
  *
  * Es la MISMA derivación que aplica `mapOrdenRow(row, lecturas)` (10.4):
  * `iniciadaEn = lecturas[0].timestamp` y `contadorBase = lecturas[0].valor`.
- * No calcula deltas, progreso ni tiempo (eso es del dominio), no persiste
- * nada y no inventa lecturas: una lista vacía deja ambos campos undefined.
+ * Desde G2 (CORRECTION 11) también reconstruye `deltaGolpes` de los valores
+ * absolutos con `derivarDeltaGolpes` — el placeholder 0 de `getLecturasByOrden`
+ * se consume aquí, nunca se propaga al dominio. No persiste nada y no inventa
+ * lecturas: una lista vacía deja ambos campos undefined y las lecturas vacías.
  */
 export function componerOrdenConLecturas(
   orden: Orden,
@@ -164,7 +174,7 @@ export function componerOrdenConLecturas(
 ): Orden {
   return {
     ...orden,
-    lecturas,
+    lecturas: derivarDeltaGolpes(lecturas),
     iniciadaEn: lecturas[0]?.timestamp,
     contadorBase: lecturas[0]?.valor,
   };

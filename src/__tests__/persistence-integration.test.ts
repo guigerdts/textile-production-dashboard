@@ -14,17 +14,27 @@
  * el proceso, con lo que no probaría nada de la persistencia.
  */
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createElement, type ReactElement } from "react";
 import App from "../App";
 import { materializarPrograma } from "../store/sqlite/materialize";
 import {
+  componerOrdenConLecturas,
   recoverPersistedState,
   type RecoveryState,
 } from "../store/sqlite/recovery";
+import { createFakeSqliteStore } from "../store/sqlite/__tests__/fakeSqliteStore";
+import { SqliteParadaRepository } from "../store/sqlite/sqliteParadaRepository";
+import { SqliteActividadPlanificadaRepository } from "../store/sqlite/sqliteActividadPlanificadaRepository";
+import { SqliteDanoRepository } from "../store/sqlite/sqliteDanoRepository";
+import { SqliteMantenimientoRepository } from "../store/sqlite/sqliteMantenimientoRepository";
+import { SqliteInspeccionTelaRepository } from "../store/sqlite/sqliteInspeccionTelaRepository";
 import { FECHA_CON_ORDEN, crearFixtureOrdenes } from "../store/fixtures";
 import { jornadaDefault } from "../domain/tiempo";
+import { mantenimientoAbierto } from "../domain/mantenimiento";
+import { proyeccionSegundaDeOrden } from "../domain/calidad";
+import { estadoInspeccion } from "../domain/inspeccionTela";
 import type { ILecturaGolpeRepository, IOrderRepository } from "../store/repository";
 import type { IJornadaRepository } from "../store/jornadaRepository";
 import type { IParadaRepository } from "../store/paradasRepository";
@@ -32,7 +42,7 @@ import type { IActividadPlanificadaRepository } from "../store/actividadesReposi
 import type { IDanoRepository } from "../store/danosRepository";
 import type { IMantenimientoRepository } from "../store/mantenimientoRepository";
 import type { IInspeccionRepository } from "../store/inspeccionRepository";
-import type { LecturaContador, Orden } from "../domain/types";
+import type { Dano, LecturaContador, Orden } from "../domain/types";
 
 // ── Almacén persistente falso (equivalente conceptual al archivo SQLite) ────
 
@@ -425,5 +435,393 @@ describe("13. recovery tras crash preserva los datos — Ticket 10.8", () => {
     );
     expect(estado.lecturas).toHaveLength(2);
     expect(estado.lecturas.map((l) => l.valor)).toEqual([100, 150]);
+  }, UI_TIMEOUT);
+});
+
+// ── Phase 14.8 (G2): los cinco operativos SQLite como handlers reales ───────
+//
+// Los tests 10.8 previos componían la App con fakes "in memory". La phase 14
+// cambió la verificación: los operativos (parada, actividad, daño,
+// mantenimiento, inspección) se prueban AHORA con los adaptadores SQLite
+// reales sobre el doble del store (`createFakeSqliteStore`, D2b) — que, como
+// el SQLite real, IMPONE las cinco FK de 004. El gestor de la App sigue siendo
+// el mismo código de producción (el puerto como fuente de verdad).
+
+describe("14. el reinicio con los cinco operativos SQLite reales — G2", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("14.8a: los cinco operativos SQLite sobreviven al reinicio con los derivados idénticos", async () => {
+    const almacen = crearAlmacen();
+    const ordenRepo = crearOrdenFalsa(almacen);
+    const lecturaRepo = crearLecturaFalsa(almacen);
+    await materializarPrograma(ordenRepo, crearFixtureOrdenes());
+
+    // El doble del store SQLite. La orden vive en el almacén de órdenes falso,
+    // pero las FK de parada/daño/inspección apuntan a la tabla `orden` del
+    // store: se siembra la fila destino (como `sembrarEnlaces` de los tests de
+    // adaptadores) para que los INSERT pasen la FK por el id de la orden.
+    const store = createFakeSqliteStore();
+    store.orden.push({ id: "ord-101" });
+
+    const operativos = {
+      parada: new SqliteParadaRepository(store),
+      actividad: new SqliteActividadPlanificadaRepository(store),
+      dano: new SqliteDanoRepository(store),
+      mantenimiento: new SqliteMantenimientoRepository(store),
+      inspeccion: new SqliteInspeccionTelaRepository(store),
+    };
+
+    // ── Primer arranque: la App usa los adaptadores SQLite reales. ──
+    await mountApp(
+      createElement(App, {
+        repository: ordenRepo,
+        jornadaRepository: crearJornadaFalsa(),
+        lecturaRepository: lecturaRepo,
+        hoy: FECHA_CON_ORDEN,
+        paradaRepository: operativos.parada,
+        actividadRepository: operativos.actividad,
+        danoRepository: operativos.dano,
+        mantenimientoRepository: operativos.mantenimiento,
+        inspeccionRepository: operativos.inspeccion,
+      }),
+    );
+    await iniciarOrden("Laura", "100");
+    await registrarLectura("150");
+
+    const user = userEvent.setup();
+
+    // Parada con datos específicos de causa (falta_color → "Color") y cierre.
+    const formParada = screen.getByRole("form", { name: /registrar parada/i });
+    await user.selectOptions(
+      within(formParada).getByRole("combobox", { name: /causa de la parada/i }),
+      "falta_color",
+    );
+    await user.type(within(formParada).getByLabelText("Color"), "rojo");
+    await user.type(
+      within(formParada).getByLabelText(/observaciones/i),
+      "se terminó la pintura roja",
+    );
+    await user.click(within(formParada).getByRole("button", { name: /registrar parada/i }));
+    await act(async () => {});
+    await user.click(screen.getByRole("button", { name: /cerrar parada/i }));
+    await act(async () => {});
+
+    // Actividad planificada (limpieza → "Qué se limpió") y cierre.
+    const formActividad = screen.getByRole("form", { name: /registrar actividad/i });
+    await user.selectOptions(
+      within(formActividad).getByRole("combobox", { name: /tipo de actividad/i }),
+      "limpieza",
+    );
+    await user.type(
+      within(formActividad).getByLabelText(/qué se limpió/i),
+      "mesa de estampado",
+    );
+    await user.clear(within(formActividad).getByLabelText(/operario de la actividad/i));
+    await user.type(
+      within(formActividad).getByLabelText(/operario de la actividad/i),
+      "Laura",
+    );
+    await user.click(within(formActividad).getByRole("button", { name: /registrar actividad/i }));
+    await act(async () => {});
+    await user.click(screen.getByRole("button", { name: /cerrar actividad/i }));
+    await act(async () => {});
+
+    // Daño abierto con posible segunda (5 uds sobre 150 producidas = 3.33%).
+    const formDano = screen.getByRole("form", { name: /registrar daño/i });
+    await user.selectOptions(
+      within(formDano).getByRole("combobox", { name: /tipo de daño/i }),
+      "mecanico",
+    );
+    await user.type(within(formDano).getByLabelText(/componente afectado/i), "eje trasero");
+    await user.click(within(formDano).getByLabelText(/posible segunda/i));
+    await user.type(within(formDano).getByLabelText(/unidades sospechadas/i), "5");
+    await user.click(within(formDano).getByRole("button", { name: /registrar daño/i }));
+    await act(async () => {});
+
+    // Mantenimiento preventivo EN CURSO (sin cerrar: fin queda null).
+    const formMantenimiento = screen.getByRole("form", { name: /registrar mantenimiento/i });
+    await user.selectOptions(
+      within(formMantenimiento).getByRole("combobox", { name: /tipo de mantenimiento/i }),
+      "preventivo",
+    );
+    await user.type(
+      within(formMantenimiento).getByLabelText(/motivo/i),
+      "lubricación mensual",
+    );
+    await user.click(within(formMantenimiento).getByRole("button", { name: /registrar mantenimiento/i }));
+    await act(async () => {});
+
+    // Inspección con anomalía (Manchas) y lote, resuelta por gerencia (la
+    // devolución solo se ofrece con producción 0, y ya hay 50 golpes).
+    const formInspeccion = screen.getByRole("form", { name: /registrar inspección/i });
+    await user.type(within(formInspeccion).getByLabelText(/lote/i), "L-103");
+    await user.click(within(formInspeccion).getByLabelText("Manchas: Anomalía"));
+    await user.type(
+      within(formInspeccion).getByLabelText(/otra anomalía/i),
+      "olor fuerte",
+    );
+    await user.click(within(formInspeccion).getByRole("button", { name: /registrar inspección/i }));
+    await act(async () => {});
+
+    const formResolver = screen.getByRole("form", { name: /resolver inspección/i });
+    await user.selectOptions(
+      within(formResolver).getByRole("combobox", { name: /tipo de resolución/i }),
+      "autorizacion_gerencia",
+    );
+    await user.type(
+      within(formResolver).getByLabelText(/autorizado por/i),
+      "Gerencia turno mañana",
+    );
+    await user.click(within(formResolver).getByRole("button", { name: /resolver inspección/i }));
+    await act(async () => {});
+
+    // ── "Antes": el dashboard vivo con los cinco eventos. ──
+    const dashboardVivo = screen.getByTestId("dashboard-home");
+    const estadoAntes = within(dashboardVivo).getByText(/ANDANDO|PARADA|OCIOSA/).textContent;
+    const calidadAntes = within(dashboardVivo).getByText(/Alerta|Buena racha/).textContent;
+    const bucketsAntes = {
+      disponible: screen.getByTestId("dashboard-home_disponible").textContent,
+      planificado: screen.getByTestId("dashboard-home_planificado").textContent,
+      incidencias: screen.getByTestId("dashboard-home_incidencias").textContent,
+      productivo: screen.getByTestId("dashboard-home_productivo").textContent,
+    };
+    expect(estadoAntes).toBe("▶ ANDANDO");
+    // 5 sospechadas / 150 producidas = 3.33% > UMBRAL_ALERTA_2DA: la calidad
+    // "antes" DEBE ser la alerta (no solo "Buena racha").
+    expect(calidadAntes).toContain("Alerta");
+
+    // ── Reinicio: adaptadores FRESCOS sobre el MISMO store. ──
+    const reinicio = {
+      parada: new SqliteParadaRepository(store),
+      actividad: new SqliteActividadPlanificadaRepository(store),
+      dano: new SqliteDanoRepository(store),
+      mantenimiento: new SqliteMantenimientoRepository(store),
+      inspeccion: new SqliteInspeccionTelaRepository(store),
+    };
+    const estado: RecoveryState = await recoverPersistedState(
+      crearJornadaFalsa(),
+      crearOrdenFalsa(almacen),
+      crearLecturaFalsa(almacen),
+      reinicio.parada,
+      reinicio.actividad,
+      reinicio.dano,
+      reinicio.mantenimiento,
+      reinicio.inspeccion,
+      FECHA_CON_ORDEN,
+      "M1",
+    );
+
+    expect(estado.orden?.estado).toBe("in_production");
+    expect(estado.orden?.operatorName).toBe("Laura");
+    expect(estado.lecturas.map((l) => l.valor)).toEqual([100, 150]);
+
+    // Parada: causa, campos específicos, cierre y operario intactos.
+    expect(estado.paradas).toHaveLength(1);
+    expect(estado.paradas[0]).toMatchObject({
+      maquinaId: "M1",
+      ordenId: "ord-101",
+      operatorName: "Laura",
+      causaId: "falta_color",
+      camposEspecificos: { color: "rojo" },
+      observaciones: "se terminó la pintura roja",
+    });
+    expect(estado.paradas[0]!.fin).not.toBeNull();
+
+    // Actividad: limpieza con qué se limpió y cierre.
+    expect(estado.actividades).toHaveLength(1);
+    expect(estado.actividades[0]).toMatchObject({
+      maquinaId: "M1",
+      tipo: "limpieza",
+      operatorName: "Laura",
+      queSeLimpio: "mesa de estampado",
+    });
+    expect(estado.actividades[0]!.fin).not.toBeNull();
+
+    // Daño: abierto (fin null), con su sospecha de segunda.
+    expect(estado.danos).toHaveLength(1);
+    expect(estado.danos[0]).toMatchObject({
+      maquinaId: "M1",
+      ordenId: "ord-101",
+      operatorName: "Laura",
+      tipo: "mecanico",
+      componente: "eje trasero",
+      posibleSegunda: true,
+      unidadesSospechadas: 5,
+    });
+    expect(estado.danos[0]!.fin).toBeNull();
+
+    // Mantenimiento: preventivo EN CURSO, sin daño vinculado.
+    expect(estado.mantenimientos).toHaveLength(1);
+    expect(estado.mantenimientos[0]).toMatchObject({
+      maquinaId: "M1",
+      tipo: "preventivo",
+      operatorName: "Laura",
+      motivo: "lubricación mensual",
+      danoId: null,
+    });
+    expect(estado.mantenimientos[0]!.fin).toBeNull();
+    expect(mantenimientoAbierto(estado.mantenimientos, "M1")).not.toBeNull();
+
+    // Inspección: checklist con la anomalía, lote y resolución por gerencia.
+    expect(estado.inspecciones).toHaveLength(1);
+    const inspeccion = estado.inspecciones[0]!;
+    expect(inspeccion).toMatchObject({
+      ordenId: "ord-101",
+      operatorName: "Laura",
+      lote: "L-103",
+      otraAnomalia: "olor fuerte",
+    });
+    expect(inspeccion.items.find((i) => i.id === "manchas")?.estado).toBe("anomalia");
+    expect(inspeccion.resolucion).toMatchObject({
+      tipo: "autorizacion_gerencia",
+      autorizadoPor: "Gerencia turno mañana",
+      timestamp: expect.any(String),
+    });
+    expect(estadoInspeccion(inspeccion)).toBe("uso_autorizado");
+
+    // Derivados recomputados sobre los datos recuperados: segunda >3% → alerta.
+    // Recovery separa orden y lecturas (D2e); los derivados operan sobre la
+    // orden compuesta, como hace la App al consumir `estadoInicial`.
+    const ordenCompuesta = componerOrdenConLecturas(estado.orden!, estado.lecturas);
+    const proyeccion = proyeccionSegundaDeOrden(ordenCompuesta, estado.danos);
+    expect(proyeccion.proyeccion.estado).toBe("alerta");
+    expect(proyeccion.proyeccion.pct).toBeCloseTo(5 / 150, 4);
+
+    // ── "Después": la App montada de nuevo con los repos FRESCOS y el estado
+    // recuperado muestra exactamente el mismo dashboard derivado. ──
+    await mountApp(
+      createElement(App, {
+        repository: crearOrdenFalsa(almacen),
+        jornadaRepository: crearJornadaFalsa(),
+        lecturaRepository: crearLecturaFalsa(almacen),
+        hoy: FECHA_CON_ORDEN,
+        estadoInicial: estado,
+        paradaRepository: reinicio.parada,
+        actividadRepository: reinicio.actividad,
+        danoRepository: reinicio.dano,
+        mantenimientoRepository: reinicio.mantenimiento,
+        inspeccionRepository: reinicio.inspeccion,
+      }),
+    );
+
+    const dashboards = screen.getAllByTestId("dashboard-home");
+    const dashboardDespues = dashboards[dashboards.length - 1]!;
+    expect(within(dashboardDespues).getByText(/ANDANDO|PARADA|OCIOSA/).textContent).toBe(
+      estadoAntes,
+    );
+    const calidadDespues = within(dashboardDespues).getByText(/Alerta|Buena racha/).textContent;
+    expect(calidadDespues).toBe(calidadAntes);
+    // La alerta 2da >3% se RECOMPUTA idéntica tras el reinicio (no un
+    // "Buena racha"-vs-"Buena racha" pasivo): el delta del contador se
+    // reconstruye desde los valores absolutos (G2 / CORRECTION 11).
+    expect(calidadDespues).toContain("Alerta");
+    // Los buckets provienen de timestamps persistidos: recomputados idénticos.
+    expect(screen.getAllByTestId("dashboard-home_disponible").at(-1)!.textContent).toBe(
+      bucketsAntes.disponible,
+    );
+    expect(screen.getAllByTestId("dashboard-home_planificado").at(-1)!.textContent).toBe(
+      bucketsAntes.planificado,
+    );
+    expect(screen.getAllByTestId("dashboard-home_incidencias").at(-1)!.textContent).toBe(
+      bucketsAntes.incidencias,
+    );
+    expect(screen.getAllByTestId("dashboard-home_productivo").at(-1)!.textContent).toBe(
+      bucketsAntes.productivo,
+    );
+    // El historial de inspecciones vuelve a mostrar la resolución por gerencia.
+    // El texto se divide en dos nodos (<strong> + valor); se matchea el nodo
+    // fuerte, igual que App.test.tsx:1534.
+    expect(
+      screen.getAllByText(/Uso autorizado por gerencia/).length,
+    ).toBeGreaterThan(0);
+  }, UI_TIMEOUT);
+
+  it("14.8b: A1/A1b/A2 — el daño con paradaId colgado guarda por el dominio, no por la FK", async () => {
+    const almacen = crearAlmacen();
+    const ordenRepo = crearOrdenFalsa(almacen);
+    const lecturaRepo = crearLecturaFalsa(almacen);
+    await materializarPrograma(ordenRepo, crearFixtureOrdenes());
+
+    const store = createFakeSqliteStore();
+    store.orden.push({ id: "ord-101" });
+
+    // ── A1 (control, bypass de la App): el adaptador SQLite REAL rechaza por
+    // FK cuando el paradaId no existe. Sin la capa de dominio, el INSERT a
+    // `dano.parada_id` no encuentra la fila en `parada` y falla. ──
+    const danoRepository = new SqliteDanoRepository(store);
+    const dañoConParadaColgada: Dano = {
+      id: "dano-a1",
+      maquinaId: "M1",
+      ordenId: "ord-101",
+      operatorName: "Laura",
+      tipo: "mecanico",
+      componente: "eje trasero",
+      inicio: "2026-09-14T10:00:00.000Z",
+      fin: null,
+      causoParada: true,
+      paradaId: "no-existe",
+      posibleSegunda: false,
+    };
+    await expect(danoRepository.insertDano(dañoConParadaColgada)).rejects.toMatchObject({
+      message: expect.stringContaining('no se pudo persistir el daño "dano-a1"'),
+      cause: { message: "FOREIGN KEY constraint failed" },
+    });
+    expect(store.dano).toHaveLength(0);
+
+    // ── A1b (control): con la parada sembrada, el MISMO insert resuelve. ──
+    store.parada.push({ id: "parada-1" });
+    await expect(
+      danoRepository.insertDano({ ...dañoConParadaColgada, id: "dano-a1b", paradaId: "parada-1" }),
+    ).resolves.toBeUndefined();
+    expect(store.dano).toHaveLength(1);
+
+    // ── A2: la App con el adaptador SQLite real: el guard del dominio corta
+    // ANTES del insert → error propio, sin "FOREIGN KEY" en la UI. ──
+    await mountApp(
+      createElement(App, {
+        repository: ordenRepo,
+        jornadaRepository: crearJornadaFalsa(),
+        lecturaRepository: lecturaRepo,
+        hoy: FECHA_CON_ORDEN,
+        paradaRepository: new SqliteParadaRepository(store),
+        danoRepository,
+      }),
+    );
+    await iniciarOrden("Laura", "100");
+
+    const user = userEvent.setup();
+    const formDano = screen.getByRole("form", { name: /registrar daño/i });
+    await user.selectOptions(
+      within(formDano).getByRole("combobox", { name: /tipo de daño/i }),
+      "mecanico",
+    );
+    await user.type(within(formDano).getByLabelText(/componente afectado/i), "eje trasero");
+    // Sin paradas cerradas, el select "Parada vinculada" no tiene opciones:
+    // se inyecta la opción colgada (mismo truco que App.test.tsx spec 14.(b)).
+    await user.click(within(formDano).getByLabelText(/este daño causó una parada/i));
+    const selectParada = within(formDano).getByRole("combobox", { name: /parada vinculada/i }) as HTMLSelectElement;
+    const opcionColgada = document.createElement("option");
+    opcionColgada.value = "no-existe";
+    opcionColgada.text = "no-existe";
+    selectParada.add(opcionColgada);
+    selectParada.value = "no-existe";
+    fireEvent.change(selectParada);
+    await act(async () => {});
+
+    await user.click(within(formDano).getByRole("button", { name: /registrar daño/i }));
+    await act(async () => {});
+
+    const errores = within(formDano).getByRole("alert").textContent ?? "";
+    expect(errores).toContain("la parada vinculada no existe: no-existe");
+    expect(errores).not.toContain("FOREIGN KEY");
+    // El guard del dominio impidió el INSERT del daño de A2: el store conserva
+    // solo el daño sembrado por A1b (nunca llega un segundo insert).
+    expect(store.dano).toHaveLength(1);
   }, UI_TIMEOUT);
 });

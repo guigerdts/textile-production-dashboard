@@ -30,13 +30,15 @@ import {
   registrarInspeccion,
 } from "./domain/inspeccionTela";
 import type { InspeccionTela, Mantenimiento, Orden } from "./domain/types";
-import type { ParadaAbierta } from "./domain/types";
+import type { Parada, ParadaAbierta } from "./domain/types";
 import type { Dano } from "./domain/types";
+import type { RecoveryState } from "./store/sqlite/recovery";
 import { InMemoryMantenimientoRepository } from "./store/inMemoryMantenimientoRepository";
 import {
   MANT_4_ABIERTO,
 } from "./store/mantenimientoFixtures";
 import { registrarMantenimiento } from "./domain/mantenimiento";
+import { jornadaDefault } from "./domain/tiempo";
 
 
 /**
@@ -562,9 +564,11 @@ describe("App — ticket 03: actividades planificadas (UI)", () => {
     );
   });
 
-  it("registra una actividad en producción: no bloquea lecturas ni finalización", async () => {
-    const repoActividades = new InMemoryActividadPlanificadaRepository([]);
-    const { user } = await iniciarOP101ConActividades(repoActividades);
+  it(
+    "registra una actividad en producción: no bloquea lecturas ni finalización",
+    async () => {
+      const repoActividades = new InMemoryActividadPlanificadaRepository([]);
+      const { user } = await iniciarOP101ConActividades(repoActividades);
 
     // la sección de actividades está presente junto al flujo de producción
     await seleccionarTipoActividad(user, "Limpieza");
@@ -579,10 +583,15 @@ describe("App — ticket 03: actividades planificadas (UI)", () => {
     expect(botonFinalizar.hasAttribute("disabled")).toBe(false);
 
     // y el flujo sigue funcionando
-    await user.type(screen.getByRole("spinbutton", { name: /nueva lectura/i }), "106");
-    await user.click(botonLectura);
-    expectTexto("6 golpes / 18 unidades");
-  });
+      await user.type(screen.getByRole("spinbutton", { name: /nueva lectura/i }), "106");
+      await user.click(botonLectura);
+      expectTexto("6 golpes / 18 unidades");
+    },
+    // UI de userEvent carácter a carácter: en máquinas lentas supera el timeout
+    // por defecto de 5 s sin fallo real (misma razón que UI_TIMEOUT en
+    // persistence-integration.test.ts). Solo amplía el límite, no debilita aserciones.
+    30_000,
+  );
 
   it("registra una actividad en orden finalizada y la muestra sin botones de orden", async () => {
     const repoActividades = new InMemoryActividadPlanificadaRepository([]);
@@ -2086,4 +2095,194 @@ describe("App — ticket 09: DashboardHome", () => {
     expect(screen.queryByText(/Buena racha/)).toBeNull();
     expect(screen.queryByText(/Alerta/)).toBeNull();
   });
+});
+
+describe("App — phase 14 (G2): el puerto como fuente de verdad (14.1–14.5)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("una falla de persistencia de parada deja el estado visible intacto y no renderiza Promises", async () => {
+    const repo = new InMemoryOrderRepository();
+    const base = (await repo.getOrderByFechaOperativa(FECHA_CON_ORDEN))!;
+    const iniciada = iniciarProduccion(base, {
+      operatorName: "Laura",
+      lecturaInicial: 100,
+      timestamp: "2026-09-11T08:00:00.000Z",
+    }).orden!;
+    await repo.saveOrder(iniciada);
+
+    // Parada CERRADA sembrada: el loader la carga y el historial la muestra.
+    const paradaSembrada: Parada = {
+      id: "par-cerrada-g2",
+      maquinaId: "M1",
+      ordenId: iniciada.id,
+      operatorName: "Laura",
+      causaId: "falta_tela",
+      camposEspecificos: {},
+      inicio: "2026-09-11T08:20:00.000Z",
+      fin: "2026-09-11T08:35:00.000Z",
+    };
+    const repoParadas = new InMemoryParadaRepository([paradaSembrada]);
+    vi.spyOn(repoParadas, "insertParada").mockImplementation(async () => {
+      throw new Error("storage failure: paradas");
+    });
+
+    const user = userEvent.setup();
+    await mountApp(
+      <App repository={repo} paradaRepository={repoParadas} hoy={FECHA_CON_ORDEN} />,
+    );
+    // El historial muestra la parada sembrada antes del intento.
+    expect(screen.getAllByText(/Falta de materia prima/).length).toBeGreaterThan(0);
+
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: /causa de la parada/i }),
+      screen.getByRole("option", { name: /falta de materia prima/i }),
+    );
+    await user.click(screen.getByRole("button", { name: /Registrar parada/i }));
+
+    // El error del puerto llega al alert (14.4) y el estado visible NO cambió.
+    expect(screen.getByText("storage failure: paradas")).toBeTruthy();
+    expect(screen.getAllByText(/Falta de materia prima/).length).toBeGreaterThan(0);
+    // Ningún child recibió una Promise: el DOM no muestra "[object Promise]".
+    expect(document.body.textContent).not.toContain("[object Promise]");
+  }, 30_000);
+
+  it("Approach A: un paradaId colgado cae en el dominio (no en la FK) y no escribe nada", async () => {
+    const repo = new InMemoryOrderRepository();
+    const base = (await repo.getOrderByFechaOperativa(FECHA_CON_ORDEN))!;
+    const iniciada = iniciarProduccion(base, {
+      operatorName: "Laura",
+      lecturaInicial: 100,
+      timestamp: "2026-09-11T08:00:00.000Z",
+    }).orden!;
+    await repo.saveOrder(iniciada);
+
+    const repoDanos = new InMemoryDanoRepository([]);
+    const insertSpy = vi.spyOn(repoDanos, "insertDano");
+    const user = userEvent.setup();
+    await mountApp(
+      <App
+        repository={repo}
+        danoRepository={repoDanos}
+        paradaRepository={new InMemoryParadaRepository([])}
+        hoy={FECHA_CON_ORDEN}
+      />,
+    );
+
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: /tipo de daño/i }),
+      screen.getByRole("option", { name: "Daño mecánico" }),
+    );
+    await user.type(screen.getByLabelText(/componente afectado/i), "eje trasero");
+    await user.click(screen.getByLabelText(/este daño causó una parada/i));
+
+    // El selector no ofrece paradas (repo vacío): se inyecta una opción con un id
+    // colgado — el estado en el que quedaría una parada borrada entre renderizar
+    // el selector y enviar el formulario. jsdom no permite seleccionar un valor
+    // que no exista entre las opciones, así que primero se agrega al DOM.
+    const selectParada = screen.getByLabelText(/parada vinculada/i) as HTMLSelectElement;
+    const opcionColgada = document.createElement("option");
+    opcionColgada.value = "no-existe";
+    opcionColgada.text = "no-existe (borrada)";
+    selectParada.add(opcionColgada);
+    selectParada.value = "no-existe";
+    fireEvent.change(selectParada);
+    await user.click(screen.getByRole("button", { name: /Registrar daño/i }));
+
+    // El dominio produce su propio mensaje Y el insert nunca se intenta (14.5).
+    expect(screen.getByText("la parada vinculada no existe: no-existe")).toBeTruthy();
+    expect(insertSpy).not.toHaveBeenCalled();
+    expect(await repoDanos.listarPorMaquina("M1")).toEqual([]);
+  }, 30_000);
+
+  it("Approach A: un danoId colgado en mantenimiento reactivo cae en el dominio sin escribir", async () => {
+    const repo = new InMemoryOrderRepository();
+    const base = (await repo.getOrderByFechaOperativa(FECHA_CON_ORDEN))!;
+    const iniciada = iniciarProduccion(base, {
+      operatorName: "Laura",
+      lecturaInicial: 100,
+      timestamp: "2026-09-11T08:00:00.000Z",
+    }).orden!;
+    await repo.saveOrder(iniciada);
+
+    const repoMantenimientos = new InMemoryMantenimientoRepository([]);
+    const insertSpy = vi.spyOn(repoMantenimientos, "insertMantenimiento");
+    const user = userEvent.setup();
+    await mountApp(
+      <App
+        repository={repo}
+        mantenimientoRepository={repoMantenimientos}
+        danoRepository={new InMemoryDanoRepository([])}
+        hoy={FECHA_CON_ORDEN}
+      />,
+    );
+
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: /tipo de mantenimiento/i }),
+      screen.getByRole("option", { name: "Mantenimiento reactivo" }),
+    );
+    await user.type(screen.getByLabelText(/motivo \(obligatorio\)/i), "el horno no calienta");
+    // Mismo patrón que el test de daño: se inyecta la opción colgada en el DOM
+    // para poder seleccionar un id que el selector jamás ofreció.
+    const selectDano = screen.getByLabelText(/daño vinculado/i) as HTMLSelectElement;
+    const opcionColgada = document.createElement("option");
+    opcionColgada.value = "no-existe-dano";
+    opcionColgada.text = "no-existe-dano (borrado)";
+    selectDano.add(opcionColgada);
+    selectDano.value = "no-existe-dano";
+    fireEvent.change(selectDano);
+    await user.click(screen.getByRole("button", { name: /Registrar mantenimiento/i }));
+
+    expect(screen.getByText("el daño vinculado no existe: no-existe-dano")).toBeTruthy();
+    expect(insertSpy).not.toHaveBeenCalled();
+    expect(await repoMantenimientos.listarPorMaquina("M1")).toEqual([]);
+  }, 30_000);
+
+  it("los loaders de montaje re-leen el repositorio para el hoy inyectado (el seed stale pierde)", async () => {
+    // El seed (10.8) trae una parada distinta de la que el repo tiene para hoy:
+    // los loaders de montaje (14.1) deben reemplazar el estado y ganar la relectura.
+    const paradaSeed: ParadaAbierta = {
+      id: "par-seed",
+      maquinaId: "M1",
+      ordenId: null,
+      operatorName: "Ana",
+      causaId: "falta_tela",
+      camposEspecificos: {},
+      inicio: "2026-09-10T07:00:00.000Z",
+      fin: null,
+    };
+    const paradaRepo: ParadaAbierta = {
+      id: "par-repo",
+      maquinaId: "M1",
+      ordenId: null,
+      operatorName: "Carlos",
+      causaId: "falta_color",
+      camposEspecificos: { color: "Rojo" },
+      inicio: "2026-09-10T07:00:00.000Z",
+      fin: null,
+    };
+    const estadoInicial: RecoveryState = {
+      jornada: jornadaDefault(FECHA_CON_ORDEN),
+      orden: undefined,
+      lecturas: [],
+      paradas: [paradaSeed],
+      actividades: [],
+      danos: [],
+      mantenimientos: [],
+      inspecciones: [],
+    };
+    await mountApp(
+      <App
+        repository={new InMemoryOrderRepository()}
+        paradaRepository={new InMemoryParadaRepository([paradaRepo])}
+        estadoInicial={estadoInicial}
+        hoy={FECHA_CON_ORDEN}
+      />,
+    );
+
+    // La parada del REPOSITORIO (Falta de color) reemplazó la del seed.
+    expectTexto(/Falta de color/);
+    expect(screen.queryByText(/Falta de materia prima/)).toBeNull();
+  }, 30_000);
 });

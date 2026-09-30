@@ -14,11 +14,14 @@
  *   eight documented read methods in the fixed D2e order, routes lecturas and
  *   inspecciones through their orden guard, and routes the four machine-event
  *   lists through `listarPorMaquina(maquinaId)` with NO date predicate.
- * - Derivation tests: recovery returns SOURCES only; deltaGolpes stays the
- *   repository's 0 placeholder and derivations (progreso, iniciadaEn /
- *   contadorBase, durations, projected 2da, alerts, inspection estado) belong
- *   to the existing domain layer, invoked here only to demonstrate the
- *   composition works on recovered sources.
+ * - Derivation tests: recovery returns SOURCES only — `state.lecturas` keeps
+ *   the repository's read projection (deltaGolpes 0 placeholder). The
+ *   COMPOSITION seam (`componerOrdenConLecturas`, G2 / CORRECTION 11)
+ *   recomputes deltaGolpes from the absolute values with `derivarDeltaGolpes`;
+ *   the other derivations (progreso, iniciadaEn / contadorBase, durations,
+ *   projected 2da, alerts, inspection estado) belong to the existing domain
+ *   layer, invoked here only to demonstrate the composition works on
+ *   recovered sources.
  *
  * HONESTY NOTE (10.7): these are unit tests against faked repository
  * contracts. They prove recovery's composition logic. They do NOT execute the
@@ -28,7 +31,7 @@
 
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-import { recoverPersistedState } from "../recovery";
+import { recoverPersistedState, componerOrdenConLecturas } from "../recovery";
 import type { IJornadaRepository } from "../../jornadaRepository";
 import type { IOrderRepository, ILecturaGolpeRepository } from "../../repository";
 import type { IParadaRepository } from "../../paradasRepository";
@@ -47,7 +50,7 @@ import type {
   Parada,
 } from "../../../domain/types";
 import { jornadaDefault } from "../../../domain/tiempo";
-import { calcularProgreso } from "../../../domain/calculations";
+import { calcularProgreso, golpesProducidosDesdeLecturas } from "../../../domain/calculations";
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -356,8 +359,9 @@ describe("recoverPersistedState — recovery de fuentes (G1)", () => {
     const state = await recover(fakes);
 
     // Recovery expone la primera lectura persistida con valor y timestamp;
-    // la derivación vive en la composición downstream `mapOrdenRow(row, lecturas)`
-    // (probada en la suite del repositorio 10.4).
+    // la derivación vive en la composición downstream (`mapOrdenRow(row,
+    // lecturas)` / `componerOrdenConLecturas`, la misma `derivarDeltaGolpes`
+    // — probada en la suite del repositorio 10.4 y en G).
     expect(state.lecturas[0]).toEqual(createLectura(100, TS));
     expect(state.lecturas[0].timestamp).toBe(TS);
     expect(state.lecturas[0].valor).toBe(100);
@@ -422,7 +426,7 @@ describe("recoverPersistedState — recovery de fuentes (G1)", () => {
 
   // ── G. Derivación fuera de recovery ─────────────────────────────────────
 
-  it("G: recovery devuelve solo fuentes; deltaGolpes queda en 0 y progreso vive en el dominio", async () => {
+  it("G: recovery devuelve solo fuentes; la composición reconstruye deltaGolpes desde los valores absolutos", async () => {
     const orden = createOrden({ estado: "in_production" });
     const lecturas = [createLectura(100, TS), createLectura(106, TS2)];
     const fakes = createFakes({ orden, lecturas });
@@ -440,24 +444,38 @@ describe("recoverPersistedState — recovery de fuentes (G1)", () => {
       "paradas",
     ]);
 
-    // deltaGolpes: placeholder 0 del repositorio; recovery NO calcula 106-100=6.
+    // Fuente: las lecturas recuperadas conservan sus valores ABSOLUTOS; el
+    // campo deltaGolpes sigue siendo el placeholder 0 de la proyección de
+    // lectura (10.8) — recovery no deriva.
+    expect(state.lecturas.map((l) => l.valor)).toEqual([100, 106]);
     expect(state.lecturas[1].deltaGolpes).toBe(0);
-    expect(state.lecturas[1].valor).toBe(106);
 
-    // Recovery no persiste nada ni completa nada.
+    // G2: la composición 10.8 (App mount/loader) reconstruye deltaGolpes con
+    // las reglas del dominio: primera (base) 0, posterior mayor 106-100=6.
+    const compuesta = componerOrdenConLecturas(state.orden!, state.lecturas);
+    expect(compuesta.lecturas.map((l) => l.deltaGolpes)).toEqual([0, 6]);
+    expect(compuesta.lecturas.map((l) => l.valor)).toEqual([100, 106]);
+    expect(compuesta.iniciadaEn).toBe(TS);
+    expect(compuesta.contadorBase).toBe(100);
+
+    // La producción real se deriva de los deltas, NO del último valor absoluto.
+    expect(golpesProducidosDesdeLecturas(compuesta.lecturas)).toBe(6);
+    const progreso = calcularProgreso(6, state.orden!.unidadesSolicitadas);
+    expect(progreso.golpesProducidos).toBe(6);
+    expect(progreso.unidadesProducidas).toBe(18); // 6 golpes x 3 toallas
+
+    // La recomposición NO muta la persistencia ni la fuente recuperada.
+    expect(state.lecturas.map((l) => l.valor)).toEqual([100, 106]);
+    expect(state.lecturas[1].deltaGolpes).toBe(0); // el source sigue intacto
     expect(fakes.orderRepository.saveOrder).not.toHaveBeenCalled();
     expect(fakes.jornadaRepository.guardarJornada).not.toHaveBeenCalled();
     expect(fakes.lecturaRepository.completeLecture).not.toHaveBeenCalled();
     expect(fakes.lecturaRepository.reserveSequence).not.toHaveBeenCalled();
 
-    // La derivación es del dominio EXISTENTE (calculations.ts), que consume
-    // los sources devueltos por recovery:
-    const progreso = calcularProgreso(
-      state.lecturas[state.lecturas.length - 1].valor,
-      state.orden!.unidadesSolicitadas
+    // Secuencia determinista: componer dos veces da exactamente lo mismo.
+    expect(componerOrdenConLecturas(state.orden!, state.lecturas)).toEqual(
+      compuesta
     );
-    expect(progreso.golpesProducidos).toBe(106);
-    expect(progreso.unidadesProducidas).toBe(318); // 106 golpes x 3 toallas
   });
 
   // ── Integración ─────────────────────────────────────────────────────────

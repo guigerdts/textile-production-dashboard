@@ -357,6 +357,41 @@ unit is estimated ≈ 400–460 changed lines and **requires the cycle's pre-app
 (the same user directive that covered E2 and F2). G1's `Depends on` gains Phase 12B; the work-unit
 count grows from 14 to 15 and the task total from 60 to 63.
 
+### CORRECTION 11 — 14.8 exposed the 10.8 delta placeholder as a false acceptance; G2 fixes the root cause at the composition seam
+
+**Conflict.** 14.8 states the 2da projection with its >3% alert must be recomputed
+identically before and after a restart, but `componerOrdenConLecturas` fed the
+domain layer with the repository's read projection: every recovered lectura kept
+`deltaGolpes: 0` (the documented 10.8 placeholder, `getLecturasByOrden`).
+`proyeccionSegundaDeOrden` (UMBRAL_ALERTA_2DA = 0.03) computes production from
+`golpesProducidosDesdeLecturas` = Σ deltas — with all deltas 0, the recovered
+`[100, 150]` counter (50 real golpes × 3 toallas = 150 uds) never materialized
+production, so `estado = "alerta"` was **unreachable** after restart and the
+assertion could only pass while the derived dashboard also degraded to
+"Buena racha" — a false acceptance exactly at the point the task demands
+"recomputed identically". The previous G expectation that the delta lives
+"in the domain layer" was the wrong home for a recomputation over persisted
+sources: the domain's `registrarLectura` computes deltas *while registering*,
+it has no pure "recompute over a full series" function, and 14.9 forbids
+touching `src/domain/**`.
+
+**Resolution (user decision 2026-09-30, Option 2 — root cause, not documented
+divergence).** New pure store-layer helper `derivarDeltaGolpes` in
+`sqliteOrderRepository.ts` recomputes `deltaGolpes` from the absolute values
+with the domain's closed rules: first (base) = 0 (`iniciarProduccion`), greater
+= `valor - anterior`, equal = 0 (`sinIncremento`), smaller = **throw** the
+domain's own invariant `el contador no puede retroceder` (a corrupted source
+propagates; never invents production). `componerOrdenConLecturas` (recovery) and
+`mapOrdenRow(row, lecturas)` share the SAME helper, so the documented "misma
+derivación" claim stays true and the placeholder is consumed at composition,
+never propagated to the domain layer. `recoverPersistedState` still returns
+SOURCES (`state.lecturas` keeps the read placeholder — `startup.test.ts` and
+the 10.6 read contract unchanged). 14.8's test now pins the alert explicitly
+(`calidadAntes`/`calidadDespues` contain "Alerta"; `pct ≈ 5/150`). Test G
+asserts the composition contract; new `derivarDeltaGolpes` unit tests cover
+empty/single/monotonic/equal/retroceso/idempotence. No `src/domain/**` source
+file changed (14.9 guardrail holds: only `calidad.test.ts` +2 per CORRECTION 2).
+
 ---
 
 ## Verification strategy — what each layer can and cannot prove
@@ -787,7 +822,7 @@ construction**). **D2b** (the A1/A1b/A2 triple).
 `size:exception` or a further split decision before apply.**
 **Capability.** `operational-recovery-wiring`.
 
-- [ ] 14.1 Modify `src/App.tsx` — state and loaders. Seed `paradas`, `actividades`, `danos`,
+- [x] 14.1 Modify `src/App.tsx` — state and loaders. Seed `paradas`, `actividades`, `danos`,
   `mantenimientos`, `inspecciones` from `estadoInicial` **unconditionally** (D2h), and **add** three
   state values: `danoAbiertoDeMaquina`, `mantenimientoAbiertoDeMaquina`, `danosDeOrden`. Convert the
   mount loaders to the `cancelled`-flag async pattern already at `App.tsx:156-177` and `:187-197`,
@@ -801,9 +836,9 @@ construction**). **D2b** (the A1/A1b/A2 triple).
   precedence rule between two sources the specs already settled); dropping the loaders. **Verify:**
   14.6.
 
-- [ ] 14.2 Modify `src/App.tsx` — lift the three render-body reads. Replace `danoRepository.getDanoAbierto("M1")` (`:583`), `mantenimientoRepository.getMantenimientoAbierto("M1")` (`:605`) and `danoRepository.listarPorOrden(orden.id)` (`:626`) with the three state values. **Acceptance:** **no repository call remains in the render body**; the 2da integration reads `danosDeOrden` from state while `proyeccionSegundaDeOrden` still computes the projection, the >3% alert, the 5% target and `buena_racha` from that list; all derivation (`resumenTiempoTurno`, `paradaAbierta`, `duracionAcumulada`, `mantenimientoAbierto`, machine state) still happens in the render body **from state**; the `MAQUINA` literal `"M1"` stays as-is — D1 is about **columns**, not this. **Out of scope:** memoising a repository read in a `useMemo` (that is the rejected decision-11 second read path). **Verify:** 14.6.
+- [x] 14.2 Modify `src/App.tsx` — lift the three render-body reads. Replace `danoRepository.getDanoAbierto("M1")` (`:583`), `mantenimientoRepository.getMantenimientoAbierto("M1")` (`:605`) and `danoRepository.listarPorOrden(orden.id)` (`:626`) with the three state values. **Acceptance:** **no repository call remains in the render body**; the 2da integration reads `danosDeOrden` from state while `proyeccionSegundaDeOrden` still computes the projection, the >3% alert, the 5% target and `buena_racha` from that list; all derivation (`resumenTiempoTurno`, `paradaAbierta`, `duracionAcumulada`, `mantenimientoAbierto`, machine state) still happens in the render body **from state**; the `MAQUINA` literal `"M1"` stays as-is — D1 is about **columns**, not this. **Out of scope:** memoising a repository read in a `useMemo` (that is the rejected decision-11 second read path). **Verify:** 14.6.
 
-- [ ] 14.3 Modify `src/App.tsx` — add the **D2i re-seed helpers**: `recargarDanos()` (one
+- [x] 14.3 Modify `src/App.tsx` — add the **D2i re-seed helpers**: `recargarDanos()` (one
   `Promise.all` over `listarPorMaquina` + `getDanoAbierto` + `listarPorOrden`, setting all three
   state values), `recargarMantenimientos()`, and the single-domain `recargarParadas()`,
   `recargarActividades()`, `recargarInspecciones()`. **Acceptance:** every handler calls the relevant
@@ -814,7 +849,7 @@ construction**). **D2b** (the A1/A1b/A2 triple).
   reloading all five domains after every write (rejected in D2i: it couples unrelated domains and
   re-renders state the operario did not change). **Verify:** 14.6.
 
-- [ ] 14.4 Modify `src/App.tsx` — convert the **11 handlers** to `async … Promise<string[]>` using
+- [x] 14.4 Modify `src/App.tsx` — convert the **11 handlers** to `async … Promise<string[]>` using
   the D2g template verbatim: guard → pure synchronous domain call → `if (errores.length > 0) return
   errores` → `await repository.insertX / updateX` → `catch` returning
   `[error instanceof Error ? error.message : "<spanish domain-specific fallback>"]` → `await
@@ -824,7 +859,7 @@ construction**). **D2b** (the A1/A1b/A2 triple).
   with **no** distinguishing class, code or prefix. **Out of scope:** a `PersistenciaError` type
   (rejected in D2g — the sections render a `string[]` and nothing more). **Verify:** 14.6.
 
-- [ ] 14.5 Modify `src/App.tsx` — implement **Approach A** in `handleRegistrarDano` and
+- [x] 14.5 Modify `src/App.tsx` — implement **Approach A** in `handleRegistrarDano` and
   `handleRegistrarMantenimiento`. For `daño`: one `await paradaRepository.obtenerPorId(input.paradaId)`,
   then inject the **synchronous** closure `(id) => (id === vinculada?.id ? vinculada : paradas.find(p => p.id === id))`.
   For `mantenimiento`: identically with `danoRepository.obtenerPorId` and `el daño vinculado no
@@ -836,7 +871,7 @@ construction**). **D2b** (the A1/A1b/A2 triple).
   domain lookup async (puts I/O in the pure domain) and any memoized synchronous cache (a second
   read path that can go stale — effectively a second persistence strategy). **Verify:** 14.6 and 14.7.
 
-- [ ] 14.6 Modify the **6 UI files** that declare the callbacks, in place — no wrapper, no
+- [x] 14.6 Modify the **6 UI files** that declare the callbacks, in place — no wrapper, no
   adaptation layer (D2c). Declarations: `src/ui/ParadasSection.tsx:21,23`; `src/ui/ActividadesSection.tsx:25,27`;
   `src/ui/DanoSection.tsx:22,24`; `src/ui/MantenimientoSection.tsx:23,24`;
   `src/ui/InspeccionTelaSection.tsx:68,70,72` **and** `:85,86`; `src/ui/OrderInProduction.tsx:53,55`
@@ -856,7 +891,7 @@ construction**). **D2b** (the A1/A1b/A2 triple).
   `npm run test`; the failure mode if a declaration is missed is a **TypeScript error**, never
   silence.
 
-- [ ] 14.7 Modify `src/App.test.tsx` (2062 lines). **Acceptance — the file is NOT rewritten**;
+- [x] 14.7 Modify `src/App.test.tsx` (2062 lines). **Acceptance — the file is NOT rewritten**;
   affected tests gain `await act(...)` using the existing pattern at `App.test.tsx:48`; new coverage
   for (a) a persistence failure leaving the visible state untouched and returning a non-empty list,
   (b) Approach A yielding the domain's own `la parada vinculada no existe: <id>` /
@@ -865,7 +900,7 @@ construction**). **D2b** (the A1/A1b/A2 triple).
   relaxing existing assertions to make the async change pass (R4). **Verify:**
   `npx vitest run src/App.test.tsx`.
 
-- [ ] 14.8 Extend `src/__tests__/persistence-integration.test.ts` (341 lines) with **restart
+- [x] 14.8 Extend `src/__tests__/persistence-integration.test.ts` (341 lines) with **restart
   survival** plus the **A1/A1b/A2 triple**. Restart survival: record a `parada`, an `actividad`, a
   `daño`, an in-progress `mantenimiento` and an `inspección` through the real handlers over the
   SQLite adapters → construct **fresh** adapter instances over the same store → run recovery → assert
@@ -887,7 +922,7 @@ construction**). **D2b** (the A1/A1b/A2 triple).
   connection enforces the FK (R5). **Out of scope:** any FK-off configuration, any second storage
   truth. **Verify:** `npx vitest run src/__tests__/persistence-integration.test.ts`.
 
-- [ ] 14.9 Run the full guardrails and record the **non-blocking runtime step**. Guardrails:
+- [x] 14.9 Run the full guardrails and record the **non-blocking runtime step**. Guardrails:
   `npm run test` and `npx tsc --noEmit` in `.`; `cargo check` in `src-tauri`; and
   `git diff --stat -- src/domain/` shows **no source file** changed (only
   `src/domain/calidad.test.ts` with exactly 2 added lines, per CORRECTION 2). Non-blocking runtime

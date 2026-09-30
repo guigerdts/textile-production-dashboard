@@ -174,6 +174,7 @@ vi.mock("@tauri-apps/plugin-sql", () => {
 import type Database from "@tauri-apps/plugin-sql";
 import {
   SqliteOrderRepository,
+  derivarDeltaGolpes,
   mapOrdenRow,
   mapOrdenToSql,
 } from "../sqliteOrderRepository";
@@ -458,6 +459,14 @@ describe("SqliteOrderRepository — Ticket 10.4", () => {
     expect(orden.contadorBase).toBe(100); // lecturas[0].valor
     expect(orden.lecturas).toEqual(lecturas);
 
+    // G2 / CORRECTION 11: con la proyección RAW del repo (placeholder 0) la
+    // composición reconstruye los deltas en vez de propagar el placeholder.
+    const raw = [
+      { valor: 100, timestamp: TS, deltaGolpes: 0 },
+      { valor: 106, timestamp: "2026-09-11T08:00:00.000Z", deltaGolpes: 0 },
+    ];
+    expect(mapOrdenRow(row, raw).lecturas.map((l) => l.deltaGolpes)).toEqual([0, 6]);
+
     // Sin lecturas provistas (lectura directa): los campos quedan undefined.
     const sinLecturas = mapOrdenRow(row);
     expect(sinLecturas.iniciadaEn).toBeUndefined();
@@ -477,6 +486,54 @@ describe("SqliteOrderRepository — Ticket 10.4", () => {
     expect("creadaExternamenteEn" in orden).toBe(false);
     // Tampoco desde el lado SQL.
     expect("creada_externamente_en" in mapOrdenToSql(ORDEN)).toBe(false);
+  });
+
+  // ── derivarDeltaGolpes — recomputación de deltas (G2 / CORRECTION 11) ────
+
+  describe("derivarDeltaGolpes — deltas desde valores absolutos", () => {
+    it("vacío y una sola lectura: base con deltaGolpes 0", () => {
+      expect(derivarDeltaGolpes([])).toEqual([]);
+      expect(derivarDeltaGolpes([{ valor: 100, timestamp: TS, deltaGolpes: 0 }])).toEqual([
+        { valor: 100, timestamp: TS, deltaGolpes: 0 },
+      ]);
+    });
+
+    it("valores crecientes: delta = valor - anterior; primera base 0", () => {
+      const derivadas = derivarDeltaGolpes([
+        { valor: 100, timestamp: TS, deltaGolpes: 0 },
+        { valor: 106, timestamp: "2026-09-11T08:00:00.000Z", deltaGolpes: 0 },
+        { valor: 112, timestamp: "2026-09-11T09:00:00.000Z", deltaGolpes: 0 },
+      ]);
+      expect(derivadas.map((l) => l.deltaGolpes)).toEqual([0, 6, 6]);
+    });
+
+    it("valores iguales: deltaGolpes 0 (sinIncremento)", () => {
+      const derivadas = derivarDeltaGolpes([
+        { valor: 100, timestamp: TS, deltaGolpes: 0 },
+        { valor: 100, timestamp: "2026-09-11T08:00:00.000Z", deltaGolpes: 0 },
+      ]);
+      expect(derivadas.map((l) => l.deltaGolpes)).toEqual([0, 0]);
+    });
+
+    it("retroceso (fuente corrupta): PROPAGA la invariante, nunca inventa producción", () => {
+      expect(() =>
+        derivarDeltaGolpes([
+          { valor: 106, timestamp: TS, deltaGolpes: 0 },
+          { valor: 100, timestamp: "2026-09-11T08:00:00.000Z", deltaGolpes: 0 },
+        ])
+      ).toThrow("el contador no puede retroceder");
+    });
+
+    it("idempotente sobre lecturas ya derivadas y nunca muta la entrada", () => {
+      const originales = [
+        { valor: 100, timestamp: TS, deltaGolpes: 0 },
+        { valor: 106, timestamp: "2026-09-11T08:00:00.000Z", deltaGolpes: 6 },
+      ];
+      const unaVez = derivarDeltaGolpes(originales);
+      expect(unaVez).toEqual(originales);
+      expect(derivarDeltaGolpes(unaVez)).toEqual(unaVez);
+      expect(originales[1]!.deltaGolpes).toBe(6); // entrada intacta
+    });
   });
 
   // ── White-box: lecturas jamás escritas ──────────────────────────────────

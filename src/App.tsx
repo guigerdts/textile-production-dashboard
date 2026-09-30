@@ -3,10 +3,12 @@ import type {
   ActividadAbierta,
   ActividadPlanificada,
   Dano,
+  DanoAbierto,
   InspeccionTela,
   JornadaTurno,
   LecturaContador,
   Mantenimiento,
+  MantenimientoAbierto,
   Orden,
   Parada,
   ResumenTiempoTurno,
@@ -112,18 +114,40 @@ function App({
 }: AppProps) {
   // Semilla desde el estado recuperado (10.8): el loader de montaje vuelve a leer los
   // mismos repositorios (relectura idempotente, misma data) y no cambia el resultado.
+  // Phase 14.1 (D2h): las cinco listas operativas se siembran incondicionalmente desde
+  // `estadoInicial` — el primer paint muestra la data recuperada sin parpadeo y el
+  // loader de montaje la reemplaza por la relectura fresca del repositorio.
   const [orden, setOrden] = useState<Orden | undefined>(() =>
     estadoInicial?.orden
       ? componerOrdenConLecturas(estadoInicial.orden, estadoInicial.lecturas)
       : undefined,
   );
-  const [paradas, setParadas] = useState<Parada[]>([]);
-  const [actividades, setActividades] = useState<ActividadPlanificada[]>([]);
-  const [danos, setDanos] = useState<Dano[]>([]);
-  const [mantenimientos, setMantenimientos] = useState<Mantenimiento[]>([]);
-  const [inspecciones, setInspecciones] = useState<InspeccionTela[]>([]);
+  const [paradas, setParadas] = useState<Parada[]>(() => estadoInicial?.paradas ?? []);
+  const [actividades, setActividades] = useState<ActividadPlanificada[]>(
+    () => estadoInicial?.actividades ?? [],
+  );
+  const [danos, setDanos] = useState<Dano[]>(() => estadoInicial?.danos ?? []);
+  const [mantenimientos, setMantenimientos] = useState<Mantenimiento[]>(
+    () => estadoInicial?.mantenimientos ?? [],
+  );
+  const [inspecciones, setInspecciones] = useState<InspeccionTela[]>(
+    () => estadoInicial?.inspecciones ?? [],
+  );
   const [jornada, setJornada] = useState<JornadaTurno>(
     () => estadoInicial?.jornada ?? jornadaDefault(hoy),
+  );
+  // Phase 14.2: los tres valores que antes se derivaban del puerto en el render body
+  // viven ahora en estado. La semilla es coherente con los arrays de daños/mantenimientos
+  // recuperados; tras cada mutación los re-leen los loaders de montaje o `recargar*()`.
+  const [danoAbiertoDeMaquina, setDanoAbiertoDeMaquina] = useState<DanoAbierto | null>(
+    () => danoAbierto(estadoInicial?.danos ?? [], "M1"),
+  );
+  const [mantenimientoAbiertoDeMaquina, setMantenimientoAbiertoDeMaquina] =
+    useState<MantenimientoAbierto | null>(() =>
+      mantenimientoAbierto(estadoInicial?.mantenimientos ?? [], "M1"),
+    );
+  const [danosDeOrden, setDanosDeOrden] = useState<Dano[]>(() =>
+    (estadoInicial?.danos ?? []).filter((d) => d.ordenId === estadoInicial?.orden?.id),
   );
 
   // Referencia estable para los defaults: sin esto, los useEffect de paradas/actividades
@@ -213,22 +237,39 @@ function App({
   }, [jornadaRepository, hoy]);
 
   useEffect(() => {
+    // Phase 14.1: el loader de daños re-lee los tres valores (lista de la máquina,
+    // abierto de la máquina y daños de la orden current) — los mismos que siembra el
+    // seed, pero frescos del repositorio. `orden?.id` hace que cambiar de orden recargue.
     let cancelled = false;
     async function cargarDanos() {
-      const danosCargados = await danoRepository.listarPorMaquina("M1");
-      if (!cancelled) setDanos(danosCargados);
+      const [danosCargados, abierto, deOrden] = await Promise.all([
+        danoRepository.listarPorMaquina("M1"),
+        danoRepository.getDanoAbierto("M1"),
+        orden ? danoRepository.listarPorOrden(orden.id) : Promise.resolve([]),
+      ]);
+      if (cancelled) return;
+      setDanos(danosCargados);
+      setDanoAbiertoDeMaquina(abierto);
+      setDanosDeOrden(deOrden);
     }
     cargarDanos();
     return () => {
       cancelled = true;
     };
-  }, [danoRepository]);
+  }, [danoRepository, orden?.id]);
 
   useEffect(() => {
+    // Phase 14.1: lista y abierto de mantenimientos se re-leen juntos; el abierto
+    // vive en estado (14.2) y este loader es quien lo refresca al montar.
     let cancelled = false;
     async function cargarMantenimientos() {
-      const mantenimientosCargados = await mantenimientoRepository.listarPorMaquina("M1");
-      if (!cancelled) setMantenimientos(mantenimientosCargados);
+      const [deMaquina, abierto] = await Promise.all([
+        mantenimientoRepository.listarPorMaquina("M1"),
+        mantenimientoRepository.getMantenimientoAbierto("M1"),
+      ]);
+      if (cancelled) return;
+      setMantenimientos(deMaquina);
+      setMantenimientoAbiertoDeMaquina(abierto);
     }
     cargarMantenimientos();
     return () => {
@@ -252,6 +293,46 @@ function App({
       cancelled = true;
     };
   }, [inspeccionRepository, orden?.id]);
+
+  /**
+   * Phase 14.3 (D2i): un helper de re-siembra por dominio, la ÚNICA vía por la que los
+   * estados operativos cambian después de una mutación. Convertir el puerto en la
+   * fuente de verdad exige que "refrescar tras escribir" sea una sola forma para los
+   * cinco dominios; tres sitios ad-hoc son exactamente cómo un valor derivado (p. ej.
+   * el daño abierto) queda viejo mientras su lista ya está fresca.
+   */
+  async function recargarParadas(): Promise<void> {
+    setParadas(await paradaRepository.listarPorMaquina("M1"));
+  }
+
+  async function recargarActividades(): Promise<void> {
+    setActividades(await actividadRepository.listarPorMaquina("M1"));
+  }
+
+  async function recargarDanos(): Promise<void> {
+    const [danosDeMaquina, abierto, deOrden] = await Promise.all([
+      danoRepository.listarPorMaquina("M1"),
+      danoRepository.getDanoAbierto("M1"),
+      orden ? danoRepository.listarPorOrden(orden.id) : Promise.resolve([]),
+    ]);
+    setDanos(danosDeMaquina);
+    setDanoAbiertoDeMaquina(abierto);
+    setDanosDeOrden(deOrden);
+  }
+
+  async function recargarMantenimientos(): Promise<void> {
+    const [deMaquina, abierto] = await Promise.all([
+      mantenimientoRepository.listarPorMaquina("M1"),
+      mantenimientoRepository.getMantenimientoAbierto("M1"),
+    ]);
+    setMantenimientos(deMaquina);
+    setMantenimientoAbiertoDeMaquina(abierto);
+  }
+
+  async function recargarInspecciones(): Promise<void> {
+    const cargadas = orden ? await inspeccionRepository.listarPorOrden(orden.id) : [];
+    setInspecciones(cargadas);
+  }
 
   /**
    * Persistencia de una operación del operario que dejó una lectura real (10.8).
@@ -376,8 +457,12 @@ function App({
     if (!resultado.parada) {
       return ["no se pudo registrar la parada"];
     }
-    await paradaRepository.insertParada(resultado.parada);
-    setParadas(await paradaRepository.listarPorMaquina("M1"));
+    try {
+      await paradaRepository.insertParada(resultado.parada);
+    } catch (error) {
+      return [error instanceof Error ? error.message : "no se pudo guardar la parada"];
+    }
+    await recargarParadas();
     return [];
   }
 
@@ -397,8 +482,12 @@ function App({
     if (!resultado.parada) {
       return ["no se pudo cerrar la parada"];
     }
-    await paradaRepository.updateParada(resultado.parada);
-    setParadas(await paradaRepository.listarPorMaquina("M1"));
+    try {
+      await paradaRepository.updateParada(resultado.parada);
+    } catch (error) {
+      return [error instanceof Error ? error.message : "no se pudo actualizar la parada"];
+    }
+    await recargarParadas();
     return [];
   }
 
@@ -413,8 +502,12 @@ function App({
     if (!resultado.actividad) {
       return ["no se pudo registrar la actividad"];
     }
-    await actividadRepository.insertActividad(resultado.actividad);
-    setActividades(await actividadRepository.listarPorMaquina("M1"));
+    try {
+      await actividadRepository.insertActividad(resultado.actividad);
+    } catch (error) {
+      return [error instanceof Error ? error.message : "no se pudo guardar la actividad"];
+    }
+    await recargarActividades();
     return [];
   }
 
@@ -433,8 +526,12 @@ function App({
     if (!resultado.actividad) {
       return ["no se pudo cerrar la actividad"];
     }
-    await actividadRepository.updateActividad(resultado.actividad);
-    setActividades(await actividadRepository.listarPorMaquina("M1"));
+    try {
+      await actividadRepository.updateActividad(resultado.actividad);
+    } catch (error) {
+      return [error instanceof Error ? error.message : "no se pudo actualizar la actividad"];
+    }
+    await recargarActividades();
     return [];
   }
 
@@ -454,21 +551,31 @@ function App({
 
   /** Única vía registrar daño: dominio + repositorio; React no duplica reglas. */
   async function handleRegistrarDano(input: RegistrarDanoInput): Promise<string[]> {
-    // El dominio verifica la parada vinculada con el lookup inyectado;
-    // el repositorio solo persiste el daño ya validado.
-    // El lookup resuelve desde `paradas` (estado ya en memoria) y NO desde el
-    // puerto: `registrarDano` es síncrono y `obtenerPorId` es async, así que
-    // inyectar el puerto entregaría una Promise a una validación síncrona.
-    // M1 es la única máquina, por lo que el estado cubre todo el port.
-    const resultado = registrarDano(danos, input, (id) => paradas.find((p) => p.id === id));
+    // Phase 14.5 — Approach A (D2i): un solo `await` al puerto con la parada
+    // vinculada (los datos más frescos posibles), y el closure que recibe el
+    // dominio queda síncrono. `registrarDano` siempre recibe `Parada | undefined`,
+    // nunca una Promise. Un id colgado (la parada ya no existe) falla con el
+    // mensaje propio del dominio y el insert nunca se intenta: un error de FK no
+    // puede aparecer aquí. El fallback sobre `paradas` (estado) cubre la parada
+    // que el operario acaba de registrar y aún no se re-lee del puerto.
+    const vinculada = input.paradaId
+      ? await paradaRepository.obtenerPorId(input.paradaId)
+      : undefined;
+    const resultado = registrarDano(danos, input, (id) =>
+      id === vinculada?.id ? vinculada : paradas.find((p) => p.id === id),
+    );
     if (resultado.errores.length > 0) {
       return resultado.errores;
     }
     if (!resultado.dano) {
       return ["no se pudo registrar el daño"];
     }
-    await danoRepository.insertDano(resultado.dano);
-    setDanos(await danoRepository.listarPorMaquina("M1"));
+    try {
+      await danoRepository.insertDano(resultado.dano);
+    } catch (error) {
+      return [error instanceof Error ? error.message : "no se pudo guardar el daño"];
+    }
+    await recargarDanos();
     return [];
   }
 
@@ -485,8 +592,12 @@ function App({
     if (!resultado.dano) {
       return ["no se pudo cerrar el daño"];
     }
-    await danoRepository.updateDano(resultado.dano);
-    setDanos(await danoRepository.listarPorMaquina("M1"));
+    try {
+      await danoRepository.updateDano(resultado.dano);
+    } catch (error) {
+      return [error instanceof Error ? error.message : "no se pudo actualizar el daño"];
+    }
+    await recargarDanos();
     return [];
   }
 
@@ -502,8 +613,12 @@ function App({
     if (!resultado.inspeccion) {
       return ["no se pudo registrar la inspección"];
     }
-    await inspeccionRepository.insertInspeccion(resultado.inspeccion);
-    setInspecciones(await inspeccionRepository.listarPorOrden(orden.id));
+    try {
+      await inspeccionRepository.insertInspeccion(resultado.inspeccion);
+    } catch (error) {
+      return [error instanceof Error ? error.message : "no se pudo guardar la inspección"];
+    }
+    await recargarInspecciones();
     return [];
   }
 
@@ -527,8 +642,12 @@ function App({
     if (!resultado.inspeccion) {
       return ["no se pudo registrar la devolución"];
     }
-    await inspeccionRepository.updateInspeccion(resultado.inspeccion);
-    setInspecciones(await inspeccionRepository.listarPorOrden(orden.id));
+    try {
+      await inspeccionRepository.updateInspeccion(resultado.inspeccion);
+    } catch (error) {
+      return [error instanceof Error ? error.message : "no se pudo actualizar la inspección"];
+    }
+    await recargarInspecciones();
     return [];
   }
 
@@ -551,8 +670,12 @@ function App({
     if (!resultado.inspeccion) {
       return ["no se pudo registrar la autorización"];
     }
-    await inspeccionRepository.updateInspeccion(resultado.inspeccion);
-    setInspecciones(await inspeccionRepository.listarPorOrden(orden.id));
+    try {
+      await inspeccionRepository.updateInspeccion(resultado.inspeccion);
+    } catch (error) {
+      return [error instanceof Error ? error.message : "no se pudo actualizar la inspección"];
+    }
+    await recargarInspecciones();
     return [];
   }
 
@@ -560,14 +683,15 @@ function App({
   async function handleRegistrarMantenimiento(
     input: RegistrarMantenimientoInput,
   ): Promise<string[]> {
-    const resultado = registrarMantenimiento(
-      mantenimientos,
-      input,
-      // Approach A: el lookup del daño vinculado resuelve desde `danos` (estado ya
-      // en memoria), NO desde el puerto: `registrarMantenimiento` es síncrono y
-      // `obtenerPorId` es async, así que inyectar el puerto entregaría una Promise
-      // a una validación síncrona. M1 es la única máquina: el estado cubre el port.
-      (id) => danos.find((d) => d.id === id),
+    // Phase 14.5 — Approach A (D2i): idéntico a handleRegistrarDano; un solo await
+    // al puerto para el daño vinculado y closure síncrono. El dominio recibe
+    // `Dano | undefined`, nunca una Promise; un id colgado falla con el mensaje
+    // propio del dominio sin intentar el insert.
+    const vinculado = input.danoId
+      ? await danoRepository.obtenerPorId(input.danoId)
+      : undefined;
+    const resultado = registrarMantenimiento(mantenimientos, input, (id) =>
+      id === vinculado?.id ? vinculado : danos.find((d) => d.id === id),
     );
     if (resultado.errores.length > 0) {
       return resultado.errores;
@@ -575,8 +699,12 @@ function App({
     if (!resultado.mantenimiento) {
       return ["no se pudo registrar el mantenimiento"];
     }
-    await mantenimientoRepository.insertMantenimiento(resultado.mantenimiento);
-    setMantenimientos(await mantenimientoRepository.listarPorMaquina("M1"));
+    try {
+      await mantenimientoRepository.insertMantenimiento(resultado.mantenimiento);
+    } catch (error) {
+      return [error instanceof Error ? error.message : "no se pudo guardar el mantenimiento"];
+    }
+    await recargarMantenimientos();
     return [];
   }
 
@@ -596,8 +724,12 @@ function App({
     if (!resultado.mantenimiento) {
       return ["no se pudo cerrar el mantenimiento"];
     }
-    await mantenimientoRepository.updateMantenimiento(resultado.mantenimiento);
-    setMantenimientos(await mantenimientoRepository.listarPorMaquina("M1"));
+    try {
+      await mantenimientoRepository.updateMantenimiento(resultado.mantenimiento);
+    } catch (error) {
+      return [error instanceof Error ? error.message : "no se pudo actualizar el mantenimiento"];
+    }
+    await recargarMantenimientos();
     return [];
   }
 
@@ -641,7 +773,9 @@ function App({
     ordenId: orden?.id ?? null,
     operatorNameInicial: orden?.operatorName ?? "",
     danosDeMaquina: danos,
-    danoAbiertoDeMaquina: danoAbierto(danos, "M1"),
+    // Phase 14.2: el abierto de la máquina vive en estado (seed + loaders + recargar),
+    // no se deriva en el render body; el render nunca consulta el puerto.
+    danoAbiertoDeMaquina,
     paradasVinculables: paradas.filter((p) => p.ordenId === (orden?.id ?? null)),
     permitirRegistrar: orden?.estado !== "finished",
     onRegistrarDano: handleRegistrarDano,
@@ -663,10 +797,9 @@ function App({
     maquinaId: "M1" as const,
     operatorNameInicial: orden?.operatorName ?? "",
     mantenimientosDeMaquina: mantenimientos,
-    // Lectura derivada del estado, NO del puerto: `getMantenimientoAbierto` es
-    // async y el cuerpo del render es síncrono. Misma forma que `danoAbierto` en
-    // danosProps; `mantenimientos` llega del puerto ya resuelto.
-    mantenimientoAbiertoDeMaquina: mantenimientoAbierto(mantenimientos, "M1"),
+    // Phase 14.2: el abierto de la máquina vive en estado (seed + loaders + recargar);
+    // el render body no consulta el puerto. DashboardHome deriva el suyo del estado.
+    mantenimientoAbiertoDeMaquina,
     danosDeMaquina: danos,
     permitirRegistrar: orden?.estado !== "finished",
     onRegistrarMantenimiento: handleRegistrarMantenimiento,
@@ -686,9 +819,9 @@ function App({
    * (alerta viva); en finalizada queda fija con los datos de cierre (histórica).
    * No se pasa a EmptyDay ni OrderAvailable.
    */
-  const integracion2da = orden
-    ? proyeccionSegundaDeOrden(orden, danos.filter((d) => d.ordenId === orden.id))
-    : null;
+  // Phase 14.2: los daños de la orden viven en `danosDeOrden` (estado, re-leído tras
+  // cada mutación y al cambiar de orden); el render body no filtra el array completo.
+  const integracion2da = orden ? proyeccionSegundaDeOrden(orden, danosDeOrden) : null;
 
   // ---------------------------------------------------------------------------
   // Ticket 09 — DashboardHome: props derivadas de estado existente

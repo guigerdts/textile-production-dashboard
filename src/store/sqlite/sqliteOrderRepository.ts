@@ -114,12 +114,49 @@ export interface OrdenSqlValues {
 }
 
 /**
+ * Deriva `deltaGolpes` de una serie de lecturas ABSOLUTAS persistidas, con las
+ * reglas que el dominio ya cerró (calculations.ts):
+ * - primera lectura (base, `iniciarProduccion`): `deltaGolpes = 0`;
+ * - valor posterior mayor o igual: `deltaGolpes = valor - anterior`
+ *   (igual → 0, el `sinIncremento` de `registrarLectura`);
+ * - valor MENOR: viola la invariante "el contador no puede retroceder" (la
+ *   misma regla que `registrarLectura` rechaza): se PROPAGA un error — nunca
+ *   se inventa producción de una fuente corrupta.
+ *
+ * Es la derivación compartida por `mapOrdenRow(row, lecturas)` y
+ * `componerOrdenConLecturas` (recovery). El repositorio de lecturas persiste
+ * solo la proyección de lectura (`deltaGolpes: 0` placeholder, ticket 10.8);
+ * G2 corrige consumo en la composición down-stream en vez de dejar que el
+ * placeholder llegue al dominio. Pura: devuelve lecturas NUEVAS, no muta la
+ * entrada; idempotente sobre lecturas ya derivadas (deltas correctos se
+ * recomputan igual).
+ */
+export function derivarDeltaGolpes(
+  lecturas: LecturaContador[]
+): LecturaContador[] {
+  let anterior: number | undefined;
+  return lecturas.map((lectura) => {
+    if (anterior !== undefined && lectura.valor < anterior) {
+      throw new Error(
+        `el contador no puede retroceder: ${lectura.valor} tras ${anterior}`
+      );
+    }
+    const deltaGolpes = anterior === undefined ? 0 : lectura.valor - anterior;
+    anterior = lectura.valor;
+    return { ...lectura, deltaGolpes };
+  });
+}
+
+/**
  * SQL Row → TypeScript. Maps ONLY real columns (001 + 003). Returns a NEW
  * object; the row is never reused.
  *
  * - Derives iniciadaEn/contadorBase from lecturas[0] when the 10.8
  *   composition supplies persisted lecturas; without them both stay
  *   undefined (no columns exist for them).
+ * - Recomputes `deltaGolpes` from the absolute values via `derivarDeltaGolpes`
+ *   (G2 correction — the 10.8 placeholder is consumed here, never propagated
+ *   to the domain layer).
  * - NEVER reconstructs creadaExternamenteEn (D-1: out of persistence) and
  *   NEVER fabricates values for absent fields.
  * - unidades_producidas/unidades_primera/unidades_segunda: ignored (not part
@@ -145,7 +182,7 @@ export function mapOrdenRow(
     finalizadaEn: row.finalizada_en ?? undefined,
     operatorName: row.operario ?? undefined,
     contadorBase: lecturas[0]?.valor,
-    lecturas,
+    lecturas: derivarDeltaGolpes(lecturas),
     // creadaExternamenteEn intentionally absent (D-1: never fabricated).
   };
 }

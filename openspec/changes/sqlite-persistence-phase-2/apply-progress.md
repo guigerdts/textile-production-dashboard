@@ -1646,3 +1646,81 @@ deletions across 5 files (≈ 300 predicted) — within budget · **Date**: 2026
 | Routing coherence | next recommended: **G2 (Phase 14)** — `App.tsx` state + handlers + 6 UI files, ≈ 620 lines, **OVER BUDGET → requires `size:exception` or a split decision before apply** (delivery strategy cached: `exception-ok`; user accepted `size:exception` at session preflight) |
 | Tasks state | 13.1–13.6 `[x]`; cumulative **54/63** |
 | Delivery | commit as one atomic work unit; **no push** |
+
+---
+
+## Unit G2 (Phase 14) — scope extension: the 10.8 delta placeholder root cause (CORRECTION 11)
+
+**Status.** CLOSED — 63/63 tasks, verification green, gatekeeper PASS on 2026-09-30.
+14.1–14.7 landed earlier; this extension fixed 14.8's root cause and the 14.9 guardrails
+are recorded below.
+
+**The contradiction the extension fixes.** 14.8 demands the >3% 2da alert be recomputed
+identically before and after a restart. `componerOrdenConLecturas` (10.8) fed the domain
+layer with `getLecturasByOrden`'s read projection, where every persisted lectura carries
+`deltaGolpes: 0` (the documented 10.8 placeholder). `proyeccionSegundaDeOrden` computes
+production as Σ deltas, so the recovered `[100, 150]` counter — 50 real golpes × 3 =
+150 uds — could never materialize production after restart: `estado = "alerta"` was
+unreachable, and the assertion could only pass masked as a double "Buena racha".
+The old test-G expectation ("deltaGolpes stays in the repository's 0 placeholder; the
+domain derives") was a false acceptance — the domain derives deltas only *while
+registering* a lectura, it has no pure recompute-over-a-series function, and 14.9
+forbids touching `src/domain/**`.
+
+**User decision (2026-09-30, Option 2).** Fix the root cause at the composition seam —
+do NOT document the alert-after-restart as an accepted divergence.
+
+**The fix (G2 / CORRECTION 11).** New pure store-layer `derivarDeltaGolpes` in
+`src/store/sqlite/sqliteOrderRepository.ts`, encoding the domain's closed rules:
+first (base) = 0, greater = `valor - anterior`, equal = 0 (`sinIncremento`), smaller =
+**throw** `el contador no puede retroceder` (corrupt source propagates — never invents
+production). Shared by BOTH `mapOrdenRow(row, lecturas)` and recovery's
+`componerOrdenConLecturas`, so the documented "misma derivación" claim stays true and
+the placeholder is consumed at composition, never propagated to the domain layer.
+`recoverPersistedState` still returns sources (`state.lecturas` keeps the read
+projection; `startup.test.ts` and the 10.6 read contract unchanged).
+
+**Files touched by the extension.**
+- `src/store/sqlite/sqliteOrderRepository.ts` — new exported `derivarDeltaGolpes`; `mapOrdenRow` recomputes deltas.
+- `src/store/sqlite/recovery.ts` — import + `componerOrdenConLecturas` recomputes deltas; header/docs corrected (no more "recovery must not compute deltas" false claim).
+- `src/store/sqlite/__tests__/recovery.test.ts` — header + C2 comment corrected; test G asserts the composition contract (values preserved, deltas rebuilt `[0, 6]`, `golpesProducidosDesdeLecturas` = 6, `calcularProgreso` 18 uds, no writes, deterministic, non-mutating).
+- `src/store/sqlite/__tests__/sqliteOrderRepository.test.ts` — `derivarDeltaGolpes` unit tests (empty/single/monotonic/equal/retroceso/idempotence) + raw-input recompute case in the mapping test.
+- `src/store/sqlite/sqliteLecturaGolpeRepository.ts` + its suite — comments updated to "read projection placeholder (10.8 / G2 consumption)"; the read contract and its `deltaGolpes: 0` assertion are UNCHANGED.
+- `src/__tests__/persistence-integration.test.ts` — 14.8a now pins the alert explicitly: `calidadAntes`/`calidadDespues` contain "Alerta" (no silent "Buena racha"-vs-"Buena racha"), projection `pct ≈ 5/150`.
+- `openspec/changes/sqlite-persistence-phase-2/tasks.md` — **CORRECTION 11** block.
+
+**Guardrail.** No `src/domain/**` source file changed (14.9 guardrail GREEN — the current
+working-tree diff for `src/domain/` is EMPTY; the `calidad.test.ts` +2 from CORRECTION 2
+landed in an earlier commit). No assertions weakened; the old test-G absurdity (feeding
+the last absolute value 106 as golpes to `calcularProgreso`) is replaced by the real
+derivation path (`golpesProducidosDesdeLecturas` over reconstructed deltas).
+
+**14.9 verification cycle (inline — sub-agent dispatch broken, 3/3 transport failures
+this session), all green:**
+- One latent assertion fixed, not weakened: `persistence-integration.test.ts:738-740`
+  asserted the combined regex `/Uso autorizado por gerencia: Gerencia turno mañana/`,
+  which can never match — `InspeccionTelaSection.tsx:193` renders the label in a
+  `<strong>` node and the value in a sibling text node, and `getByText` matches direct
+  text nodes only. Replaced with the strong-node selector (`/Uso autorizado por
+  gerencia/`), the same pattern `App.test.tsx:1534` uses; intent (resolution survives
+  restart) preserved. This assertion was latent — unreachable while the projection
+  assert failed first.
+- `./node_modules/.bin/tsc --noEmit` → GREEN. Two latent 14.8b type errors surfaced
+  through tsc (vitest transpiles without typechecking) and fixed with
+  `as HTMLSelectElement` in the A2 `selectParada` block.
+- Store suites: recovery + sqliteOrderRepository + sqliteLecturaGolpeRepository →
+  **77 passed, 3 files**.
+- `persistence-integration.test.ts` → **6/6 EXIT=0** (14.8a alert pins +
+  `calidadDespues` both "Alerta"; A2 domain-guard messages clean).
+- App + materialize + fakeSqliteStore regressions (30s budget — the default 5s
+  timeout flakes on slow linux-arm64 jsdom mounts; the single 5s timeout flake
+  passes under 30s) → **141 passed, 3 files**.
+- Full suite `vitest run --testTimeout=30000` → **34 files, 936 tests, EXIT=0**.
+- `git diff --check` → clean. `git diff --stat -- src/domain/` → **empty**.
+- Gatekeeper (this orchestrator): contract conformance, artifact existence, no
+  hallucination, no drift (design → implementation → tests match CORRECTION 11),
+  routing coherent; PASS.
+
+**Delivery.** Single atomic commit (English, no push), exclusions as documented:
+`.atl/skill-registry.md`, `.gitignore`, `CONTEXT.md`, `README.md`, `.codegraph/`,
+`.scratch/estampado-dashboard/...`. Commit `b3b0d0b`.

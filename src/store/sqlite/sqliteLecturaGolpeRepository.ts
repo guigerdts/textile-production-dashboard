@@ -268,9 +268,11 @@ export class SqliteLecturaGolpeRepository implements ILecturaGolpeRepository {
    * ordering comes from sequence, not from row contiguity.
    *
    * NOTE on deltaGolpes: the repository persists the reading projection only;
-   * delta between consecutive lectures is derived by DOMAIN logic (see domain
-   * types). `deltaGolpes: 0` is the documented placeholder until the domain
-   * layer consumes these rows (ticket 10.8).
+   * delta between consecutive lectures is derived at COMPOSITION time by the
+   * shared `derivarDeltaGolpes` (`mapOrdenRow(row, lecturas)` /
+   * `componerOrdenConLecturas`, G2 correction — it consumes the 10.8
+   * placeholder here). This read's `deltaGolpes: 0` remains the documented
+   * source projection; the domain layer never receives a raw read.
    */
   async getLecturasByOrden(ordenId: string): Promise<LecturaContador[]> {
     const rows = await this.db.select<{ valor: number; timestamp: string }[]>(

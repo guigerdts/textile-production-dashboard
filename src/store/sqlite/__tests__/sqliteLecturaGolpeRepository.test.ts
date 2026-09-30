@@ -671,13 +671,13 @@ describe("SqliteLecturaGolpeRepository — Ticket 10.6", () => {
       expect(await repo.getLecturasByOrden("orden-empty")).toEqual([]);
     });
 
-    it("includes valor and timestamp of each persisted lecture (delta derived by domain)", async () => {
+    it("includes valor and timestamp of each persisted lecture (delta derived at composition)", async () => {
       seedPersistedRow("p1", "orden-1", 1, 3, TS);
       const repo = createRepo();
       const [lectura] = await repo.getLecturasByOrden("orden-1");
       expect(lectura.valor).toBe(3);
       expect(lectura.timestamp).toBe(TS);
-      expect(lectura.deltaGolpes).toBe(0); // documented placeholder (10.8 consumes)
+      expect(lectura.deltaGolpes).toBe(0); // read projection placeholder (10.8 / G2 consumption)
     });
 
     it("queries only persisted rows for the order, ordered by sequence", async () => {
