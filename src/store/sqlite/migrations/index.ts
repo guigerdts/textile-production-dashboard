@@ -68,7 +68,7 @@ export async function getTableNames(): Promise<string[]> {
 }
 
 /**
- * Verify that all expected Phase 1 tables exist.
+ * Verify that all expected tables exist (Phase 1 + Phase 2, see TABLES).
  * Returns an object with each table's existence status.
  */
 export async function verifySchema(): Promise<Record<string, boolean>> {
