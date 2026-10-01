@@ -9,6 +9,7 @@
  * El fixture no se modifica desde la UI; la app consulta por fecha y decide.
  */
 import type { Orden } from "../domain/types";
+import { fechaOperativaHoyLocal } from "./clock";
 
 /** Día con orden asignada (para probar el flujo normal). */
 export const FECHA_CON_ORDEN = "2026-09-11";
@@ -16,9 +17,15 @@ export const FECHA_CON_ORDEN = "2026-09-11";
 /** Día sin orden asignada (para probar el estado "día vacío"). */
 export const FECHA_SIN_ORDEN = "2026-09-12";
 
-/** Reloj por defecto de la app: hoy. La UI consulta esta fecha sin selector. */
+/**
+ * Reloj por defecto de la app: hoy. La UI consulta esta fecha sin selector.
+ *
+ * Calendarario LOCAL, no UTC (ver `store/clock.ts`). Se mantiene esta
+ * conversación con la app a través de esta función para que las fixtures de
+ * órdenes y de órdenes-asignadas compartan la misma definición de "hoy".
+ */
 export function fechaOperativaHoy(): string {
-  return new Date().toISOString().slice(0, 10);
+  return fechaOperativaHoyLocal();
 }
 
 function orden(
