@@ -332,6 +332,20 @@ async function arrancarMain(overrides: {
     getDatabase: vi.fn(() => dbFalso),
   }));
 
+  // La vista `App` NO es sujeto de esta suite: con `react-dom/client` simulado
+  // nada se renderiza, así que su implementación jamais se ejecuta — solo se
+  // compara su IDENTIDAD contra lo que main.tsx montó (`toBe` / `not.toBe`).
+  // Importarla de verdad costaba el módulo completo de `App` (medido: 3.8-6.1 s
+  // en frío, contra ~250 ms del resto de la suite) y reventaba el default de
+  // 5 s bajo contención, sin aportar una sola aserción de comportamiento.
+  // El centinela conserva la aserción exacta: main.tsx montó App y NO la
+  // pantalla de error. La construcción del elemento JSX sigue ocurriendo igual.
+  vi.doMock("../../../App", () => ({
+    default: function AppDelArranque() {
+      return null;
+    },
+  }));
+
   function claseFalsa(nombre: string, contrato: object) {
     return vi.fn(function (db: unknown) {
       bitacora.push(`construir:${nombre}`);
