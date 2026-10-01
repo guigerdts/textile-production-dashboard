@@ -33,6 +33,12 @@ pub fn run() {
             sql: include_str!("../migrations/004_operational_events.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 5,
+            description: "event_fecha_operativa",
+            sql: include_str!("../migrations/005_event_fecha_operativa.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()

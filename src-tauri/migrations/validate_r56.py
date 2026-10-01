@@ -2,7 +2,7 @@
 """
 R5/R6 real-runtime validation for the estampado SQLite migrations.
 
-Validates the actual migration SQL files (001-004, the same files tauri-plugin-sql
+Validates the actual migration SQL files (001-005, the same files tauri-plugin-sql
 registers as seabird Migration structs in src-tauri/src/lib.rs) against a REAL
 SQLite engine. The check that getForeignKeys() performs — PRAGMA foreign_keys on
 the live connection after applyPragmas — is exercised on the same engine the
@@ -11,9 +11,14 @@ in this environment (no webview/GTK, and the Rust toolchain host is
 aarch64-linux-android without liblog/libunwind, so sqlx binaries do not link).
 
 What IS validated (real engine, real files):
-  - migrations 001-004 apply cleanly in order on a fresh database
+  - migrations 001-005 apply cleanly in order on a fresh database
   - re-running the chain is a no-op (idempotent, IF NOT EXISTS)
-  - the real DDL creates exactly the 8 expected tables / 59 columns in 004
+  - the real DDL creates exactly the 8 expected tables / 63 columns across the
+    operational tables after 005 (59 in 004 + 4 fecha_operativa)
+  - CHANGE 1: 005 adds fecha_operativa NOT NULL without DEFAULT, and against a
+    POPULATED machine-event table it is REJECTED by the real engine
+    ("Cannot add a NOT NULL column with default value NULL") — the loud failure
+    that keeps an invented operative day from ever being persisted
   - declared foreign keys exist (PRAGMA foreign_key_list)
   - PRAGMA foreign_keys = ON is effective; a violation is REJECTED with
     SQLITE_CONSTRAINT_FOREIGNKEY (code 787), and a valid reference is accepted
@@ -22,7 +27,11 @@ What IS validated (real engine, real files):
 
 What is NOT validated (limitation, not a pass): the sqlx _sqlx_migrations tracking
 table / VersionMismatch gate and the live getForeignKeys() TS call through the
-Tauri webview. If any check fails the script exits non-zero — no invented PASS.
+Tauri webview. Also NOT equivalent to sqlx: this harness uses executescript() in
+autocommit, while sqlx applies each migration inside a transaction. The
+populated-table rejection below proves the real engine's constraint, not sqlx's
+transactional behaviour on partial failure. If any check fails the script exits
+non-zero — no invented PASS.
 
 Usage: python3 src-tauri/migrations/validate_r56.py   [env R56_DB=/path/to/db]
 """
@@ -45,13 +54,28 @@ MIGRATIONS = [
     (2, "unique_orden_sequence", "002_lectura_orden_sequence_unique.sql"),
     (3, "d1_orden_persistence", "003_d1_orden_persistence.sql"),
     (4, "operational_events", "004_operational_events.sql"),
+    (5, "event_fecha_operativa", "005_event_fecha_operativa.sql"),
 ]
 
 EXPECTED_TABLES = {
     "jornada", "orden", "lectura_golpe",
     "parada", "actividad_planificada", "dano", "inspeccion_tela", "mantenimiento",
 }
-EXPECTED_COLUMNS_004 = 59  # 9 + 8 + 14 + 18 + 10 (file header contract)
+# 004 file-header contract was 59 = 9 + 8 + 14 + 18 + 10. CHANGE 1 adds one
+# fecha_operativa to four of those tables (not inspeccion_tela): 10 + 9 + 15 + 18 + 11.
+EXPECTED_COLUMNS_AFTER_005 = 63
+TABLAS_OPERATIVAS = [
+    "parada", "actividad_planificada", "dano", "inspeccion_tela", "mantenimiento",
+]
+TABLAS_CON_FECHA_OPERATIVA = [
+    "parada", "actividad_planificada", "dano", "mantenimiento",
+]
+INDICES_FECHA_OPERATIVA = [
+    "idx_parada_maquina_fecha",
+    "idx_actividad_maquina_fecha",
+    "idx_dano_maquina_fecha",
+    "idx_mantenimiento_maquina_fecha",
+]
 
 
 def fail(msg: str) -> None:
@@ -74,7 +98,7 @@ def main() -> int:
     print(f"# R5/R6 real-runtime migration validation (SQLite {sqlite3.sqlite_version})")
     print(f"# DB: {DB_PATH}")
 
-    print("\n== 1. apply 001-004 in order on a fresh real database ==")
+    print("\n== 1. apply 001-005 in order on a fresh real database ==")
     all_sql: dict[int, str] = {}
     sha: dict[int, str] = {}
     for version, desc, fname in MIGRATIONS:
@@ -94,6 +118,9 @@ def main() -> int:
     # TABLE / CREATE INDEX IF NOT EXISTS in 001, 002, 004) are safe by construction.
     print("  ok CREATE TABLE / INDEX in 001, 002, 004 use IF NOT EXISTS (safe by construction)")
     print("  ok ALTER-only 003 is single-application (sqlx _sqlx_migrations gate cannot be exercised here)")
+    # 005 is also ALTER-only (four ADD COLUMN). Same rule: applied exactly once,
+    # tracked in _sqlx_migrations. Its CREATE INDEX statements are IF NOT EXISTS.
+    print("  ok ALTER-only 005 is single-application; its 4 CREATE INDEX use IF NOT EXISTS")
 
     print("\n== 3. real DDL: exactly the 8 expected tables ==")
     tables = {
@@ -106,19 +133,79 @@ def main() -> int:
         fail(f"tables mismatch: {sorted(tables)}")
     print(f"  ok {sorted(tables)}")
 
-    print("\n== 4. real DDL: 004 exposes 59 columns across its 5 tables ==")
+    print("\n== 4. real DDL: after 005 the operational tables expose 63 columns ==")
     total = 0
-    for table in ["parada", "actividad_planificada", "dano", "inspeccion_tela", "mantenimiento"]:
+    for table in TABLAS_OPERATIVAS:
         n = con.execute(f"SELECT count(*) FROM pragma_table_info('{table}')").fetchone()[0]
         total += n
-    if total != EXPECTED_COLUMNS_004:
-        fail(f"004 column total {total} != {EXPECTED_COLUMNS_004}")
-    print(f"  ok {total} columns total")
+    if total != EXPECTED_COLUMNS_AFTER_005:
+        fail(f"column total {total} != {EXPECTED_COLUMNS_AFTER_005}")
+    print(f"  ok {total} columns total across {TABLAS_OPERATIVAS}")
+
+    print("\n== 4b. CHANGE 1: fecha_operativa exists, NOT NULL, no DEFAULT, on 4 tables ==")
+    for table in TABLAS_OPERATIVAS:
+        cols = {r[1]: (r[2], r[3], r[4]) for r in con.execute(f"PRAGMA table_info('{table}')")}
+        if table in TABLAS_CON_FECHA_OPERATIVA:
+            if "fecha_operativa" not in cols:
+                fail(f"{table} has no fecha_operativa after 005")
+            tipo, notnull, default = cols["fecha_operativa"]
+            if tipo.upper() != "TEXT":
+                fail(f"{table}.fecha_operativa type {tipo!r} != TEXT")
+            if notnull != 1:
+                fail(f"{table}.fecha_operativa is not NOT NULL")
+            if default is not None:
+                fail(f"{table}.fecha_operativa has DEFAULT {default!r} — must be absent")
+            print(f"  ok {table}: TEXT NOT NULL, no DEFAULT")
+        else:
+            if "fecha_operativa" in cols:
+                fail(f"{table}.fecha_operativa exists but must NOT (it inherits its day from the orden)")
+            print(f"  ok {table}: untouched by 005 (day inherited from the orden)")
+
+    print("\n== 4c. CHANGE 1: the 4 day-scoped indexes exist on the real schema ==")
+    existing = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='index'")}
+    for name in INDICES_FECHA_OPERATIVA:
+        if name not in existing:
+            fail(f"index {name} missing after 005")
+    print(f"  ok {INDICES_FECHA_OPERATIVA}")
+
+    print("\n== 4d. CHANGE 1: 005 is REJECTED against a POPULATED machine-event table ==")
+    # Separate database, 001-004 only, with one real parada row. This is the case
+    # the design deliberately makes fail: there is no correct operative day to
+    # backfill, so the migration must refuse instead of guessing one.
+    pop_path = DB_PATH + ".populated"
+    if os.path.exists(pop_path):
+        os.remove(pop_path)
+    pop = sqlite3.connect(pop_path)
+    for version, _desc, fname in MIGRATIONS:
+        if version == 5:
+            continue
+        pop.executescript(all_sql[version])
+    pop.execute(
+        "INSERT INTO parada (id, machine_id, orden_id, operario, causa_id, campos_especificos,"
+        " observaciones, inicio, fin) VALUES ('pre-005','M1',NULL,'Op','falta_color','{}',NULL,"
+        "'2026-09-11T09:30:00Z',NULL)"
+    )
+    pop.commit()
+    try:
+        pop.executescript(all_sql[5])
+    except sqlite3.OperationalError as e:
+        print(f"  ok 005 rejected: {e}")
+        if "NOT NULL" not in str(e):
+            fail(f"unexpected 005 failure on a populated table: {e}")
+    else:
+        fail("005 was ACCEPTED on a populated parada — it invented an operative day")
+    # And it left nothing behind: the first ALTER failed, so no column was added.
+    cols_pop = [r[1] for r in pop.execute("PRAGMA table_info(parada)")]
+    if "fecha_operativa" in cols_pop:
+        fail("005 left fecha_operativa behind after failing")
+    print("  ok no partial column left behind (first ALTER failed before applying)")
+    pop.close()
+    os.remove(pop_path)
 
     print("\n== 5. declared foreign keys exist on the real schema ==")
     fk_counts = {
         table: len(con.execute(f"PRAGMA foreign_key_list('{table}')").fetchall())
-        for table in ["parada", "actividad_planificada", "dano", "inspeccion_tela", "mantenimiento"]
+        for table in TABLAS_OPERATIVAS
     }
     # 004 header: 5 foreign keys total (parada 1, dano 2, inspeccion 1, mantenimiento 1)
     if sum(fk_counts.values()) != 5:
@@ -133,8 +220,8 @@ def main() -> int:
 
     con.execute(
         "INSERT INTO parada (id, machine_id, orden_id, operario, causa_id, campos_especificos,"
-        " observaciones, inicio, fin) VALUES ('p1','M1',NULL,'Op','C1','{}',NULL,"
-        "'2026-09-30T07:00:00Z',NULL)"
+        " observaciones, inicio, fin, fecha_operativa) VALUES ('p1','M1',NULL,'Op','C1','{}',NULL,"
+        "'2026-09-30T07:00:00Z',NULL,'2026-09-30')"
     )
     print("  ok parada with NULL orden_id accepted (nullable FK honored)")
 
@@ -142,8 +229,8 @@ def main() -> int:
         con.execute(
             "INSERT INTO dano (id, machine_id, orden_id, operario, tipo, componente, inicio, fin,"
             " solucion_aplicada, causo_parada, parada_id, posible_segunda, unidades_sospechadas,"
-            " observaciones) VALUES ('d_bad','M1',NULL,'Op','operacional','carro 3',"
-            "'2026-09-30T07:05:00Z',NULL,NULL,1,'no-existe',0,NULL,NULL)"
+            " observaciones, fecha_operativa) VALUES ('d_bad','M1',NULL,'Op','operacional','carro 3',"
+            "'2026-09-30T07:05:00Z',NULL,NULL,1,'no-existe',0,NULL,NULL,'2026-09-30')"
         )
         fail("dano with nonexistent parada_id was ACCEPTED — FK not enforced")
     except sqlite3.IntegrityError as e:
@@ -154,14 +241,14 @@ def main() -> int:
 
     con.execute(
         "INSERT INTO parada (id, machine_id, orden_id, operario, causa_id, campos_especificos,"
-        " observaciones, inicio, fin) VALUES ('p2','M1',NULL,'Op','C2','{}',NULL,"
-        "'2026-09-30T08:00:00Z',NULL)"
+        " observaciones, inicio, fin, fecha_operativa) VALUES ('p2','M1',NULL,'Op','C2','{}',NULL,"
+        "'2026-09-30T08:00:00Z',NULL,'2026-09-30')"
     )
     con.execute(
         "INSERT INTO dano (id, machine_id, orden_id, operario, tipo, componente, inicio, fin,"
         " solucion_aplicada, causo_parada, parada_id, posible_segunda, unidades_sospechadas,"
-        " observaciones) VALUES ('d1','M1',NULL,'Op','mecanico','carro 5','2026-09-30T08:05:00Z',NULL,"
-        "'cambio pieza',1,'p2',1,12,NULL)"
+        " observaciones, fecha_operativa) VALUES ('d1','M1',NULL,'Op','mecanico','carro 5','2026-09-30T08:05:00Z',NULL,"
+        "'cambio pieza',1,'p2',1,12,NULL,'2026-09-30')"
     )
     print("  ok dano referencing an existing parada accepted (FK chain dano->parada works)")
 
