@@ -69,11 +69,21 @@ function expectTexto(texto: string | RegExp) {
   expect(screen.getAllByText(texto).length).toBeGreaterThan(0);
 }
 
+/**
+ * Cada test de este archivo monta la App real en jsdom y, en varios casos, la opera
+ * con `userEvent` (escritura carácter a carácter). Ese trabajo es CPU puro —aquí
+ * no entra SQLite— y bajo la suite en paralelo compite por CPU con los demás
+ * archivos: en máquinas lentas puede superar el `testTimeout` por defecto de 5 s
+ * sin que haya un fallo real. Por eso los tests de UI llevan un límite explícito
+ * y cómodo, igual que en `persistence-integration.test.ts`.
+ */
+const UI_TIMEOUT = 30_000;
+
 describe("App — ciclo 1: shell, día vacío y orden disponible", () => {
   it("muestra la fecha operativa actual", async () => {
     await renderApp(FECHA_CON_ORDEN);
     expectTexto(`Fecha operativa: ${FECHA_CON_ORDEN}`);
-  });
+  }, UI_TIMEOUT);
 
   it("día vacío: sin orden para la fecha no hay acciones de orden, sí hay actividades planificadas", async () => {
     await renderApp(FECHA_SIN_ORDEN);
@@ -83,7 +93,7 @@ describe("App — ciclo 1: shell, día vacío y orden disponible", () => {
     expect(screen.queryByLabelText(/fecha/i)).toBeNull();
     // las actividades planificadas sí están disponibles en día vacío
     expect(screen.getByTestId("actividades")).toBeTruthy();
-  });
+  }, UI_TIMEOUT);
 
   it("orden disponible: OP-101 (sin segunda) muestra todos los datos, objetivo = solicitadas", async () => {
     await renderApp(FECHA_CON_ORDEN);
@@ -96,7 +106,7 @@ describe("App — ciclo 1: shell, día vacío y orden disponible", () => {
     expectTexto(/No aplica/i);
     expectTexto("800 golpes");
     expectTexto("Disponible");
-  });
+  }, UI_TIMEOUT);
 
   it("orden disponible: OP-102 (con segunda al 5%) muestra porcentaje y objetivo proyectado", async () => {
     await renderApp("2026-09-15");
@@ -109,7 +119,7 @@ describe("App — ciclo 1: shell, día vacío y orden disponible", () => {
     expectTexto("5.0%");
     expectTexto("3.780");
     expectTexto("1.260 golpes");
-  });
+  }, UI_TIMEOUT);
 });
 
 describe("App — ciclo 2: iniciar producción", () => {
@@ -131,7 +141,7 @@ describe("App — ciclo 2: iniciar producción", () => {
     expectTexto("Laura");
     expectTexto("100");
     expectTexto("0 golpes / 0 unidades");
-  });
+  }, UI_TIMEOUT);
 
   it("inicio exitoso: registra los datos correctamente en el repositorio", async () => {
     const repo = new InMemoryOrderRepository();
@@ -143,7 +153,7 @@ describe("App — ciclo 2: iniciar producción", () => {
     expect(typeof guardada.iniciadaEn).toBe("string");
     expect(guardada.lecturas).toHaveLength(1);
     expect(guardada.lecturas[0].deltaGolpes).toBe(0);
-  });
+  }, UI_TIMEOUT);
 
   it("operador vacío: no inicia y muestra el error del dominio", async () => {
     const repo = new InMemoryOrderRepository();
@@ -151,14 +161,14 @@ describe("App — ciclo 2: iniciar producción", () => {
     expect(screen.getByRole("alert")).toBeTruthy();
     expectTexto("operatorName es obligatorio");
     expect((await repo.getOrderByFechaOperativa(FECHA_CON_ORDEN))!.estado).toBe("available");
-  });
+  }, UI_TIMEOUT);
 
   it("lectura negativa: no inicia y muestra el error del dominio", async () => {
     const repo = new InMemoryOrderRepository();
     await iniciar(repo, { lectura: "-1" });
     expect(screen.getByRole("alert")).toBeTruthy();
     expect((await repo.getOrderByFechaOperativa(FECHA_CON_ORDEN))!.estado).toBe("available");
-  });
+  }, UI_TIMEOUT);
 
   it("orden ya iniciada: no muestra el formulario ni el botón", async () => {
     const repo = new InMemoryOrderRepository();
@@ -171,7 +181,7 @@ describe("App — ciclo 2: iniciar producción", () => {
     expectTexto("En producción");
     expectTexto("Ana");
     expect(screen.queryByRole("button", { name: /Iniciar producción/i })).toBeNull();
-  });
+  }, UI_TIMEOUT);
 
   it("orden finalizada: muestra la vista finalizada sin botones de acción", async () => {
     const repo = new InMemoryOrderRepository();
@@ -187,7 +197,7 @@ describe("App — ciclo 2: iniciar producción", () => {
     expect(screen.queryByRole("button", { name: /Iniciar producción/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /Registrar lectura/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /Finalizar producción/i })).toBeNull();
-  });
+  }, UI_TIMEOUT);
 });
 
 describe("App — ciclo 3: registrar lecturas posteriores", () => {
@@ -217,7 +227,7 @@ describe("App — ciclo 3: registrar lecturas posteriores", () => {
     const guardada = (await repo.getOrderByFechaOperativa(FECHA_CON_ORDEN))!;
     expect(guardada.lecturas).toHaveLength(2);
     expect(guardada.lecturas[1]).toMatchObject({ valor: 106, deltaGolpes: 6 });
-  });
+  }, UI_TIMEOUT);
 
   it("lectura igual: delta 0, no suma producción y avisa sin incremento", async () => {
     const repo = new InMemoryOrderRepository();
@@ -229,7 +239,7 @@ describe("App — ciclo 3: registrar lecturas posteriores", () => {
     expect(guardada.lecturas[1]).toEqual(
       expect.objectContaining({ valor: 100, deltaGolpes: 0 }),
     );
-  });
+  }, UI_TIMEOUT);
 
   it("lectura menor: rechaza con error del dominio y no muta la producción", async () => {
     const repo = new InMemoryOrderRepository();
@@ -240,7 +250,7 @@ describe("App — ciclo 3: registrar lecturas posteriores", () => {
     const guardada = (await repo.getOrderByFechaOperativa(FECHA_CON_ORDEN))!;
     expect(guardada.lecturas).toHaveLength(1);
     expect(guardada.estado).toBe("in_production");
-  });
+  }, UI_TIMEOUT);
 
   it("orden finalizada: no muestra el formulario de lectura", async () => {
     const repo = new InMemoryOrderRepository();
@@ -254,14 +264,14 @@ describe("App — ciclo 3: registrar lecturas posteriores", () => {
     await mountApp(<App repository={repo} hoy={FECHA_CON_ORDEN} />);
     expect(screen.queryByRole("button", { name: /Registrar lectura/i })).toBeNull();
     expect(screen.queryByRole("spinbutton", { name: /nueva lectura/i })).toBeNull();
-  });
+  }, UI_TIMEOUT);
 
   it("orden disponible: no muestra el formulario de lectura", async () => {
     await renderApp(FECHA_CON_ORDEN);
     expect(screen.getByRole("button", { name: /Iniciar producción/i })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Registrar lectura/i })).toBeNull();
     expect(screen.queryByRole("spinbutton", { name: /nueva lectura/i })).toBeNull();
-  });
+  }, UI_TIMEOUT);
 });
 
 describe("App — ticket 02: paradas / incidencias (UI)", () => {
@@ -305,7 +315,7 @@ describe("App — ticket 02: paradas / incidencias (UI)", () => {
     const activa = screen.getByTestId("parada-activa");
     expect(activa.textContent).toContain("Falta de color / tinta");
     expect(screen.getByRole("button", { name: /Cerrar parada/i })).toBeTruthy();
-  });
+  }, UI_TIMEOUT);
 
   it("muestra la duración acumulada de la parada abierta y guarda el operario", async () => {
     // Congelamos el reloj ANTES del montaje: la UI computa la duración
@@ -341,13 +351,13 @@ describe("App — ticket 02: paradas / incidencias (UI)", () => {
     expect(activa.textContent).toContain("30 min");
     // El registro lleva el operario de la orden (CRITICAL: parada con operario).
     expect((await repoParadas.getParadaAbierta("M1", iniciada.id))?.operatorName).toBe("Laura");
-  });
+  }, UI_TIMEOUT);
 
   it("registra una parada con carro para rotura de cuadro", async () => {
     const { user } = await iniciarOP101();
     await registrarParadaCausa(user, "Rotura o deterioro del cuadro", { carro: "3" });
     expect(screen.getByTestId("parada-activa").textContent).toContain("Rotura o deterioro del cuadro");
-  });
+  }, UI_TIMEOUT);
 
   it("muestra campos dinámicos solo para la causa elegida", async () => {
     const { user } = await iniciarOP101();
@@ -360,7 +370,7 @@ describe("App — ticket 02: paradas / incidencias (UI)", () => {
     // label exacto del campo dinámico de la causa (no "Componente afectado" de daños)
     expect(screen.getByLabelText("Componente")).toBeTruthy();
     expect(screen.queryByLabelText(/Color/i)).toBeNull();
-  });
+  }, UI_TIMEOUT);
 
   it("causa «otro» exige observación y muestra el error del dominio", async () => {
     const { user } = await iniciarOP101();
@@ -368,7 +378,7 @@ describe("App — ticket 02: paradas / incidencias (UI)", () => {
     expect(screen.getByRole("alert")).toBeTruthy();
     expectTexto(/si la causa es "Otro"/);
     expect(screen.queryByTestId("parada-activa")).toBeNull();
-  });
+  }, UI_TIMEOUT);
 
   it("cierra la parada activa y habilita nuevamente lecturas y finalización", async () => {
     const { user } = await iniciarOP101();
@@ -380,7 +390,7 @@ describe("App — ticket 02: paradas / incidencias (UI)", () => {
     expect(screen.queryByTestId("parada-activa")).toBeNull();
     expect(screen.getByRole("button", { name: /Registrar lectura/i }).hasAttribute("disabled")).toBe(false);
     expect(screen.getByRole("button", { name: /Finalizar producción/i }).hasAttribute("disabled")).toBe(false);
-  });
+  }, UI_TIMEOUT);
 
   it("muestra el historial de paradas cerradas", async () => {
     const { user } = await iniciarOP101();
@@ -388,14 +398,14 @@ describe("App — ticket 02: paradas / incidencias (UI)", () => {
     await user.click(screen.getByRole("button", { name: /Cerrar parada/i }));
     expectTexto("Historial de paradas");
     expectTexto(/Falta de color \/ tinta/);
-  });
+  }, UI_TIMEOUT);
 
   it("una parada abierta de la orden bloquea registrar lecturas", async () => {
     const { user } = await iniciarOP101();
     await registrarParadaCausa(user, "Falta de color / tinta", { Color: "Rojo" });
     expect(screen.getByRole("spinbutton", { name: /nueva lectura/i }).hasAttribute("disabled")).toBe(true);
     expect(screen.getByRole("button", { name: /Registrar lectura/i }).hasAttribute("disabled")).toBe(true);
-  });
+  }, UI_TIMEOUT);
 
   it("una parada abierta de la orden bloquea finalizar (dominio + UI)", async () => {
     const { user, repo, repoParadas } = await iniciarOP101();
@@ -409,7 +419,7 @@ describe("App — ticket 02: paradas / incidencias (UI)", () => {
     expect(abierta).not.toBeNull();
     expect(validarFinalizacionConParadas([abierta!], ordenId).length).toBeGreaterThan(0);
     expect(validarLecturaConParadas([abierta!], ordenId).length).toBeGreaterThan(0);
-  });
+  }, UI_TIMEOUT);
 
   it("una parada SIN orden no bloquea lecturas ni finalización", async () => {
     const paradaSinOrden: ParadaAbierta = {
@@ -434,7 +444,7 @@ describe("App — ticket 02: paradas / incidencias (UI)", () => {
     // finalización habilitada
     await user.click(screen.getByRole("button", { name: /Finalizar producción/i }));
     expectTexto("Finalizada");
-  });
+  }, UI_TIMEOUT);
 });
 
 describe("App — ciclo 4: finalización de orden", () => {
@@ -455,7 +465,7 @@ describe("App — ciclo 4: finalización de orden", () => {
     expectTexto("0 golpes / 0 unidades");
     expect(screen.queryByRole("button", { name: /Registrar lectura/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /Finalizar producción/i })).toBeNull();
-  });
+  }, UI_TIMEOUT);
 
   it("finalizar después de producir: muestra producción real", async () => {
     const { user } = await iniciarParaFinalizar();
@@ -465,7 +475,7 @@ describe("App — ciclo 4: finalización de orden", () => {
     expectTexto("Finalizada");
     expectTexto("6 golpes / 18 unidades");
     expect(screen.queryByRole("button", { name: /Registrar lectura/i })).toBeNull();
-  });
+  }, UI_TIMEOUT);
 
   it("registrar finalizadaEn en el repositorio", async () => {
     const { repo } = await iniciarParaFinalizar();
@@ -477,7 +487,7 @@ describe("App — ciclo 4: finalización de orden", () => {
     expect(guardada.estado).toBe("finished");
     expect(typeof guardada.finalizadaEn).toBe("string");
     expect(guardada.finalizadaEn!.length).toBeGreaterThan(0);
-  });
+  }, UI_TIMEOUT);
 
   it("transición in_production → finished: botones desaparecen y vista finalizada es inmutable", async () => {
     const { user } = await iniciarParaFinalizar();
@@ -489,7 +499,7 @@ describe("App — ciclo 4: finalización de orden", () => {
     expect(screen.queryByRole("button", { name: /Finalizar producción/i })).toBeNull();
     expect(screen.queryByRole("spinbutton", { name: /nueva lectura/i })).toBeNull();
     expectTexto("10 golpes / 30 unidades");
-  });
+  }, UI_TIMEOUT);
 
   it("resumen de lecturas visible en la vista finalizada", async () => {
     const { user } = await iniciarParaFinalizar();
@@ -502,7 +512,7 @@ describe("App — ciclo 4: finalización de orden", () => {
     // el resumen usa formato compuesto: "100 (base) — delta 0" y "106 — delta 6"
     expectTexto(/100 \(base\).*delta 0/);
     expectTexto(/106.*delta 6/);
-  });
+  }, UI_TIMEOUT);
 });
 
 describe("App — ticket 03: actividades planificadas (UI)", () => {
@@ -547,7 +557,7 @@ describe("App — ticket 03: actividades planificadas (UI)", () => {
     expect(activa.textContent).toContain("Limpieza");
     expect(activa.textContent).toMatch(/desde las/);
     expect((await repoActividades.getActividadAbierta("M1", "limpieza"))?.operatorName).toBe("Laura");
-  });
+  }, UI_TIMEOUT);
 
   it("registra un cambio de diseño en orden disponible sin bloquear el inicio", async () => {
     const user = userEvent.setup();
@@ -564,7 +574,7 @@ describe("App — ticket 03: actividades planificadas (UI)", () => {
     expect((await repoActividades.getActividadAbierta("M1", "cambio_diseno"))?.operatorName).toBe(
       "Carlos Gómez",
     );
-  });
+  }, UI_TIMEOUT);
 
   it(
     "registra una actividad en producción: no bloquea lecturas ni finalización",
@@ -625,7 +635,7 @@ describe("App — ticket 03: actividades planificadas (UI)", () => {
     // sin acciones de orden en finalizada (solo las de actividades)
     expect(screen.queryByRole("button", { name: /Registrar lectura/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /Finalizar producción/i })).toBeNull();
-  });
+  }, UI_TIMEOUT);
 
   it("«Qué se limpió» aparece solo para limpieza, y cambiar de tipo limpia el valor", async () => {
     const user = userEvent.setup();
@@ -641,7 +651,7 @@ describe("App — ticket 03: actividades planificadas (UI)", () => {
     // al cambiar de tipo el campo desaparece
     await seleccionarTipoActividad(user, "Cambio de diseño");
     expect(screen.queryByLabelText(/qué se limpió/i)).toBeNull();
-  });
+  }, UI_TIMEOUT);
 
   it("limpieza y cambio de diseño pueden estar abiertos simultáneamente", async () => {
     const user = userEvent.setup();
@@ -661,7 +671,7 @@ describe("App — ticket 03: actividades planificadas (UI)", () => {
     expect(screen.getAllByRole("button", { name: /Cerrar actividad/i })).toHaveLength(2);
     expect(await repoActividades.getActividadAbierta("M1", "limpieza")).not.toBeNull();
     expect(await repoActividades.getActividadAbierta("M1", "cambio_diseno")).not.toBeNull();
-  });
+  }, UI_TIMEOUT);
 
   it("cierra una actividad abierta y pasa al historial", async () => {
     const user = userEvent.setup();
@@ -680,7 +690,7 @@ describe("App — ticket 03: actividades planificadas (UI)", () => {
     expect(await repoActividades.getActividadAbierta("M1", "limpieza")).toBeNull();
     expectTexto("Historial de actividades");
     expectTexto(/Limpieza/);
-  });
+  }, UI_TIMEOUT);
 
   it("el historial muestra las actividades cerradas preexistentes de la máquina", async () => {
     const repoActividades = new InMemoryActividadPlanificadaRepository([
@@ -693,7 +703,7 @@ describe("App — ticket 03: actividades planificadas (UI)", () => {
     expectTexto(/Limpieza/);
     expectTexto(/Cambio de diseño/);
     expectTexto(/mesa de estampado/);
-  });
+  }, UI_TIMEOUT);
 
   it("el martes sugiere «Limpieza estándar (7:00–8:00)» editable, sin restringir el registro", async () => {
     const user = userEvent.setup();
@@ -712,7 +722,7 @@ describe("App — ticket 03: actividades planificadas (UI)", () => {
 
     const abierta = await repoActividades.getActividadAbierta("M1", "limpieza");
     expect(abierta?.queSeLimpio).toBe("Limpieza estándar (7:00–8:00)");
-  });
+  }, UI_TIMEOUT);
 
   it("registrar limpieza en día que no es martes funciona sin sugerencia (no restrictivo)", async () => {
     const user = userEvent.setup();
@@ -731,7 +741,7 @@ describe("App — ticket 03: actividades planificadas (UI)", () => {
     expect((await repoActividades.getActividadAbierta("M1", "limpieza"))?.queSeLimpio).toBe(
       "limpieza programada fuera de martes",
     );
-  });
+  }, UI_TIMEOUT);
 
   it("una actividad abierta de la máquina no bloquea finalizar la orden", async () => {
     const repoActividades = new InMemoryActividadPlanificadaRepository([A3_LIMPIEZA_ABIERTA]);
@@ -746,7 +756,7 @@ describe("App — ticket 03: actividades planificadas (UI)", () => {
     expectTexto("Finalizada");
     // la actividad sigue abierta al finalizar la orden (no se cierra sola ni bloquea)
     expect((await repoActividades.getActividadAbierta("M1", "limpieza"))?.id).toBe(A3_LIMPIEZA_ABIERTA.id);
-  });
+  }, UI_TIMEOUT);
 
   it("dentro del banner de actividad activa: cerrar, y errores de cierre se muestran ahí", async () => {
     const user = userEvent.setup();
@@ -763,7 +773,7 @@ describe("App — ticket 03: actividades planificadas (UI)", () => {
     const botonCerrar = within(banner).getByRole("button", { name: /Cerrar actividad/i });
     await user.click(botonCerrar);
     expect(screen.queryByTestId("actividad-abierta-limpieza")).toBeNull();
-  });
+  }, UI_TIMEOUT);
 });
 
 describe("App — ticket 04: resumen del turno (UI)", () => {
@@ -811,7 +821,7 @@ describe("App — ticket 04: resumen del turno (UI)", () => {
     // el productivo es derivado: NO hay entrada manual de productivo
     expect(within(resumen).queryByRole("spinbutton", { name: /productivo/i })).toBeNull();
     expect(screen.queryByLabelText(/productivo/i)).toBeNull();
-  });
+  }, UI_TIMEOUT);
 
   it("orden disponible: el resumen del turno se muestra junto a la orden", async () => {
     await renderAppConTiempo(FECHA_CON_ORDEN);
@@ -819,7 +829,7 @@ describe("App — ticket 04: resumen del turno (UI)", () => {
     expectTexto("Resumen del turno");
     expect(screen.getByTestId("resumen-tiempo")).toBeTruthy();
     expectBuckets("10 h", "0 min", "0 min", "10 h");
-  });
+  }, UI_TIMEOUT);
 
   it("orden en producción: el resumen del turno se muestra tras iniciar", async () => {
     const user = userEvent.setup();
@@ -831,7 +841,7 @@ describe("App — ticket 04: resumen del turno (UI)", () => {
 
     expectTexto("En producción");
     expect(screen.getByTestId("resumen-tiempo")).toBeTruthy();
-  });
+  }, UI_TIMEOUT);
 
   it("orden finalizada: el resumen del turno se muestra sin campos de orden", async () => {
     const user = userEvent.setup();
@@ -845,7 +855,7 @@ describe("App — ticket 04: resumen del turno (UI)", () => {
     expectTexto("Finalizada");
     expect(screen.getByTestId("resumen-tiempo")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Registrar lectura/i })).toBeNull();
-  });
+  }, UI_TIMEOUT);
 
   it("buckets con una actividad (1 h) y una parada (15 min) de la máquina", async () => {
     const paradaRepository = new InMemoryParadaRepository([P1]); // 09:30–09:45
@@ -857,7 +867,7 @@ describe("App — ticket 04: resumen del turno (UI)", () => {
     // jornada 07:00–17:00 = 10 h; planificado = 1 h; incidencias = 15 min;
     // sin solape → productivo = 10h − (1h + 15min) = 8 h 45 min
     expectBuckets("10 h", "1 h", "15 min", "8 h 45 min");
-  });
+  }, UI_TIMEOUT);
 
   it("overtime: extender el fin de jornada aumenta el disponible y el productivo", async () => {
     const hoy = FECHA_CON_ORDEN;
@@ -874,7 +884,7 @@ describe("App — ticket 04: resumen del turno (UI)", () => {
     // jornada extendida a 19:00 → 12 h disponibles y productivas
     expectBuckets("12 h", "0 min", "0 min", "12 h");
     expect((await jornadaRepository.obtenerParaFecha(hoy)).fin).toBe("2026-09-11T19:00:00.000Z");
-  });
+  }, UI_TIMEOUT);
 
   it("fin de jornada inválido: el dominio rechaza y la UI muestra el error, sin mutar el repo", async () => {
     const hoy = FECHA_CON_ORDEN;
@@ -888,19 +898,19 @@ describe("App — ticket 04: resumen del turno (UI)", () => {
     expectTexto(/el fin de la jornada debe ser posterior al inicio/i);
     // el repositorio no persistió la jornada inválida
     expect((await jornadaRepository.obtenerParaFecha(hoy)).fin).toBe("2026-09-11T17:00:00.000Z");
-  });
+  }, UI_TIMEOUT);
 
   it("el resumen del turno no muestra «no productivo total» (solo los 4 buckets principales)", async () => {
     await renderAppConTiempo(FECHA_CON_ORDEN);
 
     expect(screen.queryByText(/no productivo/i)).toBeNull();
-  });
+  }, UI_TIMEOUT);
 });
 
 describe("App — ticket 05: daños / eventos (UI)", () => {
   afterEach(async () => {
     vi.useRealTimers();
-  });
+  }, UI_TIMEOUT);
 
   async function iniciarOP101ConDanos(opciones: { danos?: Dano[]; paradas?: ParadaAbierta[] } = {}) {
     const user = userEvent.setup();
@@ -937,7 +947,7 @@ describe("App — ticket 05: daños / eventos (UI)", () => {
     const guardado = (await repoDanos.listarPorMaquina("M1"))[0]!;
     expect(guardado.tipo).toBe("mecanico");
     expect(guardado.operatorName).toBe("Laura");
-  });
+  }, UI_TIMEOUT);
 
   it("sin tipo de daño: no registra y muestra el error del dominio", async () => {
     const { user, repoDanos } = await iniciarOP101ConDanos();
@@ -947,7 +957,7 @@ describe("App — ticket 05: daños / eventos (UI)", () => {
 
     expect(screen.getByRole("alert").textContent).toContain("debe seleccionar un tipo de daño");
     expect(await repoDanos.listarPorMaquina("M1")).toHaveLength(0);
-  });
+  }, UI_TIMEOUT);
 
   it("registra un daño que causó parada y lo vincula a la parada abierta de la orden", async () => {
     // Congelamos el reloj ANTES del montaje: el daño inicia en el submit y la parada
@@ -1001,7 +1011,7 @@ describe("App — ticket 05: daños / eventos (UI)", () => {
     expect(guardado.causoParada).toBe(true);
     expect(guardado.paradaId).toBe("par-activa-danio");
     expect(screen.getByTestId("dano-abierto").textContent).toContain("eje trasero");
-  });
+  }, UI_TIMEOUT);
 
   it("causó parada pero no indica la parada vinculada: error del dominio", async () => {
     const { user, repoDanos } = await iniciarOP101ConDanos();
@@ -1018,7 +1028,7 @@ describe("App — ticket 05: daños / eventos (UI)", () => {
       "si el daño causó una parada, debe indicar la parada vinculada",
     );
     expect(await repoDanos.listarPorMaquina("M1")).toHaveLength(0);
-  });
+  }, UI_TIMEOUT);
 
   it("registra sospecha de segunda con unidades: muestra el campo solo al marcar la sospecha", async () => {
     const { user, repoDanos } = await iniciarOP101ConDanos();
@@ -1036,7 +1046,7 @@ describe("App — ticket 05: daños / eventos (UI)", () => {
     const guardado = (await repoDanos.listarPorMaquina("M1"))[0]!;
     expect(guardado.posibleSegunda).toBe(true);
     expect(guardado.unidadesSospechadas).toBe(3);
-  });
+  }, UI_TIMEOUT);
 
 it("cierra el daño activo con solución aplicada y lo mueve al historial", async () => {
   // Reloj congelado: el form de cierre precarga el fin al montar y el daño inicia
@@ -1128,7 +1138,7 @@ it("cierra sin solución aplicada: error del dominio", async () => {
     expect(screen.getByRole("alert").textContent).toContain(
       "ya hay un daño abierto para la máquina",
     );
-  });
+  }, UI_TIMEOUT);
 
   it("historial con daños cerrados sembrados en orden disponible", async () => {
     const repo = new InMemoryOrderRepository();
@@ -1143,7 +1153,7 @@ it("cierra sin solución aplicada: error del dominio", async () => {
     expectTexto(/— causó parada/);
     expectTexto(/Daño operacional en manguera de tinta/);
     expectTexto(/posible 2da \(3 uds\)/);
-  });
+  }, UI_TIMEOUT);
 
   it("orden finalizada: histórico de daños sin formulario de registro ni cierre", async () => {
     const repo = new InMemoryOrderRepository();
@@ -1166,7 +1176,7 @@ it("cierra sin solución aplicada: error del dominio", async () => {
     expectTexto(/Daño mecánico en eje trasero/);
     expect(screen.queryByRole("button", { name: /Registrar daño/i })).toBeNull();
     expect(screen.queryByTestId("dano-abierto")).toBeNull();
-  });
+  }, UI_TIMEOUT);
 });
 
 describe("App — ticket 06: bloque de proyección de 2da (UI)", () => {
@@ -1206,7 +1216,7 @@ describe("App — ticket 06: bloque de proyección de 2da (UI)", () => {
     expect(bloque.getAllByText("—").length).toBeGreaterThanOrEqual(2); // 2da proyectada y estado sin_datos
     expect(bloque.getByText(/5\s?%/)).toBeTruthy(); // meta de referencia del dominio
     expect(bloque.queryByText("Alerta")).toBeNull();
-  });
+  }, UI_TIMEOUT);
 
   it("producción 300 uds sin sospechas: 0 % y buena racha", async () => {
     const { user } = await iniciarOP101ParaCalidad();
@@ -1216,7 +1226,7 @@ describe("App — ticket 06: bloque de proyección de 2da (UI)", () => {
     expect(bloque.getByText(/0\s?%/)).toBeTruthy();
     expect(bloque.getByText("Buena racha")).toBeTruthy();
     expect(bloque.getByText(/5\s?%/)).toBeTruthy();
-  });
+  }, UI_TIMEOUT);
 
   it("sospechas bajo el umbral (3 uds en 300): 1 % y buena racha", async () => {
     const { user } = await iniciarOP101ParaCalidad({
@@ -1227,7 +1237,7 @@ describe("App — ticket 06: bloque de proyección de 2da (UI)", () => {
     const bloque = bloqueCalidad();
     expect(bloque.getByText(/1\s?%/)).toBeTruthy();
     expect(bloque.getByText("Buena racha")).toBeTruthy();
-  });
+  }, UI_TIMEOUT);
 
   it("sospechas que superan el 3 %: alerta", async () => {
     const danoConMuchaSospecha: Dano = {
@@ -1241,7 +1251,7 @@ describe("App — ticket 06: bloque de proyección de 2da (UI)", () => {
     const bloque = bloqueCalidad();
     expect(bloque.getByText(/4\s?%/)).toBeTruthy();
     expect(bloque.getByText("Alerta")).toBeTruthy();
-  });
+  }, UI_TIMEOUT);
 
   it("la proyección es VIVA: nueva lectura recalcula y la alerta sube/baja sin recargar", async () => {
     const danoConMuchaSospecha: Dano = {
@@ -1262,7 +1272,7 @@ describe("App — ticket 06: bloque de proyección de 2da (UI)", () => {
     expect(bloqueCalidad().getByText(/2\s?%/)).toBeTruthy();
     expect(bloqueCalidad().getByText("Buena racha")).toBeTruthy();
     expect(bloqueCalidad().queryByText("Alerta")).toBeNull();
-  });
+  }, UI_TIMEOUT);
 
   it("daños de otra orden y sin orden NO se mezclan (solo cuentan los de esta orden)", async () => {
     const { user } = await iniciarOP101ParaCalidad({
@@ -1274,7 +1284,7 @@ describe("App — ticket 06: bloque de proyección de 2da (UI)", () => {
     // DANO_1 (ord-101, 3 uds) es el único de esta orden: 3/300 = 1 %
     expect(bloque.getByText(/1\s?%/)).toBeTruthy();
     expect(bloque.getByText("Buena racha")).toBeTruthy();
-  });
+  }, UI_TIMEOUT);
 
   it("sospecha sin unidades cuantificadas: se avisa sin inventar porcentaje", async () => {
     const danoSinUnidades: Dano = {
@@ -1290,7 +1300,7 @@ describe("App — ticket 06: bloque de proyección de 2da (UI)", () => {
     const bloque = bloqueCalidad();
     expect(bloque.getByText(/0\s?%/)).toBeTruthy(); // sin unidades no mueve el pct
     expect(bloque.getByText(/1 daño con sospecha de 2da sin unidades cuantificadas/)).toBeTruthy();
-  });
+  }, UI_TIMEOUT);
 
   it("el bloque NO bloquea: el formulario de lectura sigue operativo con alerta activa", async () => {
     const danoConMuchaSospecha: Dano = {
@@ -1309,7 +1319,7 @@ describe("App — ticket 06: bloque de proyección de 2da (UI)", () => {
     await user.type(screen.getByRole("spinbutton", { name: /nueva lectura/i }), "300");
     await user.click(screen.getByRole("button", { name: /Registrar lectura/i }));
     expect(bloqueCalidad().getByText(/2\s?%/)).toBeTruthy();
-  });
+  }, UI_TIMEOUT);
 
   it("orden finalizada: bloque histórico con los datos de cierre", async () => {
     const repo = new InMemoryOrderRepository();
@@ -1332,7 +1342,7 @@ describe("App — ticket 06: bloque de proyección de 2da (UI)", () => {
     const bloque = bloqueCalidad();
     expect(bloque.getByText(/1\s?%/)).toBeTruthy(); // 3 uds sospechadas / 300 producidas
     expect(bloque.getByText("Buena racha")).toBeTruthy();
-  });
+  }, UI_TIMEOUT);
 
   it("NO se muestra en orden disponible ni en día vacío", async () => {
     await renderApp(FECHA_CON_ORDEN); // available: OP-101 disponible
@@ -1340,7 +1350,7 @@ describe("App — ticket 06: bloque de proyección de 2da (UI)", () => {
 
     await renderApp(FECHA_SIN_ORDEN); // día vacío
     expect(screen.queryByTestId("calidad-seccion")).toBeNull();
-  });
+  }, UI_TIMEOUT);
 });
 
 describe("App — ticket 07: inspección de tela (UI)", () => {
@@ -1408,7 +1418,7 @@ describe("App — ticket 07: inspección de tela (UI)", () => {
   it("día vacío: NO hay sección de inspección de tela", async () => {
     await renderApp(FECHA_SIN_ORDEN);
     expect(screen.queryByTestId("inspeccion-tela-seccion")).toBeNull();
-  });
+  }, UI_TIMEOUT);
 
   it("orden disponible: registra inspección todo conforme con lote y la persiste", async () => {
     const user = userEvent.setup();
@@ -1438,7 +1448,7 @@ describe("App — ticket 07: inspección de tela (UI)", () => {
     expect(lista[0].lote).toBe("L-77");
     expect(lista[0].operatorName).toBe("Laura");
     expect(lista[0].items.every((i) => i.estado === "conforme")).toBe(true);
-  });
+  }, UI_TIMEOUT);
 
   it("producción: registra inspección con anomalía → No usable, con otra anomalía visible", async () => {
     const { user, repoInspecciones } = await iniciarOP101ConInspecciones();
@@ -1461,7 +1471,7 @@ describe("App — ticket 07: inspección de tela (UI)", () => {
     expect(lista[0].lote).toBe("L-80");
     expect(lista[0].items.find((i) => i.id === "manchas")?.estado).toBe("anomalia");
     expect(lista[0].otraAnomalia).toBe("manchas de aceite");
-  });
+  }, UI_TIMEOUT);
 
   it("múltiples inspecciones por orden: historial cronológico de 2 inspecciones", async () => {
     const { user } = await iniciarOP101ConInspecciones();
@@ -1472,7 +1482,7 @@ describe("App — ticket 07: inspección de tela (UI)", () => {
     expect(items).toHaveLength(2);
     expect(items[0].textContent).toContain("L-1");
     expect(items[1].textContent).toContain("L-2");
-  });
+  }, UI_TIMEOUT);
 
   it("producción con 0 golpes: la inspección con anomalía se resuelve con DEvolución", async () => {
     const { user, repoInspecciones } = await iniciarOP101ConInspecciones();
@@ -1500,7 +1510,7 @@ describe("App — ticket 07: inspección de tela (UI)", () => {
     }
     expect(resolucionDevolucion.motivo).toBe("absorción insuficiente");
     expect(resolucionDevolucion.registradaPor).toBe("Laura");
-  });
+  }, UI_TIMEOUT);
 
   it("producción > 0: la devolución NO se ofrece (solo autorización de gerencia)", async () => {
     const { user } = await iniciarOP101ConInspecciones();
@@ -1513,7 +1523,7 @@ describe("App — ticket 07: inspección de tela (UI)", () => {
     const item = within(screen.getAllByTestId("inspeccion-item")[0]);
     expect(item.queryByRole("option", { name: "Devolución de tela" })).toBeNull();
     expect(item.getByRole("option", { name: "Autorización de gerencia" })).toBeTruthy();
-  });
+  }, UI_TIMEOUT);
 
   it("autorización de gerencia: exige autorizadoPor y registra Uso autorizado", async () => {
     const { user, repoInspecciones } = await iniciarOP101ConInspecciones();
@@ -1542,7 +1552,7 @@ describe("App — ticket 07: inspección de tela (UI)", () => {
       throw new Error("la inspección debería estar resuelta con autorización");
     }
     expect(resolucionAutorizacion.autorizadoPor).toBe("Gerencia");
-  });
+  }, UI_TIMEOUT);
 
   it("inspección conforme: NO ofrece resolución", async () => {
     const { user } = await iniciarOP101ConInspecciones();
@@ -1551,7 +1561,7 @@ describe("App — ticket 07: inspección de tela (UI)", () => {
     const item = within(screen.getAllByTestId("inspeccion-item")[0]);
     expect(item.queryByRole("button", { name: /Resolver inspección/i })).toBeNull();
     expect(item.queryByLabelText(/Tipo de resolución/i)).toBeNull();
-  });
+  }, UI_TIMEOUT);
 
   it("inspección ya resuelta: no ofrece resolver de nuevo (una sola resolución)", async () => {
     const repo = new InMemoryOrderRepository();
@@ -1586,7 +1596,7 @@ describe("App — ticket 07: inspección de tela (UI)", () => {
     expect(item.getByText("Devuelta")).toBeTruthy();
     expect(item.queryByRole("button", { name: /Resolver inspección/i })).toBeNull();
     expect(item.queryByLabelText(/Tipo de resolución/i)).toBeNull();
-  });
+  }, UI_TIMEOUT);
 
   it("orden finalizada: historial SOLO (sin registrar ni resolver)", async () => {
     const repo = new InMemoryOrderRepository();
@@ -1624,7 +1634,7 @@ describe("App — ticket 07: inspección de tela (UI)", () => {
     // sin formulario de registro ni resolución: historial SOLO
     expect(seccion.queryByRole("button", { name: /Registrar inspección/i })).toBeNull();
     expect(seccion.queryByRole("button", { name: /Resolver inspección/i })).toBeNull();
-  });
+  }, UI_TIMEOUT);
 });
 
 describe("App — ticket 08: mantenimiento (UI)", () => {
@@ -1708,21 +1718,21 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
     expect(screen.getByTestId("mantenimiento-seccion")).toBeTruthy();
     expect(screen.getByRole("combobox", { name: /tipo de mantenimiento/i })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Registrar mantenimiento/i })).toBeTruthy();
-  });
+  }, UI_TIMEOUT);
 
   it("orden disponible: muestra la sección de mantenimiento con formulario", async () => {
     await renderAppConMantenimiento(FECHA_CON_ORDEN);
 
     expect(screen.getByTestId("mantenimiento-seccion")).toBeTruthy();
     expect(screen.getByRole("combobox", { name: /tipo de mantenimiento/i })).toBeTruthy();
-  });
+  }, UI_TIMEOUT);
 
   it("orden en producción: muestra la sección de mantenimiento con formulario", async () => {
     await iniciarOP101ConMantenimiento();
 
     expect(screen.getByTestId("mantenimiento-seccion")).toBeTruthy();
     expect(screen.getByRole("combobox", { name: /tipo de mantenimiento/i })).toBeTruthy();
-  });
+  }, UI_TIMEOUT);
 
   it("orden finalizada: muestra SOLO historial de mantenimiento, sin formulario de registro", async () => {
     const repo = new InMemoryOrderRepository();
@@ -1748,7 +1758,7 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
     // No hay formulario de registro en orden finalizada
     expect(screen.queryByRole("combobox", { name: /tipo de mantenimiento/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /Registrar mantenimiento/i })).toBeNull();
-  });
+  }, UI_TIMEOUT);
 
   it("registra un mantenimiento abierto (reactivo) y muestra el banner de activo", async () => {
     const { user, repoMantenimiento } = await iniciarOP101ConMantenimiento();
@@ -1760,7 +1770,7 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
     expect(activo.textContent).toContain("Fusible quemado");
     expect(activo.textContent).toMatch(/desde las/);
     expect(await repoMantenimiento.getMantenimientoAbierto("M1")).not.toBeNull();
-  });
+  }, UI_TIMEOUT);
 
   it("registra un mantenimiento completo en un solo paso (reactivo con queSeRevisoReparo)", async () => {
     // Patrón del codebase: pre-construir el mantenimiento con el dominio y sembrar el repo,
@@ -1792,7 +1802,7 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
     expect(guardados[0].queSeRevisoReparo).toBe("Cambio de rodamiento");
     expectTexto("Historial de mantenimientos");
     expectTexto(/Reparación de carro 3/);
-  });
+  }, UI_TIMEOUT);
 
   it("cierra un mantenimiento abierto con queSeRevisoReparo y pasa al historial", async () => {
     // Fake timers: el cierre usa `new Date()` y el fin debe ser >= inicio.
@@ -1840,7 +1850,7 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
     const guardados = await repoMantenimiento.listarPorMaquina("M1");
     expect(guardados[0].fin).not.toBeNull();
     expect(guardados[0].queSeRevisoReparo).toBe("Cambio de fusible");
-  });
+  }, UI_TIMEOUT);
 
   it("cierra sin queSeRevisoReparo: error del dominio", async () => {
     vi.useFakeTimers();
@@ -1880,7 +1890,7 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
 
     expect(screen.getByRole("alert").textContent).toContain("queSeRevisoReparo es obligatorio");
     expect(await repoMantenimiento.getMantenimientoAbierto("M1")).not.toBeNull();
-  });
+  }, UI_TIMEOUT);
 
   it("tipo preventivo: NO muestra el selector de daño vinculado", async () => {
     const { user } = await iniciarOP101ConMantenimiento();
@@ -1891,7 +1901,7 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
     );
 
     expect(screen.queryByRole("combobox", { name: /daño vinculado/i })).toBeNull();
-  });
+  }, UI_TIMEOUT);
 
   it("tipo reactivo: muestra el selector de daño con opción Sin vínculo", async () => {
     const { user } = await iniciarOP101ConMantenimiento();
@@ -1904,7 +1914,7 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
     const selectorDanio = screen.getByRole("combobox", { name: /daño vinculado/i });
     expect(selectorDanio).toBeTruthy();
     expect(screen.getByRole("option", { name: "Sin vínculo" })).toBeTruthy();
-  });
+  }, UI_TIMEOUT);
 
   it("ya hay un mantenimiento abierto: registrar otro muestra error del dominio", async () => {
     const { user } = await iniciarOP101ConMantenimiento({ mantenimientos: [MANT_4_ABIERTO] });
@@ -1916,7 +1926,7 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
     await registrarMantenimientoUI(user, { motivo: "Otro problema" });
 
     expect(screen.getByRole("alert").textContent).toContain("ya hay un mantenimiento abierto");
-  });
+  }, UI_TIMEOUT);
 
   it("historial cronológico de mantenimientos cerrados sembrados", async () => {
     const mantCerrado1: Mantenimiento = {
@@ -1949,7 +1959,7 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
     expectTexto("Historial de mantenimientos");
     expectTexto(/Fuga de tinta/);
     expectTexto(/Preventivo semanal/);
-  });
+  }, UI_TIMEOUT);
 
   it("el operario se precarga desde la orden en producción", async () => {
     await iniciarOP101ConMantenimiento();
@@ -1957,7 +1967,7 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
     const seccion = screen.getByTestId("mantenimiento-seccion");
     const operarioInput = within(seccion).getByLabelText(/operario/i) as HTMLInputElement;
     expect(operarioInput.value).toBe("Laura");
-  });
+  }, UI_TIMEOUT);
 
   it("sin tipo: no registra y muestra error del dominio", async () => {
     const { user, repoMantenimiento } = await iniciarOP101ConMantenimiento();
@@ -1968,7 +1978,7 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
 
     expect(screen.getByRole("alert").textContent).toContain("debe seleccionar un tipo");
     expect(await repoMantenimiento.listarPorMaquina("M1")).toHaveLength(0);
-  });
+  }, UI_TIMEOUT);
 
   it("sin motivo: no registra y muestra error del dominio", async () => {
     const { user, repoMantenimiento } = await iniciarOP101ConMantenimiento();
@@ -1982,7 +1992,7 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
 
     expect(screen.getByRole("alert").textContent).toContain("el motivo es obligatorio");
     expect(await repoMantenimiento.listarPorMaquina("M1")).toHaveLength(0);
-  });
+  }, UI_TIMEOUT);
 
   it("mantenimiento abierto preexistente se muestra en la sección", async () => {
     const repoMantenimiento = new InMemoryMantenimientoRepository([MANT_4_ABIERTO]);
@@ -1991,7 +2001,7 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
     const activo = screen.getByTestId("mantenimiento-abierto");
     expect(activo.textContent).toContain("Mantenimiento reactivo");
     expect(activo.textContent).toContain("Fusible quemado");
-  });
+  }, UI_TIMEOUT);
 });
 
 // ---------------------------------------------------------------------------
@@ -2006,13 +2016,13 @@ describe("App — ticket 09: DashboardHome", () => {
     // Sin orden: calidad no visible
     expect(screen.queryByText(/Buena racha/)).toBeNull();
     expect(screen.queryByText(/Alerta/)).toBeNull();
-  });
+  }, UI_TIMEOUT);
 
   it("renderiza DashboardHome en orden disponible (OCIOSA)", async () => {
     await renderApp(FECHA_CON_ORDEN);
     expect(screen.getByTestId("dashboard-home")).toBeTruthy();
     expectTexto(/OCIOSA/);
-  });
+  }, UI_TIMEOUT);
 
   it("renderiza DashboardHome en orden en producción (ANDANDO)", async () => {
     const user = userEvent.setup();
@@ -2023,14 +2033,14 @@ describe("App — ticket 09: DashboardHome", () => {
     expectTexto(/ANDANDO/);
     // Con orden en producción: calidad visible
     expect(screen.getByTestId("dashboard-home")).toBeTruthy();
-  });
+  }, UI_TIMEOUT);
 
   it("renderiza DashboardHome en orden finalizada (OCIOSA)", async () => {
     await renderApp(FECHA_CON_ORDEN);
     // La orden OP-101 con fecha 2026-09-10 ya está finalizada
     expectTexto(/OCIOSA/);
     expect(screen.getByTestId("dashboard-home")).toBeTruthy();
-  });
+  }, UI_TIMEOUT);
 
   it("una parada abierta sin orden determina PARADA", async () => {
     const paradaAbierta: ParadaAbierta = {
@@ -2054,7 +2064,7 @@ describe("App — ticket 09: DashboardHome", () => {
     );
     expectTexto(/PARADA/);
     expectTexto(/Falta de materia prima/);
-  });
+  }, UI_TIMEOUT);
 
   it("una parada abierta de la orden determina PARADA", async () => {
     const repo = new InMemoryOrderRepository();
@@ -2081,7 +2091,7 @@ describe("App — ticket 09: DashboardHome", () => {
 
     expectTexto(/PARADA/);
     expectTexto(/Falta de color/);
-  });
+  }, UI_TIMEOUT);
 
   it("calidad se oculta cuando la orden está finalizada", async () => {
     // Crear una orden finalizada
@@ -2102,7 +2112,7 @@ describe("App — ticket 09: DashboardHome", () => {
     // Calidad no visible en orden finalizada
     expect(screen.queryByText(/Buena racha/)).toBeNull();
     expect(screen.queryByText(/Alerta/)).toBeNull();
-  });
+  }, UI_TIMEOUT);
 });
 
 describe("App — phase 14 (G2): el puerto como fuente de verdad (14.1–14.5)", () => {
@@ -2155,7 +2165,7 @@ describe("App — phase 14 (G2): el puerto como fuente de verdad (14.1–14.5)",
     expect(screen.getAllByText(/Falta de materia prima/).length).toBeGreaterThan(0);
     // Ningún child recibió una Promise: el DOM no muestra "[object Promise]".
     expect(document.body.textContent).not.toContain("[object Promise]");
-  }, 30_000);
+  }, UI_TIMEOUT);
 
   it("Approach A: un paradaId colgado cae en el dominio (no en la FK) y no escribe nada", async () => {
     const repo = new InMemoryOrderRepository();
@@ -2203,7 +2213,7 @@ describe("App — phase 14 (G2): el puerto como fuente de verdad (14.1–14.5)",
     expect(screen.getByText("la parada vinculada no existe: no-existe")).toBeTruthy();
     expect(insertSpy).not.toHaveBeenCalled();
     expect(await repoDanos.listarPorMaquina("M1")).toEqual([]);
-  }, 30_000);
+  }, UI_TIMEOUT);
 
   it("Approach A: un danoId colgado en mantenimiento reactivo cae en el dominio sin escribir", async () => {
     const repo = new InMemoryOrderRepository();
@@ -2246,7 +2256,7 @@ describe("App — phase 14 (G2): el puerto como fuente de verdad (14.1–14.5)",
     expect(screen.getByText("el daño vinculado no existe: no-existe-dano")).toBeTruthy();
     expect(insertSpy).not.toHaveBeenCalled();
     expect(await repoMantenimientos.listarPorMaquina("M1")).toEqual([]);
-  }, 30_000);
+  }, UI_TIMEOUT);
 
   it("los loaders de montaje re-leen el repositorio para el hoy inyectado (el seed stale pierde)", async () => {
     // El seed (10.8) trae una parada distinta de la que el repo tiene para hoy:
@@ -2295,5 +2305,5 @@ describe("App — phase 14 (G2): el puerto como fuente de verdad (14.1–14.5)",
     // La parada del REPOSITORIO (Falta de color) reemplazó la del seed.
     expectTexto(/Falta de color/);
     expect(screen.queryByText(/Falta de materia prima/)).toBeNull();
-  }, 30_000);
+  }, UI_TIMEOUT);
 });
