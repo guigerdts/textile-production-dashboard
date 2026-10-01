@@ -122,11 +122,14 @@ export interface DanoRow {
   posible_segunda: number;
   unidades_sospechadas: number | null;
   observaciones: string | null;
+  /** NOT NULL (005) — día operativo persistido (YYYY-MM-DD). No se deriva de
+   * `inicio`: es el único determinante de la jornada del evento. */
+  fecha_operativa: string;
 }
 
 /**
- * Valores de enlace para el INSERT explícito: el mismo juego de 14 columnas, en
- * el orden en que los placeholders `$1..$14` los reciben. Los opcionales se
+ * Valores de enlace para el INSERT explícito: el mismo juego de 15 columnas, en
+ * el orden en que los placeholders `$1..$15` los reciben. Los opcionales se
  * escriben como `null` explícito, nunca como `undefined` (D2j), y los dos flags
  * como `0`/`1`, nunca como `true`/`false`.
  */
@@ -145,6 +148,9 @@ export interface DanoSqlValues {
   posible_segunda: number;
   unidades_sospechadas: number | null;
   observaciones: string | null;
+  /** NOT NULL (005) — día operativo persistido (YYYY-MM-DD). No se deriva de
+   * `inicio`: es el único determinante de la jornada del evento. */
+  fecha_operativa: string;
 }
 
 /**
@@ -178,6 +184,7 @@ export function mapDanoRow(row: DanoRow): Dano {
     componente: row.componente,
     inicio: row.inicio,
     fin: row.fin,
+    fechaOperativa: row.fecha_operativa,
     solucionAplicada: row.solucion_aplicada ?? undefined,
     causoParada: row.causo_parada === 1,
     paradaId: row.parada_id,
@@ -209,6 +216,7 @@ export function mapDanoToSql(dano: Dano): DanoSqlValues {
     componente: dano.componente,
     inicio: dano.inicio,
     fin: dano.fin,
+    fecha_operativa: dano.fechaOperativa,
     solucion_aplicada: dano.solucionAplicada ?? null,
     causo_parada: dano.causoParada ? 1 : 0,
     parada_id: dano.paradaId ?? null,
@@ -246,7 +254,7 @@ export class SqliteDanoRepository implements IDanoRepository {
     const v = mapDanoToSql(dano);
     try {
       await this.db.execute(
-        "INSERT INTO dano (id, machine_id, orden_id, operario, tipo, componente, inicio, fin, solucion_aplicada, causo_parada, parada_id, posible_segunda, unidades_sospechadas, observaciones) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)",
+        "INSERT INTO dano (id, machine_id, orden_id, operario, tipo, componente, inicio, fin, solucion_aplicada, causo_parada, parada_id, posible_segunda, unidades_sospechadas, observaciones, fecha_operativa) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)",
         [
           v.id,
           v.machine_id,
@@ -262,6 +270,7 @@ export class SqliteDanoRepository implements IDanoRepository {
           v.posible_segunda,
           v.unidades_sospechadas,
           v.observaciones,
+          v.fecha_operativa,
         ]
       );
     } catch (error) {
@@ -301,7 +310,7 @@ export class SqliteDanoRepository implements IDanoRepository {
     const v = mapDanoToSql(dano);
     try {
       await this.db.execute(
-        "UPDATE dano SET machine_id = $2, orden_id = $3, operario = $4, tipo = $5, componente = $6, inicio = $7, fin = $8, solucion_aplicada = $9, causo_parada = $10, parada_id = $11, posible_segunda = $12, unidades_sospechadas = $13, observaciones = $14 WHERE id = $1",
+        "UPDATE dano SET machine_id = $2, orden_id = $3, operario = $4, tipo = $5, componente = $6, inicio = $7, fin = $8, solucion_aplicada = $9, causo_parada = $10, parada_id = $11, posible_segunda = $12, unidades_sospechadas = $13, observaciones = $14, fecha_operativa = $15 WHERE id = $1",
         [
           v.id,
           v.machine_id,
@@ -317,6 +326,7 @@ export class SqliteDanoRepository implements IDanoRepository {
           v.posible_segunda,
           v.unidades_sospechadas,
           v.observaciones,
+          v.fecha_operativa,
         ]
       );
     } catch (error) {

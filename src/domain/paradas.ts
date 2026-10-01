@@ -97,6 +97,26 @@ export function validarCamposCausa(
   return errores;
 }
 
+/**
+ * Valida el formato de una fecha operativa (YYYY-MM-DD).
+ * Copia privado por módulo del proyecto (`esTimestampValido`, `FECHA_OPERATIVA_RX`).
+ * NO valida coherencia con `inicio`: la atribución al día es explícita y
+ * exclusiva (operational-event-operative-date).
+ */
+const FECHA_OPERATIVA_RX = /^\d{4}-\d{2}-\d{2}$/;
+
+function esFechaOperativaValida(valor: string): boolean {
+  return FECHA_OPERATIVA_RX.test(valor);
+}
+
+function validarFechaOperativa(valor: string, errores: string[]): void {
+  if (!valor || valor.trim() === "") {
+    errores.push("debe indicar la fecha operativa");
+  } else if (!esFechaOperativaValida(valor)) {
+    errores.push("la fecha operativa debe tener el formato YYYY-MM-DD");
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Operaciones de dominio
 // ---------------------------------------------------------------------------
@@ -111,6 +131,8 @@ export interface RegistrarParadaInput {
   camposEspecificos: Record<string, unknown>;
   observaciones?: string;
   inicio: string; // ISO 8601
+  /** Fecha operativa (YYYY-MM-DD) a la que se atribuye la parada. */
+  fechaOperativa: string;
 }
 
 export interface ResultadoParada<T = Parada> {
@@ -140,6 +162,9 @@ export function registrarParada(
   if (!input.inicio || input.inicio.trim() === "") {
     errores.push("debe indicar el timestamp de inicio");
   }
+
+  // Fecha operativa requerida (atribución explícita del día)
+  validarFechaOperativa(input.fechaOperativa, errores);
 
   // Operario requerido
   if (!input.operatorName || input.operatorName.trim() === "") {
@@ -179,6 +204,7 @@ export function registrarParada(
     camposEspecificos: { ...input.camposEspecificos },
     observaciones: input.observaciones?.trim() || undefined,
     inicio: input.inicio,
+    fechaOperativa: input.fechaOperativa,
     fin: null,
   };
 

@@ -57,6 +57,7 @@ function actividad(overrides: Partial<ActividadPlanificada> = {}): ActividadPlan
     id: "act-1",
     maquinaId: "M1",
     tipo: "limpieza",
+    fechaOperativa: "2026-09-14",
     inicio: "2026-09-14T07:00:00.000Z",
     fin: "2026-09-14T08:00:00.000Z",
     queSeLimpio: "mesa de estampado",
@@ -131,6 +132,7 @@ describe("sqliteActividadPlanificadaRepository — mappers puros", () => {
     const fila = mapActividadPlanificadaToSql(actividad());
 
     expect(Object.keys(fila).sort()).toEqual([
+      "fecha_operativa",
       "fin",
       "id",
       "inicio",

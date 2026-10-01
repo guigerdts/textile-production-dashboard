@@ -64,6 +64,7 @@ function dano(overrides: Partial<Dano> = {}): Dano {
     operatorName: "Laura",
     tipo: "mecanico",
     componente: "eje trasero",
+    fechaOperativa: "2026-09-14",
     inicio: "2026-09-14T07:00:00.000Z",
     fin: "2026-09-14T08:00:00.000Z",
     causoParada: false,
@@ -183,12 +184,13 @@ describe("sqliteDanoRepository — mappers puros", () => {
     expect(recuperada).not.toBe(original);
   });
 
-  it("traduce exactamente las 14 columnas que 004 declara, ni una más ni una menos", () => {
+  it("traduce exactamente las 15 columnas que 004+005 declaran, ni una más ni una menos", () => {
     const fila = mapDanoToSql(dano());
 
     expect(Object.keys(fila).sort()).toEqual([
       "causo_parada",
       "componente",
+      "fecha_operativa",
       "fin",
       "id",
       "inicio",
@@ -202,12 +204,13 @@ describe("sqliteDanoRepository — mappers puros", () => {
       "tipo",
       "unidades_sospechadas",
     ]);
-    // La lectura produce SIEMPRE los 14 campos del dominio, con forma estable:
+    // La lectura produce SIEMPRE los 15 campos del dominio, con forma estable:
     // los tres opcionales aparecen con valor `undefined` en vez de omitirse.
     // `toEqual` los trataría como ausentes, así que se comparan las claves.
     expect(Object.keys(mapDanoRow(fila)).sort()).toEqual([
       "causoParada",
       "componente",
+      "fechaOperativa",
       "fin",
       "id",
       "inicio",
@@ -774,7 +777,7 @@ describe("sqliteDanoRepository — update en el mismo lugar", () => {
     expect(fila.id).toBe("dano-completo");
   });
 
-  it("el texto emitido es la forma prescrita: 14 placeholders y `id` sólo en el WHERE", async () => {
+  it("el texto emitido es la forma prescrita: 15 placeholders y `id` sólo en el WHERE", async () => {
     const store = createFakeSqliteStore();
     const { repo, consultas } = repoQueRegistra(store);
     await repo.insertDano(dano({ id: "dano-sql" }));
@@ -783,15 +786,15 @@ describe("sqliteDanoRepository — update en el mismo lugar", () => {
     const insert = consultas.find((q) => q.startsWith("INSERT INTO dano"))!;
     const update = consultas.find((q) => q.startsWith("UPDATE dano"))!;
 
-    // INSERT: una sola sentencia con las 14 columnas y sus 14 placeholders.
+    // INSERT: una sola sentencia con las 15 columnas y sus 15 placeholders.
     expect(insert).not.toBeUndefined();
-    expect(insert.match(/\$\d+/g)).toHaveLength(14);
+    expect(insert.match(/\$\d+/g)).toHaveLength(15);
     // Sin upsert, sin OR REPLACE, sin transacción.
     expect(insert).not.toMatch(/OR REPLACE|ON CONFLICT|BEGIN|COMMIT/i);
 
-    // UPDATE: 13 asignaciones no-PK, y `id` NO aparece en la lista SET.
+    // UPDATE: 14 asignaciones no-PK, y `id` NO aparece en la lista SET.
     const set = update.slice(update.indexOf("SET ") + 4, update.indexOf(" WHERE "));
-    expect(set.split(",")).toHaveLength(13);
+    expect(set.split(",")).toHaveLength(14);
     expect(set).not.toMatch(/(^|,\s*)id = /);
     expect(update).toContain("WHERE id = $1");
   });

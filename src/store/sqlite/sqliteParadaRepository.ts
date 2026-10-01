@@ -2,8 +2,8 @@
  * WHAT THIS IS
  * ============
  * `SqliteParadaRepository` — the durable SQLite adapter for `IParadaRepository`
- * (Phase 2, Unit B2). It stores paradas in the `parada` table of migration 004
- * (9 columns) and implements the same port contract as
+ * (Phase 2, Unit B2). It stores paradas in the `parada` table of migrations
+ * 004+005 (10 columns) and implements the same port contract as
  * `InMemoryParadaRepository`: insert vs update explicit, pre-check + one
  * statement (D2j), chronological order by `inicio` for listados, and a
  * null-safe `getParadaAbierta` bound to machine + optional order.
@@ -54,7 +54,12 @@ import type { IParadaRepository } from "../paradasRepository";
 // Mapeo puro Parada <-> fila SQL
 // ---------------------------------------------------------------------------
 
-/** Fila de la tabla `parada` (migración 004): 9 columnas, nullabilidad DDL. */
+/**
+ * Fila de la tabla `parada`: 10 columnas, nullabilidad DDL.
+ *
+ * `fecha_operativa` (migración 005) es NOT NULL y sin DEFAULT: el día al que
+ * pertenece la parada es un dato persistido, nunca derivado de `inicio`.
+ */
 export interface ParadaRow {
   id: string;
   machine_id: "M1";
@@ -66,6 +71,7 @@ export interface ParadaRow {
   observaciones: string | null;
   inicio: string;
   fin: string | null;
+  fecha_operativa: string;
 }
 
 /** Valores ligados de un INSERT/UPDATE: `campos_especificos` ya es JSON text. */
@@ -79,6 +85,7 @@ export interface ParadaSqlValues {
   observaciones: string | null;
   inicio: string;
   fin: string | null;
+  fecha_operativa: string;
 }
 
 /** Catálogo de las 10 causas: guardia del canal, no regla de negocio (E2). */
@@ -138,6 +145,7 @@ export function mapParadaToSql(parada: Parada): ParadaSqlValues {
     observaciones: parada.observaciones ?? null,
     inicio: parada.inicio,
     fin: parada.fin,
+    fecha_operativa: parada.fechaOperativa,
   };
 }
 
@@ -153,6 +161,7 @@ export function mapParadaRow(fila: ParadaRow): Parada {
     observaciones: fila.observaciones ?? undefined,
     inicio: fila.inicio,
     fin: fila.fin,
+    fechaOperativa: fila.fecha_operativa,
   };
 }
 
@@ -185,7 +194,7 @@ export class SqliteParadaRepository implements IParadaRepository {
     const valores = mapParadaToSql(parada);
     try {
       await this.db.execute(
-        `INSERT INTO parada (id, machine_id, orden_id, operario, causa_id, campos_especificos, observaciones, inicio, fin) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        `INSERT INTO parada (id, machine_id, orden_id, operario, causa_id, campos_especificos, observaciones, inicio, fin, fecha_operativa) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
         [
           valores.id,
           valores.machine_id,
@@ -196,6 +205,7 @@ export class SqliteParadaRepository implements IParadaRepository {
           valores.observaciones,
           valores.inicio,
           valores.fin,
+          valores.fecha_operativa,
         ],
       );
     } catch (causa) {
@@ -219,7 +229,7 @@ export class SqliteParadaRepository implements IParadaRepository {
     try {
       // D2j: `id` solo en WHERE, nunca en SET; los 8 no-PK van en SET.
       await this.db.execute(
-        `UPDATE parada SET machine_id = $2, orden_id = $3, operario = $4, causa_id = $5, campos_especificos = $6, observaciones = $7, inicio = $8, fin = $9 WHERE id = $1`,
+        `UPDATE parada SET machine_id = $2, orden_id = $3, operario = $4, causa_id = $5, campos_especificos = $6, observaciones = $7, inicio = $8, fin = $9, fecha_operativa = $10 WHERE id = $1`,
         [
           valores.id,
           valores.machine_id,
@@ -230,6 +240,7 @@ export class SqliteParadaRepository implements IParadaRepository {
           valores.observaciones,
           valores.inicio,
           valores.fin,
+          valores.fecha_operativa,
         ],
       );
     } catch (causa) {

@@ -15,6 +15,11 @@ import type { RegistrarMantenimientoInput } from "../domain/mantenimiento";
 
 export interface MantenimientoSectionProps {
   maquinaId: "M1";
+  /** Día operativo (YYYY-MM-DD) en el que se ATRIBUYE el evento nuevo. No se
+   * deriva de `inicio`: es un dato explícito y persistido (CHANGE 1).
+   * Hoy la app lo inyecta con el día consultado; al navegar a un día
+   * histórico será ese día (CHANGE 2), no el de hoy. */
+  fechaOperativa: string;
   operatorNameInicial?: string;
   mantenimientosDeMaquina: Mantenimiento[];
   mantenimientoAbiertoDeMaquina: MantenimientoAbierto | null;
@@ -61,6 +66,7 @@ export function MantenimientoSection({
   mantenimientoAbiertoDeMaquina,
   danosDeMaquina,
   permitirRegistrar,
+  fechaOperativa,
   onRegistrarMantenimiento,
   onCerrarMantenimiento,
 }: MantenimientoSectionProps) {
@@ -110,6 +116,7 @@ export function MantenimientoSection({
       operatorName: operatorName.trim(),
       motivo: motivo.trim(),
       inicio: new Date().toISOString(),
+      fechaOperativa,
       fin: modoCompleto ? new Date().toISOString() : undefined,
       queSeRevisoReparo: modoCompleto ? queSeRevisoReparo.trim() : undefined,
       danoId: tipo === "preventivo" ? null : danoId,

@@ -60,12 +60,34 @@ function esTimestampValido(iso: string): boolean {
 // registrarMantenimiento
 // ---------------------------------------------------------------------------
 
+/**
+ * Valida el formato de una fecha operativa (YYYY-MM-DD).
+ * Copia privado por módulo del proyecto (`esTimestampValido`, `FECHA_OPERATIVA_RX`).
+ * NO valida coherencia con `inicio`: la atribución al día es explícita y
+ * exclusiva (operational-event-operative-date).
+ */
+const FECHA_OPERATIVA_RX = /^\d{4}-\d{2}-\d{2}$/;
+
+function esFechaOperativaValida(valor: string): boolean {
+  return FECHA_OPERATIVA_RX.test(valor);
+}
+
+function validarFechaOperativa(valor: string, errores: string[]): void {
+  if (!valor || valor.trim() === "") {
+    errores.push("debe indicar la fecha operativa");
+  } else if (!esFechaOperativaValida(valor)) {
+    errores.push("la fecha operativa debe tener el formato YYYY-MM-DD");
+  }
+}
+
 export interface RegistrarMantenimientoInput {
   maquinaId: "M1";
   tipo: TipoMantenimientoId;
   operatorName: string;
   motivo: string;
   inicio: string;
+  /** Fecha operativa (YYYY-MM-DD) a la que se atribuye el mantenimiento. */
+  fechaOperativa: string;
   fin?: string;
   queSeRevisoReparo?: string;
   danoId: string | null;
@@ -115,6 +137,9 @@ export function registrarMantenimiento(
   if (!input.motivo || input.motivo.trim() === "") {
     errores.push("el motivo es obligatorio");
   }
+
+  // Fecha operativa requerida (atribución explícita del día)
+  validarFechaOperativa(input.fechaOperativa, errores);
 
   // Inicio requerido y timestamp válido
   if (!input.inicio || input.inicio.trim() === "") {
@@ -184,6 +209,7 @@ export function registrarMantenimiento(
     operatorName: input.operatorName.trim(),
     motivo: input.motivo.trim(),
     inicio: input.inicio,
+    fechaOperativa: input.fechaOperativa,
     fin: finPresente ? input.fin! : null,
     queSeRevisoReparo: input.queSeRevisoReparo?.trim() || undefined,
     danoId: tipo === "preventivo" ? null : input.danoId,

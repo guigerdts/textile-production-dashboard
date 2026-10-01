@@ -140,6 +140,7 @@ function danoConSospecha(
     operatorName: "Carlos Gómez",
     tipo: "operacional",
     componente: "mesa",
+    fechaOperativa: "2026-09-11",
     inicio: "2026-09-11T08:30:00.000Z",
     fin: "2026-09-11T08:45:00.000Z",
     solucionAplicada: "Ajuste",

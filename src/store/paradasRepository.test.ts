@@ -26,6 +26,7 @@ describe("InMemoryParadaRepository — guardar y recuperar", () => {
       operatorName: "Carlos Gómez",
       causaId: "falta_color",
       camposEspecificos: { color: "VERDE" },
+      fechaOperativa: "2026-09-16",
       inicio: "2026-09-16T08:00:00.000Z",
       fin: null,
     };
@@ -125,6 +126,7 @@ describe("InMemoryParadaRepository — duplicados y referencias", () => {
       operatorName: "Luis Fernández",
       causaId: "atasco_tela",
       camposEspecificos: {},
+      fechaOperativa: "2026-09-11",
       inicio: "2026-09-11T09:00:00.000Z",
       fin: null,
     };

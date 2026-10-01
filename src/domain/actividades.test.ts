@@ -52,6 +52,7 @@ describe("ticket 03: comenzarActividad", () => {
     tipo: "cambio_diseno" as const,
     inicio: "2026-09-11T09:00:00.000Z",
     operatorName: "Carlos Gómez",
+    fechaOperativa: "2026-09-11",
   };
 
   it("registra una actividad abierta válida (cambio de diseño)", () => {
@@ -249,6 +250,7 @@ describe("ticket 03: finalizarActividad", () => {
     id: "a1",
     maquinaId: "M1",
     tipo: "cambio_diseno",
+    fechaOperativa: "2026-09-11",
     inicio: "2026-09-11T09:00:00.000Z",
     fin: null,
     operatorName: "Carlos Gómez",
@@ -284,6 +286,7 @@ describe("ticket 03: duración de actividad", () => {
       id: "a1",
       maquinaId: "M1",
       tipo: "cambio_diseno",
+      fechaOperativa: "2026-09-11",
       inicio: "2026-09-11T09:00:00.000Z",
       fin: null,
       operatorName: "Carlos Gómez",
@@ -296,6 +299,7 @@ describe("ticket 03: duración de actividad", () => {
       id: "a1",
       maquinaId: "M1",
       tipo: "limpieza",
+      fechaOperativa: "2026-09-11",
       inicio: "2026-09-11T07:00:00.000Z",
       fin: "2026-09-11T08:00:00.000Z",
       queSeLimpio: "mesa",
@@ -310,6 +314,7 @@ describe("ticket 03: actividadAbierta", () => {
     id: "a1",
     maquinaId: "M1",
     tipo: "cambio_diseno",
+    fechaOperativa: "2026-09-11",
     inicio: "2026-09-11T09:00:00.000Z",
     fin: null,
     operatorName: "Carlos Gómez",
@@ -319,6 +324,7 @@ describe("ticket 03: actividadAbierta", () => {
     id: "a2",
     maquinaId: "M1",
     tipo: "limpieza",
+    fechaOperativa: "2026-09-11",
     inicio: "2026-09-11T07:00:00.000Z",
     fin: "2026-09-11T08:00:00.000Z",
     queSeLimpio: "mesa",

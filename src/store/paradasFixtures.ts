@@ -27,6 +27,7 @@ export const P1: Parada = {
   causaId: "falta_color",
   camposEspecificos: { color: "AZUL" },
   observaciones: "faltaba el azul para OP-101",
+  fechaOperativa: "2026-09-11",
   inicio: "2026-09-11T09:30:00.000Z",
   fin: "2026-09-11T09:45:00.000Z",
 };
@@ -39,6 +40,7 @@ export const P2: Parada = {
   operatorName: "Carlos Gómez",
   causaId: "danio_mecanico",
   camposEspecificos: { carro: 3, componente: "eje trasero" },
+  fechaOperativa: "2026-09-11",
   inicio: "2026-09-11T11:00:00.000Z",
   fin: "2026-09-11T12:00:00.000Z",
 };
@@ -51,6 +53,7 @@ export const P3: Parada = {
   operatorName: "Sofía Ramírez",
   causaId: "rotura_cuadro",
   camposEspecificos: { carro: 1 },
+  fechaOperativa: "2026-09-15",
   inicio: "2026-09-15T10:00:00.000Z",
   fin: "2026-09-15T10:20:00.000Z",
 };
@@ -63,6 +66,7 @@ export const P4_ABIERTA: Parada = {
   operatorName: "Carlos Gómez",
   causaId: "atasco_tela",
   camposEspecificos: {},
+  fechaOperativa: "2026-09-11",
   inicio: "2026-09-11T14:00:00.000Z",
   fin: null,
 };
@@ -75,6 +79,7 @@ export const P5_ABIERTA_SIN_ORDEN: Parada = {
   operatorName: "Luis Fernández",
   causaId: "problema_horno",
   camposEspecificos: {},
+  fechaOperativa: "2026-09-11",
   inicio: "2026-09-11T17:30:00.000Z",
   fin: null,
 };

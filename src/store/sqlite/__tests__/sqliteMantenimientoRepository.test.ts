@@ -72,6 +72,7 @@ function mantenimiento(overrides: Partial<Mantenimiento> = {}): Mantenimiento {
     tipo: "preventivo",
     operatorName: "Laura",
     motivo: "cambio de cuadro Jessie",
+    fechaOperativa: "2026-09-14",
     inicio: "2026-09-14T07:00:00.000Z",
     fin: "2026-09-14T08:00:00.000Z",
     danoId: null,
@@ -186,11 +187,12 @@ describe("sqliteMantenimientoRepository — mappers puros", () => {
     expect(recuperada).not.toBe(original);
   });
 
-  it("traduce exactamente las 10 columnas que 004 declara, ni una más ni una menos", () => {
+  it("traduce exactamente las 11 columnas que 004+005 declaran, ni una más ni una menos", () => {
     const fila = mapMantenimientoToSql(mantenimiento());
 
     expect(Object.keys(fila).sort()).toEqual([
       "dano_id",
+      "fecha_operativa",
       "fin",
       "id",
       "inicio",
@@ -211,6 +213,7 @@ describe("sqliteMantenimientoRepository — mappers puros", () => {
     // los dos opcionales aparecen con valor `undefined` en vez de omitirse.
     expect(Object.keys(mapMantenimientoRow(fila)).sort()).toEqual([
       "danoId",
+      "fechaOperativa",
       "fin",
       "id",
       "inicio",
@@ -638,7 +641,7 @@ describe("sqliteMantenimientoRepository — update en el mismo lugar", () => {
     });
   });
 
-  it("updateMantenimiento escribe las 9 columnas no-PK y nunca `id` en un SET", async () => {
+  it("updateMantenimiento escribe las 10 columnas no-PK y nunca `id` en un SET", async () => {
     const store = createFakeSqliteStore();
     const repo = repoSobre(store);
     await repo.insertMantenimiento(mantenimiento({ id: "mant-completo" }));
@@ -661,7 +664,7 @@ describe("sqliteMantenimientoRepository — update en el mismo lugar", () => {
     expect(fila.id).toBe("mant-completo");
   });
 
-  it("el texto emitido es la forma prescrita: 10 placeholders y `id` sólo en el WHERE", async () => {
+  it("el texto emitido es la forma prescrita: 11 placeholders y `id` sólo en el WHERE", async () => {
     const store = createFakeSqliteStore();
     const { repo, consultas } = repoQueRegistra(store);
     await repo.insertMantenimiento(mantenimiento({ id: "mant-sql" }));
@@ -670,16 +673,16 @@ describe("sqliteMantenimientoRepository — update en el mismo lugar", () => {
     const insert = consultas.find((q) => q.startsWith("INSERT INTO mantenimiento"))!;
     const update = consultas.find((q) => q.startsWith("UPDATE mantenimiento"))!;
 
-    // INSERT: una sola sentencia con las 10 columnas y sus 10 placeholders.
+    // INSERT: una sola sentencia con las 11 columnas y sus 11 placeholders.
     expect(insert).not.toBeUndefined();
-    expect(insert.match(/\$\d+/g)).toHaveLength(10);
+    expect(insert.match(/\$\d+/g)).toHaveLength(11);
     // Sin upsert, sin OR REPLACE, sin transacción, sin columnas prohibidas.
     expect(insert).not.toMatch(/OR REPLACE|ON CONFLICT|BEGIN|COMMIT/i);
     expect(insert).not.toMatch(/orden_id|duracion/i);
 
-    // UPDATE: 9 asignaciones no-PK, y `id` NO aparece en la lista SET.
+    // UPDATE: 10 asignaciones no-PK, y `id` NO aparece en la lista SET.
     const set = update.slice(update.indexOf("SET ") + 4, update.indexOf(" WHERE "));
-    expect(set.split(",")).toHaveLength(9);
+    expect(set.split(",")).toHaveLength(10);
     expect(set).not.toMatch(/(^|,\s*)id = /);
     expect(update).toContain("WHERE id = $1");
     expect(update).not.toMatch(/orden_id|duracion/i);

@@ -11,6 +11,11 @@ import type { RegistrarParadaInput } from "../domain/paradas";
 
 interface ParadasSectionProps {
   ordenId: string;
+  /** Día operativo (YYYY-MM-DD) en el que se ATRIBUYE el evento nuevo. No se
+   * deriva de `inicio`: es un dato explícito y persistido (CHANGE 1).
+   * Hoy la app lo inyecta con el día consultado; al navegar a un día
+   * histórico será ese día (CHANGE 2), no el de hoy. */
+  fechaOperativa: string;
   /** Operario que registra la parada (el de la orden en producción). */
   operatorName: string;
   /** Paradas de la orden actual (abiertas y cerradas). */
@@ -50,6 +55,7 @@ export function ParadasSection({
   operatorName,
   paradasDeOrden,
   paradaActivaDeOrden,
+  fechaOperativa,
   onRegistrarParada,
   onCerrarParada,
 }: ParadasSectionProps) {
@@ -98,6 +104,7 @@ export function ParadasSection({
       camposEspecificos,
       observaciones,
       inicio: new Date().toISOString(),
+      fechaOperativa,
     });
     setErrores(res);
     if (res.length > 0) return;

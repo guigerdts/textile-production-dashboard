@@ -760,6 +760,9 @@ function App({
 
   const propsActividades = {
     hoy,
+    // CHANGE 1: día al que se atribuyen los eventos nuevos. Igual al consultado
+    // mientras no exista navegación histórica (CHANGE 2).
+    fechaOperativa: hoy,
     operatorNameInicial: orden?.operatorName ?? "",
     actividades,
     actividadesAbiertas,
@@ -778,6 +781,7 @@ function App({
     danoAbiertoDeMaquina,
     paradasVinculables: paradas.filter((p) => p.ordenId === (orden?.id ?? null)),
     permitirRegistrar: orden?.estado !== "finished",
+    fechaOperativa: hoy,
     onRegistrarDano: handleRegistrarDano,
     onCerrarDano: handleCerrarDano,
   };
@@ -802,6 +806,7 @@ function App({
     mantenimientoAbiertoDeMaquina,
     danosDeMaquina: danos,
     permitirRegistrar: orden?.estado !== "finished",
+    fechaOperativa: hoy,
     onRegistrarMantenimiento: handleRegistrarMantenimiento,
     onCerrarMantenimiento: handleCerrarMantenimiento,
   };

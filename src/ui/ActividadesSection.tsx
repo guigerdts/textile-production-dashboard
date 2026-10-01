@@ -15,6 +15,11 @@ import type { RegistrarActividadInput } from "../domain/actividades";
 export interface ActividadesProps {
   /** Día operativo (para la sugerencia editable del martes en limpieza). */
   hoy: string;
+  /** Día operativo (YYYY-MM-DD) en el que se ATRIBUYE el evento nuevo. No se
+   * deriva de `inicio`: es un dato explícito y persistido (CHANGE 1).
+   * Hoy la app lo inyecta con el día consultado; al navegar a un día
+   * histórico será ese día (CHANGE 2), no el de hoy. */
+  fechaOperativa: string;
   /** Operario que registra la actividad; en producción/finalizada se precarga con el de la orden. */
   operatorNameInicial?: string;
   /** Todas las actividades de la máquina (abiertas y cerradas) para historial y validación. */
@@ -55,6 +60,7 @@ export function ActividadesSection({
   operatorNameInicial = "",
   actividades,
   actividadesAbiertas,
+  fechaOperativa,
   onRegistrarActividad,
   onCerrarActividad,
 }: ActividadesProps) {
@@ -74,6 +80,7 @@ export function ActividadesSection({
       maquinaId: "M1",
       tipo,
       inicio: new Date().toISOString(),
+      fechaOperativa,
       queSeLimpio,
       observaciones,
       operatorName,

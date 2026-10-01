@@ -91,6 +91,10 @@ export interface Parada {
   camposEspecificos: Record<string, unknown>;
   /** Texto libre. Obligatorio solo si causaId es "otro". */
   observaciones?: string;
+  /** Fecha operativa (YYYY-MM-DD) a la que se atribuye este evento.
+   *  Determina en exclusiva a que jornada pertenece; no se deriva de `inicio`
+   *  ni se altera al cerrar. */
+  fechaOperativa: string;
   /** Timestamp de inicio (ISO 8601). */
   inicio: string;
   /** Timestamp de fin (ISO 8601). null = parada abierta. */
@@ -126,6 +130,10 @@ export interface ActividadPlanificada {
   id: string;
   maquinaId: "M1";
   tipo: TipoActividadPlanificada;
+  /** Fecha operativa (YYYY-MM-DD) a la que se atribuye este evento.
+   *  Determina en exclusiva a que jornada pertenece; no se deriva de `inicio`
+   *  ni se altera al cerrar. */
+  fechaOperativa: string;
   /** Timestamp de inicio del período real (ISO 8601). */
   inicio: string;
   /** Timestamp de fin del período real (ISO 8601). null = actividad abierta. */
@@ -203,6 +211,10 @@ export interface Dano {
   tipo: TipoDano;
   /** Componente afectado (texto libre: "eje trasero", "horno", "carro 3"). */
   componente: string;
+  /** Fecha operativa (YYYY-MM-DD) a la que se atribuye este evento.
+   *  Determina en exclusiva a que jornada pertenece; no se deriva de `inicio`
+   *  ni se altera al cerrar. */
+  fechaOperativa: string;
   /** Timestamp de inicio del daño (ISO 8601). */
   inicio: string;
   /** Timestamp de fin de reparación. null = daño abierto (reparación en curso). */
@@ -340,6 +352,10 @@ export interface Mantenimiento {
   operatorName: string;
   /** Motivo del mantenimiento (obligatorio). */
   motivo: string;
+  /** Fecha operativa (YYYY-MM-DD) a la que se atribuye este evento.
+   *  Determina en exclusiva a que jornada pertenece; no se deriva de `inicio`
+   *  ni se altera al cerrar. */
+  fechaOperativa: string;
   /** Timestamp de inicio (ISO 8601). Siempre requerido. */
   inicio: string;
   /** Timestamp de fin (ISO 8601). null = en progreso. */

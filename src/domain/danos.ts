@@ -64,6 +64,26 @@ function esTimestampValido(iso: string): boolean {
   return !Number.isNaN(new Date(iso).getTime());
 }
 
+/**
+ * Valida el formato de una fecha operativa (YYYY-MM-DD).
+ * Copia privado por módulo del proyecto (`esTimestampValido`, `FECHA_OPERATIVA_RX`).
+ * NO valida coherencia con `inicio`: la atribución al día es explícita y
+ * exclusiva (operational-event-operative-date).
+ */
+const FECHA_OPERATIVA_RX = /^\d{4}-\d{2}-\d{2}$/;
+
+function esFechaOperativaValida(valor: string): boolean {
+  return FECHA_OPERATIVA_RX.test(valor);
+}
+
+function validarFechaOperativa(valor: string, errores: string[]): void {
+  if (!valor || valor.trim() === "") {
+    errores.push("debe indicar la fecha operativa");
+  } else if (!esFechaOperativaValida(valor)) {
+    errores.push("la fecha operativa debe tener el formato YYYY-MM-DD");
+  }
+}
+
 export interface RegistrarDanoInput {
   maquinaId: "M1";
   /** null = daño sin orden (máquina ociosa / día vacío). */
@@ -76,6 +96,8 @@ export interface RegistrarDanoInput {
   componente: string;
   /** Timestamp de inicio del daño (ISO 8601). */
   inicio: string;
+  /** Fecha operativa (YYYY-MM-DD) a la que se atribuye el daño. */
+  fechaOperativa: string;
   /** Flag independiente: este daño causó una parada. */
   causoParada: boolean;
   /** Parada vinculada. Obligatoria si causoParada es true; null si es false. */
@@ -137,6 +159,9 @@ export function registrarDano(
   if (!input.operatorName || input.operatorName.trim() === "") {
     errores.push("operatorName es obligatorio");
   }
+
+  // Fecha operativa requerida (atribución explícita del día)
+  validarFechaOperativa(input.fechaOperativa, errores);
 
   // Relación declarativa con parada
   if (input.causoParada) {
@@ -202,6 +227,7 @@ export function registrarDano(
     tipo,
     componente: input.componente.trim(),
     inicio: input.inicio,
+    fechaOperativa: input.fechaOperativa,
     fin: null,
     causoParada: input.causoParada,
     paradaId: input.paradaId,

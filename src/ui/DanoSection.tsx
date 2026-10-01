@@ -6,6 +6,11 @@ import type { RegistrarDanoInput } from "../domain/danos";
 
 export interface DanoSectionProps {
   maquinaId: "M1";
+  /** Día operativo (YYYY-MM-DD) en el que se ATRIBUYE el evento nuevo. No se
+   * deriva de `inicio`: es un dato explícito y persistido (CHANGE 1).
+   * Hoy la app lo inyecta con el día consultado; al navegar a un día
+   * histórico será ese día (CHANGE 2), no el de hoy. */
+  fechaOperativa: string;
   /** Orden activa o null si la máquina está ociosa / día sin orden. */
   ordenId: string | null;
   /** Operario precargado (el de la orden en producción); undefined/"" si no hay orden y se pide en el form. */
@@ -65,6 +70,7 @@ export function DanoSection({
   danoAbiertoDeMaquina,
   paradasVinculables,
   permitirRegistrar,
+  fechaOperativa,
   onRegistrarDano,
   onCerrarDano,
 }: DanoSectionProps) {
@@ -125,6 +131,7 @@ export function DanoSection({
       tipo,
       componente: componente.trim(),
       inicio: new Date().toISOString(),
+      fechaOperativa,
       causoParada,
       paradaId: causoParada ? (paradaId === "" ? null : paradaId) : null,
       posibleSegunda,

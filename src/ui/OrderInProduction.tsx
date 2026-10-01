@@ -175,6 +175,7 @@ export function OrderInProduction({
       </form>
 
       <ParadasSection
+        fechaOperativa={actividadesProps.fechaOperativa}
         ordenId={orden.id}
         operatorName={orden.operatorName ?? ""}
         paradasDeOrden={paradasDeOrden}

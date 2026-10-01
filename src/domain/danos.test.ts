@@ -34,6 +34,7 @@ export const PARADA_M1_ORDEN_100: Parada = {
   operatorName: "Carlos Gómez",
   causaId: "danio_mecanico",
   camposEspecificos: { carro: 3, componente: "eje trasero" },
+  fechaOperativa: "2026-09-11",
   inicio: "2026-09-11T09:05:00.000Z",
   fin: "2026-09-11T09:30:00.000Z",
 };
@@ -46,6 +47,7 @@ export const PARADA_M1_SIN_ORDEN: Parada = {
   operatorName: "Luis Fernández",
   causaId: "problema_horno",
   camposEspecificos: {},
+  fechaOperativa: "2026-09-11",
   inicio: "2026-09-11T09:05:00.000Z",
   fin: null,
 };
@@ -76,6 +78,7 @@ const inputBase: RegistrarDanoInput = {
   tipo: "mecanico" as const,
   componente: "eje trasero",
   inicio: "2026-09-11T09:00:00.000Z",
+  fechaOperativa: "2026-09-11",
   causoParada: false,
   paradaId: null,
   posibleSegunda: false,
@@ -374,6 +377,7 @@ describe("ticket 05: un solo daño abierto por máquina (restricción operativa)
       operatorName: "Carlos Gómez",
       tipo: "mecanico",
       componente: "eje trasero",
+      fechaOperativa: "2026-09-11",
       inicio: "2026-09-11T09:00:00.000Z",
       fin: null,
       causoParada: false,
@@ -437,6 +441,7 @@ describe("ticket 05: cerrarDano", () => {
     operatorName: "Carlos Gómez",
     tipo: "mecanico",
     componente: "eje trasero",
+    fechaOperativa: "2026-09-11",
     inicio: "2026-09-11T09:00:00.000Z",
     fin: null,
     causoParada: false,
@@ -499,6 +504,7 @@ describe("ticket 05: danoAbierto", () => {
     operatorName: "Carlos Gómez",
     tipo: "mecanico",
     componente: "eje trasero",
+    fechaOperativa: "2026-09-11",
     inicio: "2026-09-11T09:00:00.000Z",
     fin: null,
     causoParada: false,
@@ -517,5 +523,66 @@ describe("ticket 05: danoAbierto", () => {
   it("devuelve null si el único daño está cerrado", () => {
     const cerrado: Dano = { ...abierta, fin: "2026-09-11T09:30:00.000Z" };
     expect(danoAbierto([cerrado], M1)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// fechaOperativa — atribución exclusiva del día (operational-event-operative-date)
+// ---------------------------------------------------------------------------
+
+describe("ticket 05: fecha operativa — atribución exclusiva del día", () => {
+  it("acepta un daño con inicio el mismo día y devuelve la fecha operativa", () => {
+    const { dano, errores } = registrarDano(
+      [],
+      { ...inputBase, inicio: "2026-09-11T23:30:00.000Z" },
+      () => undefined,
+    );
+    expect(errores).toEqual([]);
+    expect(dano!.fechaOperativa).toBe("2026-09-11");
+  });
+
+  it("acepta un daño registrado el 11 cuyo inicio ocurre después de medianoche", () => {
+    const { dano, errores } = registrarDano(
+      [],
+      { ...inputBase, inicio: "2026-09-12T01:30:00.000Z", fechaOperativa: "2026-09-11" },
+      () => undefined,
+    );
+    expect(errores).toEqual([]);
+    expect(dano!.fechaOperativa).toBe("2026-09-11");
+  });
+
+  it("al cerrar preserva la fecha operativa aunque el fin caiga en un día posterior", () => {
+    const { dano: abierto } = registrarDano([], inputBase, () => undefined);
+    const { dano: cerrado, errores } = cerrarDano(
+      abierto!,
+      "2026-09-12T01:30:00.000Z",
+      "Ajuste de eje",
+    );
+    expect(errores).toEqual([]);
+    expect(cerrado!.fin).toBe("2026-09-12T01:30:00.000Z");
+    expect(cerrado!.fechaOperativa).toBe("2026-09-11");
+  });
+
+  it("rechaza la fecha operativa vacía (mismo camino que un valor ausente)", () => {
+    const { errores } = registrarDano([], { ...inputBase, fechaOperativa: "" }, () => undefined);
+    expect(contiene(errores, "debe indicar la fecha operativa")).toBe(true);
+  });
+
+  it("rechaza una fecha operativa con formato distinto a YYYY-MM-DD", () => {
+    const dmy = registrarDano(
+      [],
+      { ...inputBase, fechaOperativa: "11-09-2026" },
+      () => undefined,
+    );
+    expect(contiene(dmy.errores, "la fecha operativa debe tener el formato YYYY-MM-DD")).toBe(true);
+    expect(dmy.dano).toBeUndefined();
+
+    const conSlash = registrarDano(
+      [],
+      { ...inputBase, fechaOperativa: "2026/09/11" },
+      () => undefined,
+    );
+    expect(contiene(conSlash.errores, "la fecha operativa debe tener el formato YYYY-MM-DD")).toBe(true);
+    expect(conSlash.dano).toBeUndefined();
   });
 });

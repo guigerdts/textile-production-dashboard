@@ -128,6 +128,9 @@ export interface MantenimientoRow {
   dano_id: string | null;
   /** NULL = no observation. Optional in the domain. */
   observaciones: string | null;
+  /** NOT NULL (005) — día operativo persistido (YYYY-MM-DD). No se deriva de
+   * `inicio`: es el único determinante de la jornada del evento. */
+  fecha_operativa: string;
 }
 
 /**
@@ -147,6 +150,9 @@ export interface MantenimientoSqlValues {
   que_se_reviso_reparo: string | null;
   dano_id: string | null;
   observaciones: string | null;
+  /** NOT NULL (005) — día operativo persistido (YYYY-MM-DD). No se deriva de
+   * `inicio`: es el único determinante de la jornada del evento. */
+  fecha_operativa: string;
 }
 
 /**
@@ -173,6 +179,7 @@ export function mapMantenimientoRow(row: MantenimientoRow): Mantenimiento {
     motivo: row.motivo,
     inicio: row.inicio,
     fin: row.fin,
+    fechaOperativa: row.fecha_operativa,
     queSeRevisoReparo: row.que_se_reviso_reparo ?? undefined,
     danoId: row.dano_id,
     observaciones: row.observaciones ?? undefined,
@@ -228,6 +235,7 @@ export function mapMantenimientoToSql(mantenimiento: Mantenimiento): Mantenimien
     motivo: mantenimiento.motivo,
     inicio: mantenimiento.inicio,
     fin: mantenimiento.fin,
+    fecha_operativa: mantenimiento.fechaOperativa,
     que_se_reviso_reparo: mantenimiento.queSeRevisoReparo ?? null,
     dano_id: mantenimiento.danoId,
     observaciones: mantenimiento.observaciones ?? null,
@@ -270,7 +278,7 @@ export class SqliteMantenimientoRepository implements IMantenimientoRepository {
     const v = mapMantenimientoToSql(mantenimiento);
     try {
       await this.db.execute(
-        "INSERT INTO mantenimiento (id, machine_id, tipo, operario, motivo, inicio, fin, que_se_reviso_reparo, dano_id, observaciones) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
+        "INSERT INTO mantenimiento (id, machine_id, tipo, operario, motivo, inicio, fin, que_se_reviso_reparo, dano_id, observaciones, fecha_operativa) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
         [
           v.id,
           v.machine_id,
@@ -282,6 +290,7 @@ export class SqliteMantenimientoRepository implements IMantenimientoRepository {
           v.que_se_reviso_reparo,
           v.dano_id,
           v.observaciones,
+          v.fecha_operativa,
         ]
       );
     } catch (error) {
@@ -328,7 +337,7 @@ export class SqliteMantenimientoRepository implements IMantenimientoRepository {
     const v = mapMantenimientoToSql(mantenimiento);
     try {
       await this.db.execute(
-        "UPDATE mantenimiento SET machine_id = $2, tipo = $3, operario = $4, motivo = $5, inicio = $6, fin = $7, que_se_reviso_reparo = $8, dano_id = $9, observaciones = $10 WHERE id = $1",
+        "UPDATE mantenimiento SET machine_id = $2, tipo = $3, operario = $4, motivo = $5, inicio = $6, fin = $7, que_se_reviso_reparo = $8, dano_id = $9, observaciones = $10, fecha_operativa = $11 WHERE id = $1",
         [
           v.id,
           v.machine_id,
@@ -340,6 +349,7 @@ export class SqliteMantenimientoRepository implements IMantenimientoRepository {
           v.que_se_reviso_reparo,
           v.dano_id,
           v.observaciones,
+          v.fecha_operativa,
         ]
       );
     } catch (error) {

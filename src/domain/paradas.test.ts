@@ -106,6 +106,7 @@ describe("ticket 02: registrarParada", () => {
     causaId: "falta_color" as const,
     camposEspecificos: { color: "ROJO" },
     inicio: "2026-09-11T09:00:00.000Z",
+    fechaOperativa: "2026-09-11",
   };
 
   it("registra una parada abierta válida", () => {
@@ -209,6 +210,7 @@ describe("ticket 02: cerrarParada", () => {
     operatorName: "Carlos Gómez",
     causaId: "atasco_tela",
     camposEspecificos: {},
+    fechaOperativa: "2026-09-11",
     inicio: "2026-09-11T09:00:00.000Z",
     fin: null,
   };
@@ -239,6 +241,7 @@ describe("ticket 02: duración de parada", () => {
       operatorName: "Carlos Gómez",
       causaId: "atasco_tela",
       camposEspecificos: {},
+      fechaOperativa: "2026-09-11",
       inicio: "2026-09-11T09:00:00.000Z",
       fin: null,
     };
@@ -253,6 +256,7 @@ describe("ticket 02: duración de parada", () => {
       operatorName: "Carlos Gómez",
       causaId: "atasco_tela",
       camposEspecificos: {},
+      fechaOperativa: "2026-09-11",
       inicio: "2026-09-11T09:00:00.000Z",
       fin: "2026-09-11T09:15:30.000Z",
     };
@@ -268,6 +272,7 @@ describe("ticket 02: duración acumulada de parada abierta", () => {
     operatorName: "Carlos Gómez",
     causaId: "atasco_tela",
     camposEspecificos: {},
+    fechaOperativa: "2026-09-11",
     inicio: "2026-09-11T09:00:00.000Z",
     fin: null,
   };
@@ -300,6 +305,7 @@ describe("ticket 02: paradaAbierta y finalización", () => {
     operatorName: "Carlos Gómez",
     causaId: "atasco_tela",
     camposEspecificos: {},
+    fechaOperativa: "2026-09-11",
     inicio: "2026-09-11T09:00:00.000Z",
     fin: null,
   };
@@ -332,6 +338,7 @@ describe("ticket 02: validarLecturaConParadas", () => {
     operatorName: "Carlos Gómez",
     causaId: "atasco_tela",
     camposEspecificos: {},
+    fechaOperativa: "2026-09-11",
     inicio: "2026-09-11T09:00:00.000Z",
     fin: null,
   };
@@ -352,5 +359,64 @@ describe("ticket 02: validarLecturaConParadas", () => {
   it("una parada cerrada no bloquea las lecturas", () => {
     const cerrada: Parada = { ...abiertaOrden1, fin: "2026-09-11T09:15:00.000Z" };
     expect(validarLecturaConParadas([cerrada], "orden-1")).toEqual([]);
+  });
+});
+
+describe("ticket 02: fecha operativa — atribución exclusiva del día", () => {
+  const inputVigilia = {
+    maquinaId: "M1" as const,
+    ordenId: "orden-1",
+    operatorName: "Carlos Gómez",
+    causaId: "falta_color" as const,
+    camposEspecificos: { color: "ROJO" },
+    inicio: "2026-09-11T23:30:00.000Z",
+    fechaOperativa: "2026-09-11",
+  };
+
+  it("acepta un registro cuyo inicio cae el mismo día y devuelve la fecha operativa", () => {
+    const { parada, errores } = registrarParada([], inputVigilia);
+    expect(errores).toEqual([]);
+    expect(parada!.fechaOperativa).toBe("2026-09-11");
+  });
+
+  it("acepta un evento registrado el 11 cuyo inicio ocurre después de medianoche", () => {
+    const { parada, errores } = registrarParada([], {
+      ...inputVigilia,
+      inicio: "2026-09-12T01:30:00.000Z",
+    });
+    expect(errores).toEqual([]);
+    expect(parada!.fechaOperativa).toBe("2026-09-11");
+  });
+
+  it("al cerrar preserva la fecha operativa aunque el fin caiga en un día posterior", () => {
+    const abierta = registrarParada([], inputVigilia).parada!;
+    const { parada, errores } = cerrarParada(abierta, "2026-09-12T01:30:00.000Z");
+    expect(errores).toEqual([]);
+    expect(parada!.fin).toBe("2026-09-12T01:30:00.000Z");
+    expect(parada!.fechaOperativa).toBe("2026-09-11");
+  });
+
+  it("rechaza la fecha operativa vacía (mismo camino que un valor ausente)", () => {
+    const { errores } = registrarParada([], { ...inputVigilia, fechaOperativa: "" });
+    expect(contiene(errores, "debe indicar la fecha operativa")).toBe(true);
+  });
+
+  it("rechaza una fecha operativa con formato distinto a YYYY-MM-DD", () => {
+    const dmy = registrarParada([], { ...inputVigilia, fechaOperativa: "11-09-2026" });
+    expect(contiene(dmy.errores, "la fecha operativa debe tener el formato YYYY-MM-DD")).toBe(true);
+    expect(dmy.parada).toBeUndefined();
+
+    const conSlash = registrarParada([], { ...inputVigilia, fechaOperativa: "2026/09/11" });
+    expect(contiene(conSlash.errores, "la fecha operativa debe tener el formato YYYY-MM-DD")).toBe(true);
+    expect(conSlash.parada).toBeUndefined();
+  });
+
+  it("una parada abierta que cruza la medianoche conserva su propia fecha operativa", () => {
+    const abierta = registrarParada([], inputVigilia).parada!;
+    expect(abierta.fin).toBeNull();
+    expect(abierta.fechaOperativa).toBe("2026-09-11");
+
+    const cerrada = cerrarParada(abierta, "2026-09-12T01:30:00.000Z").parada!;
+    expect(cerrada.fechaOperativa).toBe("2026-09-11");
   });
 });

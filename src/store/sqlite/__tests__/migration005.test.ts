@@ -32,11 +32,13 @@
  * columns with ALTER TABLE and never declares a table.
  */
 
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import canonicalSql from "../../../../src-tauri/migrations/005_event_fecha_operativa.sql?raw";
 import mirrorSql from "../migrations/005_event_fecha_operativa.sql?raw";
+// El binario se lee como texto con la misma mecánica `?raw` que los scripts SQL:
+// este proyecto no tipa la capa webview con `@types/node`, así que `node:fs` y
+// `__dirname` no son opciones aquí.
+import libRs from "../../../../src-tauri/src/lib.rs?raw";
 import { CURRENT_MIGRATION_VERSION } from "../migrations/index";
 
 // ── Parser mínimo del script ─────────────────────────────────────────────────
@@ -187,30 +189,20 @@ describe("migration 005 — event_fecha_operativa: contrato del script", () => {
       // Sin esto, la app arranca contra un esquema de 004 y escribe sin la
       // columna: el NOT NULL rechazaría la escritura en runtime, no en el
       // typecheck. El fallo sería en la máquina del operario, no en el repo.
-      const libRs = readFileSync(
-        resolve(__dirname, "../../../../src-tauri/src/lib.rs"),
-        "utf8",
-      );
       expect(libRs).toMatch(/version:\s*5,/);
       expect(libRs).toMatch(
         /version:\s*5,\s*\n\s*description:\s*"event_fecha_operativa",\s*\n\s*sql:\s*include_str!\("\.\.\/migrations\/005_event_fecha_operativa\.sql"\),/,
       );
     });
 
-    it("el script embebido por Rust es el mismo archivo que el canónico", () => {
-      const libRs = readFileSync(
-        resolve(__dirname, "../../../../src-tauri/src/lib.rs"),
-        "utf8",
-      );
+    it("el script embebido por Rust es el archivo 005 canónico", () => {
+      // Si `include_str!` apuntara a otro archivo, el SQL embebido y el que este
+      // suite audita serían distintos: el contrato probado no sería el aplicado.
       const incluido = libRs.match(
         /version:\s*5,[\s\S]*?include_str!\("\.\.\/migrations\/([^"]+)"\)/,
       );
       expect(incluido).not.toBeNull();
-      const enDisco = readFileSync(
-        resolve(__dirname, "../../../../src-tauri/migrations/", incluido![1]),
-        "utf8",
-      );
-      expect(enDisco).toBe(canonicalSql);
+      expect(incluido![1]).toBe("005_event_fecha_operativa.sql");
     });
   });
 });

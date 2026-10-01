@@ -31,6 +31,7 @@ const DANO_1: Dano = {
   operatorName: "Carlos Gómez",
   tipo: "mecanico",
   componente: "eje trasero",
+  fechaOperativa: "2026-09-11",
   inicio: "2026-09-11T09:00:00.000Z",
   fin: "2026-09-11T10:00:00.000Z",
   causoParada: false,
@@ -44,6 +45,7 @@ const inputBaseReactivo: RegistrarMantenimientoInput = {
   operatorName: "Carlos Gómez",
   motivo: "Reparación de eje trasero",
   inicio: "2026-09-11T11:00:00.000Z",
+  fechaOperativa: "2026-09-11",
   danoId: "dano-1",
 };
 
@@ -53,6 +55,7 @@ const inputBasePreventivo: RegistrarMantenimientoInput = {
   operatorName: "Carlos Gómez",
   motivo: "Limpieza programada",
   inicio: "2026-09-11T11:00:00.000Z",
+  fechaOperativa: "2026-09-11",
   danoId: null,
 };
 
@@ -435,6 +438,7 @@ describe("ticket 08: un solo mantenimiento abierto por máquina", () => {
       tipo: "reactivo",
       operatorName: "Carlos Gómez",
       motivo: "Reparación previa",
+      fechaOperativa: "2026-09-11",
       inicio: "2026-09-11T08:00:00.000Z",
       fin: null,
       danoId: null,
@@ -482,6 +486,7 @@ describe("ticket 08: cerrarMantenimiento", () => {
     tipo: "reactivo",
     operatorName: "Carlos Gómez",
     motivo: "Reparación de eje",
+    fechaOperativa: "2026-09-11",
     inicio: "2026-09-11T11:00:00.000Z",
     fin: null,
     danoId: "dano-1",
@@ -590,6 +595,7 @@ describe("ticket 08: mantenimientoAbierto", () => {
     tipo: "reactivo",
     operatorName: "Carlos Gómez",
     motivo: "Reparación",
+    fechaOperativa: "2026-09-11",
     inicio: "2026-09-11T11:00:00.000Z",
     fin: null,
     danoId: null,
@@ -627,6 +633,7 @@ describe("ticket 08: registrarMantenimiento acumula errores", () => {
         operatorName: "",
         motivo: "",
         inicio: "",
+        fechaOperativa: "2026-09-11",
         danoId: null,
       },
       () => undefined,

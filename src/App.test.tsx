@@ -327,6 +327,7 @@ describe("App — ticket 02: paradas / incidencias (UI)", () => {
       operatorName: "Laura",
       causaId: "atasco_tela",
       camposEspecificos: {},
+      fechaOperativa: "2026-09-11",
       inicio: "2026-09-11T09:00:00.000Z",
       fin: null,
     };
@@ -419,6 +420,7 @@ describe("App — ticket 02: paradas / incidencias (UI)", () => {
       causaId: "atasco_tela",
       camposEspecificos: {},
       observaciones: "atascado",
+      fechaOperativa: "2026-09-11",
       inicio: "2026-09-11T09:00:00.000Z",
       fin: null,
     };
@@ -969,6 +971,7 @@ describe("App — ticket 05: daños / eventos (UI)", () => {
       operatorName: "Laura",
       causaId: "danio_mecanico",
       camposEspecificos: {},
+      fechaOperativa: "2026-09-11",
       inicio: "2026-09-11T09:30:00.000Z",
       fin: null,
     };
@@ -1773,6 +1776,7 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
       inicio: new Date().toISOString(),
       fin: new Date().toISOString(),
       queSeRevisoReparo: "Cambio de rodamiento",
+      fechaOperativa: "2026-09-11",
       danoId: null,
     }, () => undefined);
     if (!resultado.mantenimiento) throw new Error("precondition: dominio debería crear el mantenimiento");
@@ -1921,6 +1925,7 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
       tipo: "reactivo",
       operatorName: "Carlos",
       motivo: "Fuga de tinta",
+      fechaOperativa: "2026-09-11",
       inicio: "2026-09-11T08:00:00.000Z",
       fin: "2026-09-11T08:20:00.000Z",
       queSeRevisoReparo: "Sellado",
@@ -1932,6 +1937,7 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
       tipo: "preventivo",
       operatorName: "Sofía",
       motivo: "Preventivo semanal",
+      fechaOperativa: "2026-09-11",
       inicio: "2026-09-11T10:00:00.000Z",
       fin: "2026-09-11T10:30:00.000Z",
       queSeRevisoReparo: "Limpieza general",
@@ -2034,6 +2040,7 @@ describe("App — ticket 09: DashboardHome", () => {
       operatorName: "Carlos",
       causaId: "falta_tela",
       camposEspecificos: {},
+      fechaOperativa: "2026-09-10",
       inicio: "2026-09-10T10:00:00.000Z",
       fin: null,
     };
@@ -2065,6 +2072,7 @@ describe("App — ticket 09: DashboardHome", () => {
       operatorName: "Laura",
       causaId: "falta_color",
       camposEspecificos: { color: "Rojo" },
+      fechaOperativa: "2026-09-11",
       inicio: "2026-09-11T09:00:00.000Z",
       fin: null,
     };
@@ -2120,6 +2128,7 @@ describe("App — phase 14 (G2): el puerto como fuente de verdad (14.1–14.5)",
       operatorName: "Laura",
       causaId: "falta_tela",
       camposEspecificos: {},
+      fechaOperativa: "2026-09-11",
       inicio: "2026-09-11T08:20:00.000Z",
       fin: "2026-09-11T08:35:00.000Z",
     };
@@ -2249,6 +2258,7 @@ describe("App — phase 14 (G2): el puerto como fuente de verdad (14.1–14.5)",
       operatorName: "Ana",
       causaId: "falta_tela",
       camposEspecificos: {},
+      fechaOperativa: "2026-09-10",
       inicio: "2026-09-10T07:00:00.000Z",
       fin: null,
     };
@@ -2259,6 +2269,7 @@ describe("App — phase 14 (G2): el puerto como fuente de verdad (14.1–14.5)",
       operatorName: "Carlos",
       causaId: "falta_color",
       camposEspecificos: { color: "Rojo" },
+      fechaOperativa: "2026-09-10",
       inicio: "2026-09-10T07:00:00.000Z",
       fin: null,
     };

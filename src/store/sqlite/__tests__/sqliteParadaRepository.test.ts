@@ -39,6 +39,7 @@ function parada(overrides: Partial<Parada> = {}): Parada {
     operatorName: "Laura",
     causaId: "falta_tela",
     camposEspecificos: {},
+    fechaOperativa: "2026-09-14",
     inicio: "2026-09-14T07:00:00.000Z",
     fin: "2026-09-14T08:00:00.000Z",
     ...overrides,
@@ -178,7 +179,7 @@ describe("sqliteParadaRepository — mappers puros", () => {
     expect(recuperada).not.toBe(original);
   });
 
-  it("traduce exactamente las 9 columnas que 004 declara, ni una más ni una menos", () => {
+  it("traduce exactamente las 10 columnas que 004+005 declaran, ni una más ni una menos", () => {
     const valores = mapParadaToSql(parada());
     expect(Object.keys(valores).sort()).toEqual(
       [
@@ -191,6 +192,7 @@ describe("sqliteParadaRepository — mappers puros", () => {
         "observaciones",
         "inicio",
         "fin",
+        "fecha_operativa",
       ].sort()
     );
   });
@@ -237,6 +239,7 @@ describe("sqliteParadaRepository — mappers puros", () => {
       causa_id: "explosion",
       campos_especificos: "{}",
       observaciones: null,
+      fecha_operativa: "2026-09-14",
       inicio: "2026-09-14T07:00:00.000Z",
       fin: null,
     };
@@ -415,6 +418,7 @@ describe("sqliteParadaRepository — getParadaAbierta", () => {
       operatorName: "Laura",
       causaId: "ajuste_registro",
       camposEspecificos: { carrosAfectados: [3] },
+      fechaOperativa: "2026-09-14",
       inicio: "2026-09-14T07:00:00.000Z",
     });
     expect(resultado.errores).toEqual([]);
@@ -607,7 +611,7 @@ describe("sqliteParadaRepository — update en el mismo lugar", () => {
 // ── 11. D2j: sentencias prescritas, fijadas por texto ────────────────────────
 
 describe("sqliteParadaRepository — D2j: pre-check + una sentencia, id solo en WHERE", () => {
-  it("el INSERT declara las 9 columnas y liga el JSON como texto", async () => {
+  it("el INSERT declara las 10 columnas y liga el JSON como texto", async () => {
     const store = createFakeSqliteStore();
     const { repo, consultas, enlaces } = repoQueRegistra(store);
     const conJson = parada({
@@ -624,7 +628,7 @@ describe("sqliteParadaRepository — D2j: pre-check + una sentencia, id solo en 
     expect(consultas).toHaveLength(2);
     expect(consultas[0]).toBe("SELECT id FROM parada WHERE id = $1");
     expect(consultas[1]).toBe(
-      "INSERT INTO parada (id, machine_id, orden_id, operario, causa_id, campos_especificos, observaciones, inicio, fin) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)"
+      "INSERT INTO parada (id, machine_id, orden_id, operario, causa_id, campos_especificos, observaciones, inicio, fin, fecha_operativa) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)"
     );
     expect(valorLigado(enlaces[1], "campos_especificos")).toBe(
       JSON.stringify({ carro: 2, componente: "brazo" })
@@ -632,7 +636,7 @@ describe("sqliteParadaRepository — D2j: pre-check + una sentencia, id solo en 
     expect(valorLigado(enlaces[1], "orden_id")).toBe("ord-1");
   });
 
-  it("el UPDATE pone los 8 no-PK en SET, id solo en WHERE, y el cierre liga fin", async () => {
+  it("el UPDATE pone los 9 no-PK en SET, id solo en WHERE, y el cierre liga fin", async () => {
     const store = createFakeSqliteStore();
     const { repo, consultas, enlaces } = repoQueRegistra(store);
     const original = abierta({ id: "parada-d2j-up", causaId: "falta_color", camposEspecificos: { color: "magenta" } });
@@ -646,7 +650,7 @@ describe("sqliteParadaRepository — D2j: pre-check + una sentencia, id solo en 
     expect(consultas).toHaveLength(2);
     expect(consultas[0]).toBe("SELECT id FROM parada WHERE id = $1");
     expect(consultas[1]).toBe(
-      "UPDATE parada SET machine_id = $2, orden_id = $3, operario = $4, causa_id = $5, campos_especificos = $6, observaciones = $7, inicio = $8, fin = $9 WHERE id = $1"
+      "UPDATE parada SET machine_id = $2, orden_id = $3, operario = $4, causa_id = $5, campos_especificos = $6, observaciones = $7, inicio = $8, fin = $9, fecha_operativa = $10 WHERE id = $1"
     );
     // `id` no aparece en la parte SET — solo en el WHERE final.
     const setParte = consultas[1].slice(

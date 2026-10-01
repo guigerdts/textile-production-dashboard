@@ -762,6 +762,7 @@ describe("14. el reinicio con los cinco operativos SQLite reales — G2", () => 
       operatorName: "Laura",
       tipo: "mecanico",
       componente: "eje trasero",
+      fechaOperativa: "2026-09-14",
       inicio: "2026-09-14T10:00:00.000Z",
       fin: null,
       causoParada: true,

@@ -91,11 +91,14 @@ export interface ActividadPlanificadaRow {
   que_se_limpio: string | null;
   observaciones: string | null;
   operario: string;
+  /** NOT NULL (005) — día operativo persistido (YYYY-MM-DD). No se deriva de
+   * `inicio`: es el único determinante de la jornada del evento. */
+  fecha_operativa: string;
 }
 
 /**
- * Valores de enlace para el INSERT explícito: el mismo juego de 8 columnas, en
- * el orden en que los placeholders `$1..$8` los reciben. Los opcionales se
+ * Valores de enlace para el INSERT explícito: el mismo juego de 9 columnas, en
+ * el orden en que los placeholders `$1..$9` los reciben. Los opcionales se
  * escriben como `null` explícito, nunca como `undefined` (D2j).
  */
 export interface ActividadPlanificadaSqlValues {
@@ -107,6 +110,9 @@ export interface ActividadPlanificadaSqlValues {
   que_se_limpio: string | null;
   observaciones: string | null;
   operario: string;
+  /** NOT NULL (005) — día operativo persistido (YYYY-MM-DD). No se deriva de
+   * `inicio`: es el único determinante de la jornada del evento. */
+  fecha_operativa: string;
 }
 
 /**
@@ -131,6 +137,7 @@ export function mapActividadPlanificadaRow(row: ActividadPlanificadaRow): Activi
     queSeLimpio: row.que_se_limpio ?? undefined,
     observaciones: row.observaciones ?? undefined,
     operatorName: row.operario,
+    fechaOperativa: row.fecha_operativa,
   };
 }
 
@@ -156,6 +163,7 @@ export function mapActividadPlanificadaToSql(
     que_se_limpio: actividad.queSeLimpio ?? null,
     observaciones: actividad.observaciones ?? null,
     operario: actividad.operatorName,
+    fecha_operativa: actividad.fechaOperativa,
   };
 }
 
@@ -187,8 +195,8 @@ export class SqliteActividadPlanificadaRepository implements IActividadPlanifica
     const v = mapActividadPlanificadaToSql(actividad);
     try {
       await this.db.execute(
-        "INSERT INTO actividad_planificada (id, machine_id, tipo, inicio, fin, que_se_limpio, observaciones, operario) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
-        [v.id, v.machine_id, v.tipo, v.inicio, v.fin, v.que_se_limpio, v.observaciones, v.operario]
+        "INSERT INTO actividad_planificada (id, machine_id, tipo, inicio, fin, que_se_limpio, observaciones, operario, fecha_operativa) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+        [v.id, v.machine_id, v.tipo, v.inicio, v.fin, v.que_se_limpio, v.observaciones, v.operario, v.fecha_operativa]
       );
     } catch (error) {
       // Error descriptivo con contexto, conservando la causa original (patrón
@@ -228,8 +236,8 @@ export class SqliteActividadPlanificadaRepository implements IActividadPlanifica
     const v = mapActividadPlanificadaToSql(actividad);
     try {
       await this.db.execute(
-        "UPDATE actividad_planificada SET machine_id = $2, tipo = $3, inicio = $4, fin = $5, que_se_limpio = $6, observaciones = $7, operario = $8 WHERE id = $1",
-        [v.id, v.machine_id, v.tipo, v.inicio, v.fin, v.que_se_limpio, v.observaciones, v.operario]
+        "UPDATE actividad_planificada SET machine_id = $2, tipo = $3, inicio = $4, fin = $5, que_se_limpio = $6, observaciones = $7, operario = $8, fecha_operativa = $9 WHERE id = $1",
+        [v.id, v.machine_id, v.tipo, v.inicio, v.fin, v.que_se_limpio, v.observaciones, v.operario, v.fecha_operativa]
       );
     } catch (error) {
       throw new Error(`no se pudo persistir la actividad "${actividad.id}"`, {

@@ -39,6 +39,26 @@ function esTipoActividad(valor: string): valor is TipoActividadPlanificada {
   return TIPOS.some((t) => t.id === valor);
 }
 
+/**
+ * Valida el formato de una fecha operativa (YYYY-MM-DD).
+ * Copia privado por módulo del proyecto (`esTimestampValido`, `FECHA_OPERATIVA_RX`).
+ * NO valida coherencia con `inicio`: la atribución al día es explícita y
+ * exclusiva (operational-event-operative-date).
+ */
+const FECHA_OPERATIVA_RX = /^\d{4}-\d{2}-\d{2}$/;
+
+function esFechaOperativaValida(valor: string): boolean {
+  return FECHA_OPERATIVA_RX.test(valor);
+}
+
+function validarFechaOperativa(valor: string, errores: string[]): void {
+  if (!valor || valor.trim() === "") {
+    errores.push("debe indicar la fecha operativa");
+  } else if (!esFechaOperativaValida(valor)) {
+    errores.push("la fecha operativa debe tener el formato YYYY-MM-DD");
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Operaciones de dominio
 // ---------------------------------------------------------------------------
@@ -55,6 +75,8 @@ export interface RegistrarActividadInput {
   observaciones?: string;
   /** Nombre del operario que registra la actividad (obligatorio). */
   operatorName: string;
+  /** Fecha operativa (YYYY-MM-DD) a la que se atribuye la actividad. */
+  fechaOperativa: string;
 }
 
 export interface ResultadoActividad<T = ActividadPlanificada> {
@@ -86,6 +108,9 @@ export function comenzarActividad(
   if (!input.inicio || input.inicio.trim() === "") {
     errores.push("debe indicar el timestamp de inicio");
   }
+
+  // Fecha operativa requerida (atribución explícita del día)
+  validarFechaOperativa(input.fechaOperativa, errores);
 
   // Operario requerido
   if (!input.operatorName || input.operatorName.trim() === "") {
@@ -123,6 +148,7 @@ export function comenzarActividad(
     maquinaId: input.maquinaId,
     tipo,
     inicio: input.inicio,
+    fechaOperativa: input.fechaOperativa,
     fin: null,
     // queSeLimpio solo aplica a limpieza: nunca se persiste en otros tipos.
     queSeLimpio:
