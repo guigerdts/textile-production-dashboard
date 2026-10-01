@@ -600,9 +600,8 @@ describe("App — ticket 03: actividades planificadas (UI)", () => {
       expectTexto("6 golpes / 18 unidades");
     },
     // UI de userEvent carácter a carácter: en máquinas lentas supera el timeout
-    // por defecto de 5 s sin fallo real (misma razón que UI_TIMEOUT en
-    // persistence-integration.test.ts). Solo amplía el límite, no debilita aserciones.
-    30_000,
+    // por defecto de 5 s sin fallo real. Solo amplía el límite, no debilita aserciones.
+    UI_TIMEOUT,
   );
 
   it("registra una actividad en orden finalizada y la muestra sin botones de orden", async () => {
@@ -908,9 +907,11 @@ describe("App — ticket 04: resumen del turno (UI)", () => {
 });
 
 describe("App — ticket 05: daños / eventos (UI)", () => {
+  // Sin timeout: el hook es síncrono e instantáneo. UI_TIMEOUT presupuesta los tests
+  // de UI, no los hooks (los otros tres afterEach del archivo tampoco lo llevan).
   afterEach(async () => {
     vi.useRealTimers();
-  }, UI_TIMEOUT);
+  });
 
   async function iniciarOP101ConDanos(opciones: { danos?: Dano[]; paradas?: ParadaAbierta[] } = {}) {
     const user = userEvent.setup();
@@ -1088,7 +1089,7 @@ it("cierra el daño activo con solución aplicada y lo mueve al historial", asyn
   expect(guardado.fin).not.toBeNull();
   expect(guardado.solucionAplicada).toBe("Cambio de eje y lubricación");
   expectTexto("Historial de daños");
-});
+}, UI_TIMEOUT);
 
 it("cierra sin solución aplicada: error del dominio", async () => {
   // Mismo reloj congelado: el único error debe ser la solución faltante (el fin
@@ -1120,7 +1121,7 @@ it("cierra sin solución aplicada: error del dominio", async () => {
 
   expect(screen.getByRole("alert").textContent).toContain("debe indicar la solución aplicada");
   expect((await repoDanos.listarPorMaquina("M1"))[0]!.fin).toBeNull();
-});
+}, UI_TIMEOUT);
 
   it("un daño abierto preexistente de la máquina bloquea registrar otro", async () => {
     // DANO_3_ABIERTO es de la máquina M1 (aunque de otra orden): el invariante
