@@ -322,12 +322,12 @@ families, `npx tsc --noEmit` is clean, and the `EXPLAIN QUERY PLAN` assertion ho
 
 **Depends on:** WU2 (the four day-scoped methods must exist before the call sites can be repointed). Independent of WU3 and WU4.
 
-- [ ] 5.1 Repoint the four production calls in `src/store/sqlite/recovery.ts` — `:129` (paradas), `:131`
+- [x] 5.1 Repoint the four production calls in `src/store/sqlite/recovery.ts` — `:129` (paradas), `:131`
   (actividades), `:133` (danos), `:135-137` (mantenimientos) — from `listarPorMaquina(maquinaId)` to
   `listarPorMaquinaYFecha(maquinaId, fechaOperativa)`, using the `fechaOperativa` that already arrives as the
   function's **ninth** parameter (`recovery.ts:108`). **Traces to:** `W:36-49` ("Recovery uses the day-scoped
   machine listings"; "Recovery passes the day to the day-scoped listings"); DD3; design §4.
-- [ ] 5.2 Rewrite the three places inside `recovery.ts` that write down the *old* contract, because leaving them
+- [x] 5.2 Rewrite the three places inside `recovery.ts` that write down the *old* contract, because leaving them
   would document a behaviour the code no longer has:
   - `recovery.ts:30-32` — the file header's *"The four machine-event lists carry the machine's FULL history:
     recovery applies NO date predicate (a future 'read a past day' feature adds it to the ports, never to
@@ -340,17 +340,17 @@ families, `npx tsc --noEmit` is clean, and the `EXPLAIN QUERY PLAN` assertion ho
     *"…acotada a `fechaOperativa` (D2e)…"*. This is the third copy and the one a reader actually sees next to the
     call.
   **Traces to:** design §4 (first three bullets); `W:36-49`.
-- [ ] 5.3 Re-point the four `RecoveryState` field comments at `recovery.ts:86-89` — each names the method it comes
+- [x] 5.3 Re-point the four `RecoveryState` field comments at `recovery.ts:86-89` — each names the method it comes
   from, so all four rename and `paradas`'s *"(historial completo)"* goes with them. The field **types** and the
   interface's **shape** do not change. **Traces to:** `W:66-71` ("Recovery returns sources only").
-- [ ] 5.4 Change **nothing else** in recovery. The read order stays sequential and fixed (D2e): jornada → orden →
+- [x] 5.4 Change **nothing else** in recovery. The read order stays sequential and fixed (D2e): jornada → orden →
   lecturas → paradas → actividades → daños → mantenimientos → inspecciones; no `Promise.all`. A read failure still
   **propagates** — no new `catch`, no downgrade to an empty list. No derived value is computed. The single declared
   dependency on `orden` (guarding lecturas and inspecciones) is unchanged, and `inspecciones` still reaches
   `inspeccionRepository.listarPorOrden(orden.id)` with **no day** (`recovery.ts:141-143`) — B3 holds.
   **Traces to:** `W:51-64` ("Recovery's read order remains the fixed order"; "Inspections remain order-reached");
   `W:66-71`; `W:211-216`; DD8.
-- [ ] 5.5 Re-point `src/store/sqlite/__tests__/recovery.test.ts`, changing nothing else:
+- [x] 5.5 Re-point `src/store/sqlite/__tests__/recovery.test.ts`, changing nothing else:
   1. the white-box header line at `:16` — *"routes the four machine-event lists through `listarPorMaquina(maquinaId)`
      with NO date predicate"* — names `listarPorMaquinaYFecha(maquinaId, fechaOperativa)`;
   2. the four fakes at `:216`, `:225`, `:233`, `:245` gain `listarPorMaquinaYFecha: vi.fn(…)`; they are
@@ -360,7 +360,7 @@ families, `npx tsc --noEmit` is clean, and the `EXPLAIN QUERY PLAN` assertion ho
   4. assertions re-point — `H1` (`:518-521`), `I1` (`:591-594`), `I6` (`:746-748`) and the sequential-order array in
      `I2` (`:615-618`).
   **Traces to:** `W:36-49`; `W:51-56`; `W:232-238`; `W:225-231`; design §10.2 item 1–4.
-- [ ] 5.6 Rewrite `I4` **precisely, not by blanket inversion** (design §10.2 item 5). Its title and premise comment
+- [x] 5.6 Rewrite `I4` **precisely, not by blanket inversion** (design §10.2 item 5). Its title and premise comment
   (`recovery.test.ts:654`, `:657` — *"el recovery no filtra por fecha"*) change, and its eight method assertions
   (`:682-688`) become `listarPorMaquinaYFecha` with `(MAQUINA, FECHA)`. Its body needs **no** assertion change: the
   four records deliberately set `inicio` to Jan/Feb/Mar/Dec while `createParada`/`createActividad`/`createDano`/
@@ -371,7 +371,7 @@ families, `npx tsc --noEmit` is clean, and the `EXPLAIN QUERY PLAN` assertion ho
   record stays on its registered day"* / *"`inicio` and `fin` are untouched by day scoping"* and must be **kept,
   not deleted**. The full-history guarantee `I4` used to carry moves to the per-adapter suites (DD2, task 2.4).
   **Traces to:** `H:210-241`; `H:236-241`; design §10.2 item 5.
-- [ ] 5.7 Keep `I2` (read order), `I3` (the order-less case), `I5` (sources only) and `I6` (failure propagation)
+- [x] 5.7 Keep `I2` (read order), `I3` (the order-less case), `I5` (sources only) and `I6` (failure propagation)
   structurally intact — they must still pass unmodified. **Traces to:** `W:51-64`; `W:211-238`.
 
 **Finish when:** `npx vitest run src/store/sqlite/__tests__/recovery.test.ts` passes, `npx tsc --noEmit` is clean, and
@@ -427,6 +427,7 @@ failure propagation and the sources-only contract never moved.
      the failure case **passes for the wrong reason** (the tag simply never appears). One comment needs rewording:
      `:531` says the machine domains are recovered as *"historial completo de la máquina, vacío en día vacío"*; the
      four `toEqual([])` assertions above it still hold, but the reason is now "empty day, day-scoped read".
+     **Executed in WU5 (group 1 only):** "The fakes" was pulled forward because re-pointing recovery alone turns the startup failure-injection case red, and the slice must be green before it commits; group 2 ("The root") remains Phase 6.
   2. *The root.* `Raiz` is what `main()` renders, so `elemento.props.children` is `<Raiz>`: the root-type assertions
      at `:485` and `:526` assert `RaizDelArranque` (imported next to `AppDelArranque` at `:399`); the eight
      repository-identity assertions at `:502-509` become `props.repos.repository` … `props.repos.mantenimientoRepository`;

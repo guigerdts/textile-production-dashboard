@@ -13,7 +13,7 @@
  * - White-box tests: recovery never calls a write method, only composes the
  *   eight documented read methods in the fixed D2e order, routes lecturas and
  *   inspecciones through their orden guard, and routes the four machine-event
- *   lists through `listarPorMaquina(maquinaId)` with NO date predicate.
+ *   lists through `listarPorMaquinaYFecha(maquinaId, fechaOperativa)`.
  * - Derivation tests: recovery returns SOURCES only — `state.lecturas` keeps
  *   the repository's read projection (deltaGolpes 0 placeholder). The
  *   COMPOSITION seam (`componerOrdenConLecturas`, G2 / CORRECTION 11)
@@ -183,7 +183,7 @@ interface FakesOptions {
   danos?: Dano[];
   mantenimientos?: Mantenimiento[];
   inspecciones?: InspeccionTela[];
-  /** Si se indica, `IDanoRepository.listarPorMaquina` rechaza con este mensaje. */
+  /** Si se indica, `IDanoRepository.listarPorMaquinaYFecha` rechaza con este mensaje. */
   fallaLecturaDano?: string;
 }
 
@@ -214,10 +214,11 @@ function createFakes(options: FakesOptions = {}) {
     updateParada: vi.fn(async () => undefined),
     obtenerPorId: vi.fn(async () => undefined),
     listarPorMaquina: vi.fn(async () => options.paradas ?? []),
-    // Stub NEUTRO: recovery todavia no consume este metodo (se re-apunta en WU5).
-    // No propaga `fallaLecturaDano` a proposito: esa opcion pertenece a la lectura
-    // que recovery si hace hoy; no partirla hacia una lectura que no existe.
-    listarPorMaquinaYFecha: vi.fn(async () => []),
+    // La firma lleva los dos parámetros del puerto: I4 reemplaza esta
+    // implementación por una que acota al día, y el tipo lo permite.
+    listarPorMaquinaYFecha: vi.fn(
+      async (_maquinaId: string, _fechaOperativa: string) => options.paradas ?? []
+    ),
     listarPorOrden: vi.fn(async () => []),
     getParadaAbierta: vi.fn(async () => null),
     getParadaAbiertaDeMaquina: vi.fn(async () => null),
@@ -227,10 +228,7 @@ function createFakes(options: FakesOptions = {}) {
     insertActividad: vi.fn(async () => undefined),
     updateActividad: vi.fn(async () => undefined),
     obtenerPorId: vi.fn(async () => undefined),
-    // Stub NEUTRO: recovery todavia no consume este metodo (se re-apunta en WU5).
-    // No propaga `fallaLecturaDano` a proposito: esa opcion pertenece a la lectura
-    // que recovery si hace hoy; no partirla hacia una lectura que no existe.
-    listarPorMaquinaYFecha: vi.fn(async () => []),
+    listarPorMaquinaYFecha: vi.fn(async () => options.actividades ?? []),
     listarPorMaquina: vi.fn(async () => options.actividades ?? []),
     getActividadAbierta: vi.fn(async () => null),
   } satisfies IActividadPlanificadaRepository;
@@ -239,14 +237,11 @@ function createFakes(options: FakesOptions = {}) {
     insertDano: vi.fn(async () => undefined),
     updateDano: vi.fn(async () => undefined),
     obtenerPorId: vi.fn(async () => undefined),
-    listarPorMaquina: vi.fn(async () => {
+    listarPorMaquina: vi.fn(async () => options.danos ?? []),
+    listarPorMaquinaYFecha: vi.fn(async () => {
       if (options.fallaLecturaDano) throw new Error(options.fallaLecturaDano);
       return options.danos ?? [];
     }),
-    // Stub NEUTRO: recovery todavia no consume este metodo (se re-apunta en WU5).
-    // No propaga `fallaLecturaDano` a proposito: esa opcion pertenece a la lectura
-    // que recovery si hace hoy; no partirla hacia una lectura que no existe.
-    listarPorMaquinaYFecha: vi.fn(async () => []),
     listarPorOrden: vi.fn(async () => []),
     getDanoAbierto: vi.fn(async () => null),
   } satisfies IDanoRepository;
@@ -255,10 +250,7 @@ function createFakes(options: FakesOptions = {}) {
     insertMantenimiento: vi.fn(async () => undefined),
     updateMantenimiento: vi.fn(async () => undefined),
     obtenerPorId: vi.fn(async () => undefined),
-    // Stub NEUTRO: recovery todavia no consume este metodo (se re-apunta en WU5).
-    // No propaga `fallaLecturaDano` a proposito: esa opcion pertenece a la lectura
-    // que recovery si hace hoy; no partirla hacia una lectura que no existe.
-    listarPorMaquinaYFecha: vi.fn(async () => []),
+    listarPorMaquinaYFecha: vi.fn(async () => options.mantenimientos ?? []),
     listarPorMaquina: vi.fn(async () => options.mantenimientos ?? []),
     getMantenimientoAbierto: vi.fn(async () => null),
   } satisfies IMantenimientoRepository;
@@ -532,10 +524,22 @@ describe("recoverPersistedState — recovery de fuentes (G1)", () => {
     expect(fakes.lecturaRepository.getLecturasByOrden).toHaveBeenCalledWith(
       orden.id
     );
-    expect(fakes.paradaRepository.listarPorMaquina).toHaveBeenCalledWith(MAQUINA);
-    expect(fakes.actividadRepository.listarPorMaquina).toHaveBeenCalledWith(MAQUINA);
-    expect(fakes.danoRepository.listarPorMaquina).toHaveBeenCalledWith(MAQUINA);
-    expect(fakes.mantenimientoRepository.listarPorMaquina).toHaveBeenCalledWith(MAQUINA);
+    expect(fakes.paradaRepository.listarPorMaquinaYFecha).toHaveBeenCalledWith(
+      MAQUINA,
+      FECHA
+    );
+    expect(fakes.actividadRepository.listarPorMaquinaYFecha).toHaveBeenCalledWith(
+      MAQUINA,
+      FECHA
+    );
+    expect(fakes.danoRepository.listarPorMaquinaYFecha).toHaveBeenCalledWith(
+      MAQUINA,
+      FECHA
+    );
+    expect(fakes.mantenimientoRepository.listarPorMaquinaYFecha).toHaveBeenCalledWith(
+      MAQUINA,
+      FECHA
+    );
     expect(fakes.inspeccionRepository.listarPorOrden).toHaveBeenCalledWith(orden.id);
   });
 
@@ -604,11 +608,24 @@ describe("recoverPersistedState — recovery de fuentes (G1)", () => {
     expect(state.mantenimientos).toEqual(mantenimientos);
     expect(state.inspecciones).toEqual(inspecciones);
 
-    // Cada lista sale de su método documentado, con la máquina explícita (D2f).
-    expect(fakes.paradaRepository.listarPorMaquina).toHaveBeenCalledWith(MAQUINA);
-    expect(fakes.actividadRepository.listarPorMaquina).toHaveBeenCalledWith(MAQUINA);
-    expect(fakes.danoRepository.listarPorMaquina).toHaveBeenCalledWith(MAQUINA);
-    expect(fakes.mantenimientoRepository.listarPorMaquina).toHaveBeenCalledWith(MAQUINA);
+    // Cada lista sale de su método documentado, con la máquina y el día
+    // explícitos (D2f): `listarPorMaquinaYFecha(MAQUINA, FECHA)`.
+    expect(fakes.paradaRepository.listarPorMaquinaYFecha).toHaveBeenCalledWith(
+      MAQUINA,
+      FECHA
+    );
+    expect(fakes.actividadRepository.listarPorMaquinaYFecha).toHaveBeenCalledWith(
+      MAQUINA,
+      FECHA
+    );
+    expect(fakes.danoRepository.listarPorMaquinaYFecha).toHaveBeenCalledWith(
+      MAQUINA,
+      FECHA
+    );
+    expect(fakes.mantenimientoRepository.listarPorMaquinaYFecha).toHaveBeenCalledWith(
+      MAQUINA,
+      FECHA
+    );
     expect(fakes.inspeccionRepository.listarPorOrden).toHaveBeenCalledWith(orden.id);
   });
 
@@ -629,10 +646,10 @@ describe("recoverPersistedState — recovery de fuentes (G1)", () => {
       fakes.jornadaRepository.obtenerParaFecha,
       fakes.orderRepository.getOrderByFechaOperativa,
       fakes.lecturaRepository.getLecturasByOrden,
-      fakes.paradaRepository.listarPorMaquina,
-      fakes.actividadRepository.listarPorMaquina,
-      fakes.danoRepository.listarPorMaquina,
-      fakes.mantenimientoRepository.listarPorMaquina,
+      fakes.paradaRepository.listarPorMaquinaYFecha,
+      fakes.actividadRepository.listarPorMaquinaYFecha,
+      fakes.danoRepository.listarPorMaquinaYFecha,
+      fakes.mantenimientoRepository.listarPorMaquinaYFecha,
       fakes.inspeccionRepository.listarPorOrden,
     ].map((mock) => mock.mock.invocationCallOrder[0]);
 
@@ -668,10 +685,11 @@ describe("recoverPersistedState — recovery de fuentes (G1)", () => {
     expect(state.mantenimientos).toEqual(mantenimientos);
   });
 
-  it("I4: los cuatro listados de máquina traen el historial COMPLETO, sin predicado de fecha (D2e)", async () => {
+  it("I4: los cuatro listados se piden con (MAQUINA, FECHA): un inicio de otro mes vuelve, un registro de OTRO día no (D2e)", async () => {
     const orden = createOrden({ estado: "in_production" });
-    // Filas de meses distintos a la fecha operativa (2026-09-11): el recovery
-    // no filtra por fecha, solo delega en listarPorMaquina(maquinaId).
+    // Filas de meses distintos a la fecha operativa (2026-09-11) pero con
+    // `fechaOperativa` = FECHA: el día se decide sobre la fecha PERSISTIDA,
+    // nunca sobre `inicio`/`fin`, así que el recovery las devuelve tal cual.
     const paradas = [
       createParada({ id: "par-old", inicio: "2026-01-05T08:00:00.000Z", fin: "2026-01-05T09:00:00.000Z" }),
       createParada({ id: "par-new", inicio: "2026-12-31T08:00:00.000Z", fin: null }),
@@ -685,7 +703,26 @@ describe("recoverPersistedState — recovery de fuentes (G1)", () => {
     const mantenimientos = [
       createMantenimiento({ id: "man-new", inicio: "2026-12-30T08:00:00.000Z", fin: null }),
     ];
-    const fakes = createFakes({ orden, paradas, actividades, danos, mantenimientos });
+    // Propiedad NUEVA: un registro del MISMO almacén con OTRO día operativo.
+    // Comparte store con las filas del día, así que solo el día pedido — y no
+    // el día completo — decide si vuelve.
+    const paradaOtroDia = createParada({ id: "par-otro-dia", fechaOperativa: "2026-12-31" });
+    const almacenParadas = [...paradas, paradaOtroDia];
+    const fakes = createFakes({
+      orden,
+      paradas: almacenParadas,
+      actividades,
+      danos,
+      mantenimientos,
+    });
+    // El stub base devuelve el almacén tal cual (suficiente para la
+    // orquestación); aquí I4 reemplaza su implementación por la semántica DEL
+    // PUERTO — igual que los adaptadores — para que excluir el registro ajeno
+    // al día sea una propiedad real y no una aserción vacía.
+    fakes.paradaRepository.listarPorMaquinaYFecha.mockImplementation(
+      async (_maquinaId, fechaOperativa) =>
+        almacenParadas.filter((p) => p.fechaOperativa === fechaOperativa)
+    );
     const state = await recover(fakes);
 
     // Devuelto completo, tal cual lo devolvió el repositorio.
@@ -694,15 +731,19 @@ describe("recoverPersistedState — recovery de fuentes (G1)", () => {
     expect(state.danos).toEqual(danos);
     expect(state.mantenimientos).toEqual(mantenimientos);
 
-    // Y la llamada lleva SOLO la máquina: `toHaveBeenCalledWith(MAQUINA)` falla
-    // si recovery añadiera un argumento de fecha a cualquiera de los cuatro.
-    expect(fakes.paradaRepository.listarPorMaquina).toHaveBeenCalledWith(MAQUINA);
-    expect(fakes.paradaRepository.listarPorMaquina).toHaveBeenCalledTimes(1);
-    expect(fakes.actividadRepository.listarPorMaquina).toHaveBeenCalledWith(MAQUINA);
-    expect(fakes.actividadRepository.listarPorMaquina).toHaveBeenCalledTimes(1);
-    expect(fakes.danoRepository.listarPorMaquina).toHaveBeenCalledWith(MAQUINA);
-    expect(fakes.mantenimientoRepository.listarPorMaquina).toHaveBeenCalledWith(MAQUINA);
-    expect(fakes.mantenimientoRepository.listarPorMaquina).toHaveBeenCalledTimes(1);
+    // Propiedad nueva: el registro de OTRO día NO figura en el listado.
+    expect(state.paradas).not.toContainEqual(paradaOtroDia);
+    expect(state.paradas.map((p) => p.id)).not.toContain("par-otro-dia");
+
+    // Y la llamada lleva la máquina Y el día: `toHaveBeenCalledWith(MAQUINA,
+    // FECHA)` falla si recovery omitiera cualquiera de los dos argumentos.
+    expect(fakes.paradaRepository.listarPorMaquinaYFecha).toHaveBeenCalledWith(MAQUINA, FECHA);
+    expect(fakes.paradaRepository.listarPorMaquinaYFecha).toHaveBeenCalledTimes(1);
+    expect(fakes.actividadRepository.listarPorMaquinaYFecha).toHaveBeenCalledWith(MAQUINA, FECHA);
+    expect(fakes.actividadRepository.listarPorMaquinaYFecha).toHaveBeenCalledTimes(1);
+    expect(fakes.danoRepository.listarPorMaquinaYFecha).toHaveBeenCalledWith(MAQUINA, FECHA);
+    expect(fakes.mantenimientoRepository.listarPorMaquinaYFecha).toHaveBeenCalledWith(MAQUINA, FECHA);
+    expect(fakes.mantenimientoRepository.listarPorMaquinaYFecha).toHaveBeenCalledTimes(1);
   });
 
   it("I5: recovery devuelve SOLO fuentes — ningún valor derivado en las 8 fuentes", async () => {
@@ -760,9 +801,9 @@ describe("recoverPersistedState — recovery de fuentes (G1)", () => {
 
     // El fallo corta la secuencia en el dominio con nombre (daños): los
     // dominios anteriores se leyeron, los posteriores NUNCA se consultan.
-    expect(fakes.paradaRepository.listarPorMaquina).toHaveBeenCalledTimes(1);
-    expect(fakes.actividadRepository.listarPorMaquina).toHaveBeenCalledTimes(1);
-    expect(fakes.mantenimientoRepository.listarPorMaquina).not.toHaveBeenCalled();
+    expect(fakes.paradaRepository.listarPorMaquinaYFecha).toHaveBeenCalledTimes(1);
+    expect(fakes.actividadRepository.listarPorMaquinaYFecha).toHaveBeenCalledTimes(1);
+    expect(fakes.mantenimientoRepository.listarPorMaquinaYFecha).not.toHaveBeenCalled();
     expect(fakes.inspeccionRepository.listarPorOrden).not.toHaveBeenCalled();
   });
 });

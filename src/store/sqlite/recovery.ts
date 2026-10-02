@@ -27,9 +27,10 @@
  * - D2f: `maquinaId` is an explicit parameter (`main.tsx` passes `"M1"`), not
  *   a hidden coupling to ADR 0003 inside this function. Grouping: the eight
  *   repositories first, then the two scalars (`fechaOperativa`, `maquinaId`).
- * - The four machine-event lists carry the machine's FULL history: recovery
- *   applies NO date predicate (a future "read a past day" feature adds it to
- *   the ports, never to recovery).
+ * - The four machine-event lists are requested ALREADY scoped to the
+ *   requested day: `listarPorMaquinaYFecha(maquinaId, fechaOperativa)` applies
+ *   the equality on the persisted `fechaOperativa` inside the port (DD3);
+ *   recovery adds no date predicate of its own.
  * - Jornada via `obtenerParaFecha(fechaOperativa)`: absent record -> domain
  *   default 07:00–17:00, which is NOT auto-persisted (repository-owned).
  * - Orden via `getOrderByFechaOperativa(fechaOperativa)`: undefined when
@@ -48,8 +49,9 @@
  *   `mapOrdenRow(row, lecturas)` composition from the FIRST persisted lectura;
  *   for the already-mapped Orden recovered here, `componerOrdenConLecturas`
  *   applies that same derivation (added in 10.8 for the App composition).
- * - No new columns, no new repository methods; `IOrderRepository` never
- *   queries `lectura_golpe`.
+ * - No new columns and no migration; `IOrderRepository` never queries
+ *   `lectura_golpe`. The four machine-event ports DO gain one new method
+ *   (`listarPorMaquinaYFecha`) and keep `listarPorMaquina` intact (DD2).
  *
  * Honesty note (10.7): mock-based tests do not require migrations (they fake
  * the repository contracts). Runtime validation against the real SQLite schema
@@ -83,10 +85,10 @@ export interface RecoveryState {
   jornada: JornadaTurno; // vía IJornadaRepository (default 07:00-17:00 si no hay registro)
   orden: Orden | undefined; // vía IOrderRepository (undefined si no hay orden)
   lecturas: LecturaContador[]; // vía ILecturaGolpeRepository (solo persistidas)
-  paradas: Parada[]; // vía IParadaRepository.listarPorMaquina (historial completo)
-  actividades: ActividadPlanificada[]; // vía IActividadPlanificadaRepository.listarPorMaquina
-  danos: Dano[]; // vía IDanoRepository.listarPorMaquina
-  mantenimientos: Mantenimiento[]; // vía IMantenimientoRepository.listarPorMaquina
+  paradas: Parada[]; // vía IParadaRepository.listarPorMaquinaYFecha (día pedido)
+  actividades: ActividadPlanificada[]; // vía IActividadPlanificadaRepository.listarPorMaquinaYFecha
+  danos: Dano[]; // vía IDanoRepository.listarPorMaquinaYFecha
+  mantenimientos: Mantenimiento[]; // vía IMantenimientoRepository.listarPorMaquinaYFecha
   inspecciones: InspeccionTela[]; // vía IInspeccionRepository.listarPorOrden ([] sin orden)
 }
 
@@ -123,17 +125,27 @@ export async function recoverPersistedState(
     ? await lecturaRepository.getLecturasByOrden(orden.id)
     : [];
 
-  // 4-7. Cuatro listas de eventos de máquina: historial COMPLETO de la
-  //    máquina, SIN predicado de fecha (D2e). Secuencial para que un fallo
-  //    sea diagnosticable en el dominio con nombre.
-  const paradas = await paradaRepository.listarPorMaquina(maquinaId);
+  // 4-7. Cuatro listas de eventos de máquina, acotadas a `fechaOperativa`
+  //    (D2e): el día se resuelve dentro del puerto, nunca aquí. Secuencial
+  //    para que un fallo sea diagnosticable en el dominio con nombre.
+  const paradas = await paradaRepository.listarPorMaquinaYFecha(
+    maquinaId,
+    fechaOperativa
+  );
 
-  const actividades = await actividadRepository.listarPorMaquina(maquinaId);
+  const actividades = await actividadRepository.listarPorMaquinaYFecha(
+    maquinaId,
+    fechaOperativa
+  );
 
-  const danos = await danoRepository.listarPorMaquina(maquinaId);
+  const danos = await danoRepository.listarPorMaquinaYFecha(
+    maquinaId,
+    fechaOperativa
+  );
 
-  const mantenimientos = await mantenimientoRepository.listarPorMaquina(
-    maquinaId
+  const mantenimientos = await mantenimientoRepository.listarPorMaquinaYFecha(
+    maquinaId,
+    fechaOperativa
   );
 
   // 8. Inspecciones: requieren orden.id; MISMO guard que lecturas ([]) cuando

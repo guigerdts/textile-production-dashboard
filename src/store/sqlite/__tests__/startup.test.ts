@@ -141,14 +141,11 @@ function crearFakes(bitacora: string[] = []) {
     insertParada: vi.fn(async () => {}),
     updateParada: vi.fn(async () => {}),
     obtenerPorId: vi.fn(async () => undefined),
-    listarPorMaquina: vi.fn(async () => {
-      bitacora.push("parada:listarPorMaquina");
+    listarPorMaquina: vi.fn(async () => []),
+    listarPorMaquinaYFecha: vi.fn(async () => {
+      bitacora.push("parada:listarPorMaquinaYFecha");
       return [];
     }),
-    // Stub NEUTRO: recovery todavia no consume este metodo (se re-apunta en WU5).
-    // No escribe en `bitacora` a proposito — anadir una entrada aqui moveria las
-    // aserciones de orden de lectura (I2) sin que exista una lectura real.
-    listarPorMaquinaYFecha: vi.fn(async () => []),
     listarPorOrden: vi.fn(async () => []),
     getParadaAbierta: vi.fn(async () => null),
     getParadaAbiertaDeMaquina: vi.fn(async () => null),
@@ -158,14 +155,11 @@ function crearFakes(bitacora: string[] = []) {
     insertActividad: vi.fn(async () => {}),
     updateActividad: vi.fn(async () => {}),
     obtenerPorId: vi.fn(async () => undefined),
-    listarPorMaquina: vi.fn(async () => {
-      bitacora.push("actividad:listarPorMaquina");
+    listarPorMaquina: vi.fn(async () => []),
+    listarPorMaquinaYFecha: vi.fn(async () => {
+      bitacora.push("actividad:listarPorMaquinaYFecha");
       return [];
     }),
-    // Stub NEUTRO: recovery todavia no consume este metodo (se re-apunta en WU5).
-    // No escribe en `bitacora` a proposito — anadir una entrada aqui moveria las
-    // aserciones de orden de lectura (I2) sin que exista una lectura real.
-    listarPorMaquinaYFecha: vi.fn(async () => []),
     getActividadAbierta: vi.fn(async () => null),
   };
 
@@ -173,14 +167,11 @@ function crearFakes(bitacora: string[] = []) {
     insertDano: vi.fn(async () => {}),
     updateDano: vi.fn(async () => {}),
     obtenerPorId: vi.fn(async () => undefined),
-    listarPorMaquina: vi.fn(async () => {
-      bitacora.push("dano:listarPorMaquina");
+    listarPorMaquina: vi.fn(async () => []),
+    listarPorMaquinaYFecha: vi.fn(async () => {
+      bitacora.push("dano:listarPorMaquinaYFecha");
       return [];
     }),
-    // Stub NEUTRO: recovery todavia no consume este metodo (se re-apunta en WU5).
-    // No escribe en `bitacora` a proposito — anadir una entrada aqui moveria las
-    // aserciones de orden de lectura (I2) sin que exista una lectura real.
-    listarPorMaquinaYFecha: vi.fn(async () => []),
     listarPorOrden: vi.fn(async () => []),
     getDanoAbierto: vi.fn(async () => null),
   };
@@ -189,14 +180,11 @@ function crearFakes(bitacora: string[] = []) {
     insertMantenimiento: vi.fn(async () => {}),
     updateMantenimiento: vi.fn(async () => {}),
     obtenerPorId: vi.fn(async () => undefined),
-    listarPorMaquina: vi.fn(async () => {
-      bitacora.push("mantenimiento:listarPorMaquina");
+    listarPorMaquina: vi.fn(async () => []),
+    listarPorMaquinaYFecha: vi.fn(async () => {
+      bitacora.push("mantenimiento:listarPorMaquinaYFecha");
       return [];
     }),
-    // Stub NEUTRO: recovery todavia no consume este metodo (se re-apunta en WU5).
-    // No escribe en `bitacora` a proposito — anadir una entrada aqui moveria las
-    // aserciones de orden de lectura (I2) sin que exista una lectura real.
-    listarPorMaquinaYFecha: vi.fn(async () => []),
     getMantenimientoAbierto: vi.fn(async () => null),
   };
 
@@ -389,8 +377,8 @@ async function arrancarMain(overrides: {
     });
   }
   if (overrides.fallaRecoveryOperativo) {
-    vi.spyOn(fakes.paradaRepository, "listarPorMaquina").mockImplementation(async () => {
-      bitacora.push("parada:listarPorMaquina:error");
+    vi.spyOn(fakes.paradaRepository, "listarPorMaquinaYFecha").mockImplementation(async () => {
+      bitacora.push("parada:listarPorMaquinaYFecha:error");
       throw new Error("no se pudo recuperar las paradas de la máquina M1");
     });
   }
@@ -558,8 +546,8 @@ describe("H/I: secuencia de arranque de main.tsx — Ticket 10.8", () => {
     const estado = (app.props as Record<string, unknown>).estadoInicial as RecoveryState;
     expect(estado.orden).toBeUndefined();
     expect(estado.lecturas).toEqual([]);
-    // Sin orden no hay lecturas NI inspecciones; los dominios de máquina igual
-    // se recuperan (historial completo de la máquina, vacío en día vacío).
+    // Sin orden no hay lecturas NI inspecciones; los dominios de máquina se
+    // leen acotados al día y, en un día vacío, vuelven vacíos.
     expect(estado.paradas).toEqual([]);
     expect(estado.actividades).toEqual([]);
     expect(estado.danos).toEqual([]);
@@ -609,8 +597,8 @@ describe("H/I: secuencia de arranque de main.tsx — Ticket 10.8", () => {
     // La materialización y la lectura de paradas ocurrieron; el fallo cortó la
     // secuencia D2e ANTES de los dominios siguientes (mantenimiento/inspecciones).
     expect(bitacora).toContain("orden:materializeOrder");
-    expect(bitacora).toContain("parada:listarPorMaquina:error");
-    expect(bitacora).not.toContain("mantenimiento:listarPorMaquina");
+    expect(bitacora).toContain("parada:listarPorMaquinaYFecha:error");
+    expect(bitacora).not.toContain("mantenimiento:listarPorMaquinaYFecha");
     expect(renderSpy).toHaveBeenCalledTimes(1);
 
     const app = elemento.props.children as ReactElement | undefined;
