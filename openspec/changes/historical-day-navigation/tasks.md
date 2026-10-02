@@ -385,20 +385,20 @@ failure propagation and the sources-only contract never moved.
 
 **Depends on:** WU5 (the recovery seam must already accept the selected day, otherwise `Raiz` has nothing to pass it to).
 
-- [ ] 6.1 Create `src/Raiz.tsx` as a **new, exported module** — it cannot live inside `src/main.tsx`, which calls
+- [x] 6.1 Create `src/Raiz.tsx` as a **new, exported module** — it cannot live inside `src/main.tsx`, which calls
   `void main()` at import time (`main.tsx:126`), so a test importing it from there would re-run the whole startup.
   Export the `LosOchosRepositorios` interface (the eight port types) and `RaizProps` (`repos`, `estadoInicial`,
   `fechaOperativaInicial`). Inside: **one** `useState` value holding `{ fechaOperativa, estado }` as a pair, so the
   day and its data can never disagree, plus `cargando` and `errorDia`. **Traces to:** `H:61-98`; `H:99-125`;
   DD4, DD5; design §5.2.
-- [ ] 6.2 Implement `seleccionarDia(fechaOperativa)` with an early return when the day is unchanged or a load is
+- [x] 6.2 Implement `seleccionarDia(fechaOperativa)` with an early return when the day is unchanged or a load is
   in flight, then `await recoverPersistedState(…, fechaOperativa, "M1")` (ADR 0003, explicit exactly as
   `main.tsx:95` passes it) and a **single** `setVista({ fechaOperativa, estado })` — atomic, and only after recovery
   resolved. Re-selecting the displayed day skips recovery entirely.
   **Traces to:** `H:112-117` ("Re-reading the same day is idempotent"); `H:105-110` ("the same eight sources are
   re-read … AND the same machine and the same repository instances are used"); `H:119-124` ("Navigating does not
   change unrelated state … nothing was written to storage as a consequence of the navigation"); DD4, DD5.
-- [ ] 6.3 Give `seleccionarDia` a `catch`, not only a `finally` — stated once, because it is the *only* new failure
+- [x] 6.3 Give `seleccionarDia` a `catch`, not only a `finally` — stated once, because it is the *only* new failure
   behaviour in the change. On a rejected read: (1) the rejection is consumed, so no unhandled promise rejection
   escapes; (2) `vista` is left untouched, so the selection and the rendered data still agree (DD5's atomicity holds
   in the failure direction too); (3) `errorDia` is set and rendered by `App` as
@@ -406,19 +406,28 @@ failure propagation and the sources-only contract never moved.
   the controls; the next call clears `errorDia` first, so the attempt is retryable. Recovery itself still rejects —
   only this caller catches. **Traces to:** `H:119-124`; design §5.2, §11 ("A day change rejects and the operario
   sees a blank or half-loaded day").
-- [ ] 6.4 Render `<App key={vista.fechaOperativa} … />`. The `key` is the load-bearing part (DD5): `App` holds ten
+
+  **Split across WU6/WU7, and here is exactly where the seam is.** WU6 delivered
+  clauses (1), (2) and the `setErrorDia` half of (3) inside `Raiz`. The
+  `<p className="selector-dia__error" role="alert">` RENDER of clause (3) needs
+  `App.tsx`, which is not this phase's surface: it lands with **7.7**, the task
+  that declares `errorCambioDia` on `AppProps` and renders the navigator and
+  the alert inside one `{onSeleccionarDia && (…)}` block. Until 7.7 lands,
+  `Raiz` holds `errorDia` and no DOM shows it — the error is not yet *visible*,
+  only *captured*.
+- [x] 6.4 Render `<App key={vista.fechaOperativa} … />`. The `key` is the load-bearing part (DD5): `App` holds ten
   `useState` values seeded from `estadoInicial` (`App.tsx:143-147` and the surrounding seeds at `:120-151`), so
   without a remount a day change leaves the previous day's rows mounted until the async loaders resolve. The remount
   makes *"The UI state never holds another day's rows"* structural instead of something each loader must remember.
   **Traces to:** `H:147-152` ("The UI state never holds another day's rows … whether seeded or loaded afterwards");
   `H:94-99` ("A selection survives a re-render and is not replaced by the clock"); DD5.
-- [ ] 6.5 Edit `src/main.tsx` so **steps 1–4 stay byte-identical** — `initDatabase` (`main.tsx:63`), the eight
+- [x] 6.5 Edit `src/main.tsx` so **steps 1–4 stay byte-identical** — `initDatabase` (`main.tsx:63`), the eight
   repositories (`:67-74`), `materializarPrograma` (`:79`), `recoverPersistedState(..., fechaOperativaHoy(), "M1")`
   (`:85-96`) — inside the same `try` with the same `InicializacionFallida` fallback (`:114-123`). **Only step 5
   changes**: the render at `:99-113` mounts `<Raiz …/>` instead of `<App …/>` with a resolved state. **Traces to:**
   `W:73-99` ("Startup passes the selected day to recovery"; "The app uses the same selected day as its view"; "The
   first paint matches the recovered day … AND no state was seeded from a different day"); DD4, design §5.1.
-- [ ] 6.6 Re-point `src/store/sqlite/__tests__/startup.test.ts` in its **two independent groups**:
+- [x] 6.6 Re-point `src/store/sqlite/__tests__/startup.test.ts` in its **two independent groups**:
   1. *The fakes.* The four port objects at `:140` (parada), `:152` (actividad), `:163` (dano), `:175`
      (mantenimiento) are annotated `: IParadaRepository` etc., so each gains `listarPorMaquinaYFecha`. Their
      `bitacora.push("<dom>:listarPorMaquina")` tags at `:145`, `:157`, `:168`, `:180` rename with them, the

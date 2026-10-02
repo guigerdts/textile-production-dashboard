@@ -338,13 +338,13 @@ async function arrancarMain(overrides: {
   }));
 
   // La vista `App` NO es sujeto de esta suite: con `react-dom/client` simulado
-  // nada se renderiza, así que su implementación jamais se ejecuta — solo se
-  // compara su IDENTIDAD contra lo que main.tsx montó (`toBe` / `not.toBe`).
-  // Importarla de verdad costaba el módulo completo de `App` (medido: 3.8-6.1 s
-  // en frío, contra ~250 ms del resto de la suite) y reventaba el default de
-  // 5 s bajo contención, sin aportar una sola aserción de comportamiento.
-  // El centinela conserva la aserción exacta: main.tsx montó App y NO la
-  // pantalla de error. La construcción del elemento JSX sigue ocurriendo igual.
+  // nada se renderiza, así que su implementación jamás se ejecuta — lo que se
+  // compara es la IDENTIDAD de lo que main.tsx montó (`toBe` / `not.toBe`), hoy
+  // `RaizDelArranque`, y NO la pantalla de error. `App` sigue simulada porque
+  // `Raiz` la importa: importarla de verdad costaba el módulo completo de `App`
+  // (medido: 3.8-6.1 s en frío, contra ~250 ms del resto de la suite) y
+  // reventaba el default de 5 s bajo contención, sin aportar una sola aserción
+  // de comportamiento. La construcción del elemento JSX sigue ocurriendo igual.
   vi.doMock("../../../App", () => ({
     default: function AppDelArranque() {
       return null;
@@ -416,11 +416,15 @@ async function arrancarMain(overrides: {
 
   // App importada del MISMO registro de módulos que usó main (post reset).
   const { default: AppDelArranque } = await import("../../../App");
+  // Raiz importada del MISMO registro de módulos que usó main (post reset): es
+  // lo que main() monta desde la tarea 6.5, y el tipo de `elemento.props.children`.
+  const { Raiz: RaizDelArranque } = await import("../../../Raiz");
   const elemento = renderSpy.mock.calls[0][0];
   return {
     bitacora,
     elemento,
     AppDelArranque,
+    RaizDelArranque,
     renderSpy,
     fakes,
     dbFalso,
@@ -458,7 +462,7 @@ describe("H/I: secuencia de arranque de main.tsx — Ticket 10.8", () => {
     const {
       bitacora,
       elemento,
-      AppDelArranque,
+      RaizDelArranque,
       fakes,
       dbFalso,
       dbsRecibidas,
@@ -499,10 +503,10 @@ describe("H/I: secuencia de arranque de main.tsx — Ticket 10.8", () => {
     expect(materializar).toBeLessThan(recovery);
     expect(recovery).toBeLessThan(bitacora.indexOf("render"));
 
-    // Lo que se entrega a App: repositorios y estado YA resuelto (nunca promesa).
-    const app = elemento.props.children as ReactElement;
-    expect(app.type).toBe(AppDelArranque); // sí montó App, no la pantalla de error
-    const props = app.props as Record<string, unknown>;
+    // Lo que se entrega a Raiz: repositorios y estado YA resuelto (nunca promesa).
+    const raiz = elemento.props.children as ReactElement;
+    expect(raiz.type).toBe(RaizDelArranque); // sí montó Raiz, no la pantalla de error
+    const props = raiz.props as Record<string, unknown>;
     expect(props.estadoInicial).toBeDefined();
     expect(typeof (props.estadoInicial as Promise<unknown>).then).toBe("undefined");
     const estado = props.estadoInicial as RecoveryState;
@@ -516,16 +520,17 @@ describe("H/I: secuencia de arranque de main.tsx — Ticket 10.8", () => {
     expect(estado.danos).toEqual([]);
     expect(estado.mantenimientos).toEqual([]);
     expect(estado.inspecciones).toEqual([]);
-    // Los repositorios entregados son los construidos en el arranque: los cinco
-    // dominios operativos YA no viven en memoria (G1), vienen del SQLite fake.
-    expect(props.repository).toBe(fakes.orderRepository);
-    expect(props.jornadaRepository).toBe(fakes.jornadaRepository);
-    expect(props.lecturaRepository).toBe(fakes.lecturaRepository);
-    expect(props.paradaRepository).toBe(fakes.paradaRepository);
-    expect(props.actividadRepository).toBe(fakes.actividadRepository);
-    expect(props.danoRepository).toBe(fakes.danoRepository);
-    expect(props.inspeccionRepository).toBe(fakes.inspeccionRepository);
-    expect(props.mantenimientoRepository).toBe(fakes.mantenimientoRepository);
+    // Los repositorios entregados a Raiz son los construidos en el arranque: los
+    // cinco dominios operativos YA no viven en memoria (G1), vienen del SQLite fake.
+    const repos = props.repos as Record<string, unknown>;
+    expect(repos.repository).toBe(fakes.orderRepository);
+    expect(repos.jornadaRepository).toBe(fakes.jornadaRepository);
+    expect(repos.lecturaRepository).toBe(fakes.lecturaRepository);
+    expect(repos.paradaRepository).toBe(fakes.paradaRepository);
+    expect(repos.actividadRepository).toBe(fakes.actividadRepository);
+    expect(repos.danoRepository).toBe(fakes.danoRepository);
+    expect(repos.inspeccionRepository).toBe(fakes.inspeccionRepository);
+    expect(repos.mantenimientoRepository).toBe(fakes.mantenimientoRepository);
     // Toda la fuente externa llegó materializada, en orden y por `id`.
     expect(fakes.orderRepository.materializeOrder).toHaveBeenCalledTimes(2);
     expect(
@@ -540,10 +545,10 @@ describe("H/I: secuencia de arranque de main.tsx — Ticket 10.8", () => {
     // arranque resuelve jornada y cero órdenes.
     vi.setSystemTime(new Date("2026-09-12T12:00:00.000Z"));
 
-    const { elemento, AppDelArranque } = await arrancarMain();
-    const app = elemento.props.children as ReactElement;
-    expect(app.type).toBe(AppDelArranque);
-    const estado = (app.props as Record<string, unknown>).estadoInicial as RecoveryState;
+    const { elemento, RaizDelArranque } = await arrancarMain();
+    const raiz = elemento.props.children as ReactElement;
+    expect(raiz.type).toBe(RaizDelArranque);
+    const estado = (raiz.props as Record<string, unknown>).estadoInicial as RecoveryState;
     expect(estado.orden).toBeUndefined();
     expect(estado.lecturas).toEqual([]);
     // Sin orden no hay lecturas NI inspecciones; los dominios de máquina se
@@ -556,7 +561,7 @@ describe("H/I: secuencia de arranque de main.tsx — Ticket 10.8", () => {
   });
 
   it("I: materializeOrder que lanza -> el arranque aborta y se muestra la pantalla de error (App NO monta)", async () => {
-    const { bitacora, elemento, AppDelArranque, renderSpy } = await arrancarMain({
+    const { bitacora, elemento, RaizDelArranque, renderSpy } = await arrancarMain({
       fallaMaterializacion: true,
     });
 
@@ -570,11 +575,11 @@ describe("H/I: secuencia de arranque de main.tsx — Ticket 10.8", () => {
     const app = elemento.props.children as ReactElement | undefined;
     expect(elemento.props.message).toContain("no se pudo materializar");
     expect(app).toBeUndefined();
-    expect(elemento.type).not.toBe(AppDelArranque);
+    expect(elemento.type).not.toBe(RaizDelArranque);
   });
 
   it("I: recovery que lanza -> el arranque aborta con la pantalla de error y App NO monta", async () => {
-    const { bitacora, elemento, AppDelArranque, renderSpy } = await arrancarMain({
+    const { bitacora, elemento, RaizDelArranque, renderSpy } = await arrancarMain({
       fallaRecovery: true,
     });
 
@@ -586,11 +591,11 @@ describe("H/I: secuencia de arranque de main.tsx — Ticket 10.8", () => {
     const app = elemento.props.children as ReactElement | undefined;
     expect(elemento.props.message).toContain("SQLite no disponible");
     expect(app).toBeUndefined();
-    expect(elemento.type).not.toBe(AppDelArranque);
+    expect(elemento.type).not.toBe(RaizDelArranque);
   });
 
   it("I: un fallo en un dominio operativo (paradas) aborta el arranque y App NO monta", async () => {
-    const { bitacora, elemento, AppDelArranque, renderSpy } = await arrancarMain({
+    const { bitacora, elemento, RaizDelArranque, renderSpy } = await arrancarMain({
       fallaRecoveryOperativo: true,
     });
 
@@ -606,6 +611,6 @@ describe("H/I: secuencia de arranque de main.tsx — Ticket 10.8", () => {
       "no se pudo recuperar las paradas de la máquina M1",
     );
     expect(app).toBeUndefined();
-    expect(elemento.type).not.toBe(AppDelArranque);
+    expect(elemento.type).not.toBe(RaizDelArranque);
   });
 });

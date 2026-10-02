@@ -10,13 +10,13 @@
  *   4. recoverPersistedState(...)           — las OCHO fuentes persistidas:
  *      jornada, orden, lecturas, paradas, actividades, daños, mantenimientos
  *      e inspecciones (orden de lectura D2e, secuencial)
- *   5. render(<App ...>)                    — con el estado YA resuelto
+ *   5. render(<Raiz ...>)                   — con el estado YA resuelto
  * Cualquier fallo de 1-4 renderiza una pantalla explícita de inicialización
  * fallida: la app NUNCA monta con estado parcial.
  */
 import React from "react";
 import ReactDOM from "react-dom/client";
-import App from "./App";
+import { Raiz } from "./Raiz";
 import { initDatabase } from "./store/sqlite/database";
 import { SqliteOrderRepository } from "./store/sqlite/sqliteOrderRepository";
 import { SqliteJornadaRepository } from "./store/sqlite/sqliteJornadaRepository";
@@ -98,16 +98,19 @@ async function main(): Promise<void> {
     // 5. Render con el estado YA resuelto (nunca una promesa).
     ReactDOM.createRoot(contenedor).render(
       <React.StrictMode>
-        <App
-          repository={repository}
-          jornadaRepository={jornadaRepository}
-          lecturaRepository={lecturaRepository}
+        <Raiz
+          repos={{
+            repository,
+            jornadaRepository,
+            lecturaRepository,
+            paradaRepository,
+            actividadRepository,
+            danoRepository,
+            mantenimientoRepository,
+            inspeccionRepository,
+          }}
           estadoInicial={estadoInicial}
-          paradaRepository={paradaRepository}
-          actividadRepository={actividadRepository}
-          danoRepository={danoRepository}
-          inspeccionRepository={inspeccionRepository}
-          mantenimientoRepository={mantenimientoRepository}
+          fechaOperativaInicial={fechaOperativaHoy()}
         />
       </React.StrictMode>,
     );
