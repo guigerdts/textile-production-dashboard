@@ -19,6 +19,8 @@
  * - listarPorMaquina: todas las paradas de la máquina (incluidas sin orden).
  * - listarPorOrden: solo paradas asociadas a la orden concreta (null no se incluye).
  * - getParadaAbierta: busca parada sin cerrar para máquina + orden|null.
+ * - getParadaAbiertaDeMaquina: busca la parada sin cerrar de la máquina, sea
+ *   cual sea su orden (o su ausencia) y sea cual sea su día.
  * - obtenerPorId: por id directo, útil para operaciones de cierre.
  */
 import type { Parada, ParadaAbierta } from "../domain/types";
@@ -59,4 +61,25 @@ export interface IParadaRepository {
    * sea utilizable en cerrarParada sin cast.
    */
   getParadaAbierta(maquinaId: string, ordenId: string | null): Promise<ParadaAbierta | null>;
+
+  /**
+   * Devuelve la parada ABIERTA de la máquina, sin mirar su orden (puede tener
+   * una o ninguna) ni su `fechaOperativa`. `null` si la máquina no está parada.
+   *
+   * POR QUÉ EXISTE (OQ-4 de historical-day-navigation): "¿está parada M1?" es
+   * un invariante de MÁQUINA, no de la orden. Una parada abierta puede seguir
+   * abierta mientras la producción cambia de orden, y en ese estado
+   * `getParadaAbierta(maquinaId, ordenId)` NO la alcanza: su predicado
+   * `orden_id IS $2` solo casa con esa orden exacta o con `ordenId = null`.
+   * Con el listado day-scoped tampoco se alcanza, porque la parada conserva su
+   * `fechaOperativa` de origen y no pertenece al día que se está mirando.
+   *
+   * ES DAY-FREE A PROPÓSITO: responde "¿qué está abierto AHORA?", nunca
+   * "¿qué pasó en este día?". Por eso NO sustituye a los listados, que sí son
+   * day-scoped (`listarPorMaquinaYFecha`). Consumirlo sobre un día histórico
+   * pintaría la parada abierta de hoy sobre un día pasado y rompería la
+   * atribución exclusiva por `fechaOperativa`; por eso su consumidor va
+   * detrás de `soloLectura`.
+   */
+  getParadaAbiertaDeMaquina(maquinaId: string): Promise<ParadaAbierta | null>;
 }

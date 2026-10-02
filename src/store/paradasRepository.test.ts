@@ -104,6 +104,86 @@ describe("InMemoryParadaRepository — parada abierta", () => {
   });
 });
 
+// ── OQ-4: la parada abierta de la MÁQUINA, sin orden ni día ───────────────────
+
+/** Una parada abierta explícita; el día y la orden los fija cada caso. */
+function abierta(overrides: Partial<Parada> = {}): Parada {
+  return {
+    id: "par-abierta",
+    maquinaId: M1,
+    ordenId: null,
+    operatorName: "Laura",
+    causaId: "falta_tela",
+    camposEspecificos: {},
+    fechaOperativa: "2026-09-14",
+    inicio: "2026-09-14T07:00:00.000Z",
+    fin: null,
+    ...overrides,
+  };
+}
+
+describe("InMemoryParadaRepository — parada abierta de la máquina (OQ-4)", () => {
+  it("devuelve null cuando la máquina no está parada", async () => {
+    const repo = new InMemoryParadaRepository([abierta({ fin: "2026-09-14T08:00:00.000Z" })]);
+    expect(await repo.getParadaAbiertaDeMaquina(M1)).toBeNull();
+  });
+
+  it("encuentra la parada abierta SIN orden", async () => {
+    const repo = new InMemoryParadaRepository([abierta({ id: "p-suelta", ordenId: null })]);
+    const leida = await repo.getParadaAbiertaDeMaquina(M1);
+    expect(leida?.id).toBe("p-suelta");
+    expect(leida?.ordenId).toBeNull();
+  });
+
+  it("encuentra la parada abierta de la orden ACTUAL", async () => {
+    const repo = new InMemoryParadaRepository([abierta({ id: "p-de-hoy", ordenId: "ord-B" })]);
+    expect((await repo.getParadaAbiertaDeMaquina(M1))?.id).toBe("p-de-hoy");
+  });
+
+  it("encuentra la parada abierta de una orden ANTERIOR tras cambiar de orden (OQ-4)", async () => {
+    // Día A: M1 con orden A y una parada abierta. Día B: M1 pasa a orden B y la
+    // parada de A sigue abierta. `getParadaAbierta` no la alcanza —su predicado
+    // es `orden_id IS $2`— pero el estado de la MÁQUINA sí la ve.
+    const repo = new InMemoryParadaRepository([
+      abierta({
+        id: "p-de-orden-a",
+        ordenId: "ord-A",
+        fechaOperativa: "2026-09-14",
+        inicio: "2026-09-14T07:00:00.000Z",
+      }),
+    ]);
+
+    // El alcance por orden, con la orden de HOY, no la encuentra…
+    expect(await repo.getParadaAbierta(M1, "ord-B")).toBeNull();
+    expect(await repo.getParadaAbierta(M1, null)).toBeNull();
+    // …pero la máquina SÍ está parada, y su `fechaOperativa` sigue siendo la
+    // del día de origen: no se reatribuye ni se duplica.
+    const leida = await repo.getParadaAbiertaDeMaquina(M1);
+    expect(leida?.id).toBe("p-de-orden-a");
+    expect(leida?.fechaOperativa).toBe("2026-09-14");
+  });
+
+  it("ante varias abiertas de la máquina, elige la más antigua por inicio", async () => {
+    // Caso patológico: el dominio admite una sola abierta por máquina. Se
+    // resuelve por `inicio` para que este port y el adaptador SQLite devuelvan
+    // la MISMA parada ante el mismo almacén.
+    const repo = new InMemoryParadaRepository([
+      abierta({ id: "p-tarde", inicio: "2026-09-14T08:00:00.000Z" }),
+      abierta({ id: "p-temprana", inicio: "2026-09-14T07:00:00.000Z" }),
+    ]);
+    expect((await repo.getParadaAbiertaDeMaquina(M1))?.id).toBe("p-temprana");
+  });
+
+  it("no filtra por fecha: la parada de un día anterior sigue siendo la abierta", async () => {
+    // Éste es el contrato day-free: pregunta por el estado de AHORA, no por lo
+    // que pasó hoy. Por eso su consumidor va detrás de `soloLectura`.
+    const repo = new InMemoryParadaRepository([
+      abierta({ id: "p-de-ayer", fechaOperativa: "2026-09-13" }),
+    ]);
+    expect((await repo.getParadaAbiertaDeMaquina(M1))?.id).toBe("p-de-ayer");
+  });
+});
+
 describe("InMemoryParadaRepository — duplicados y referencias", () => {
   it("rechaza insertar una parada con id existente", async () => {
     const repo = new InMemoryParadaRepository(crearFixtureParadas());

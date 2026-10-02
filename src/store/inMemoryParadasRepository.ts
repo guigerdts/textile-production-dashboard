@@ -65,4 +65,21 @@ export class InMemoryParadaRepository implements IParadaRepository {
     }
     return null;
   }
+
+  /**
+   * La parada abierta de la máquina, sea cual sea su orden y su día.
+   *
+   * El dominio solo admite una parada abierta por máquina, así que la
+   * desambiguación es un caso patológico; aun así se resuelve como lo hace el
+   * adaptador SQLite — la más antigua por `inicio` — para que ambos
+   * adaptadores devuelvan lo MISMO ante el mismo almacén, y no por el orden de
+   * inserción del mapa.
+   */
+  async getParadaAbiertaDeMaquina(maquinaId: string): Promise<ParadaAbierta | null> {
+    const candidatas = [...this.porId.values()]
+      .filter((p) => p.fin === null && p.maquinaId === maquinaId)
+      .sort((a, b) => a.inicio.localeCompare(b.inicio));
+    const primera = candidatas[0];
+    return primera ? (structuredClone(primera) as ParadaAbierta) : null;
+  }
 }

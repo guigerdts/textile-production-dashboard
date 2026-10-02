@@ -119,8 +119,10 @@ WU1 guard  (green before any phase starts)
 **Why WU11 and WU12 hang off WU9, not WU10.** Both drive their scenarios *through the navigator*, so WU9 is their
 real entry condition. Neither consumes anything WU10 produces: WU10 changes how four open-state reads are derived,
 while WU11 and WU12 only assert rendering and flow. Keeping them siblings rather than successors matters because
-**OQ-1** and **OQ-4** sit on WU10 (10.3, 10.5) — chaining WU11/WU12 behind it would park two test-only slices
-behind two unanswered operational questions for no technical reason. Task 11.2's comment cites 10.4's rationale but
+**OQ-1** and **OQ-4** originally sat on WU10 (10.3, 10.5) — chaining WU11/WU12 behind them would have parked two
+test-only slices behind two unanswered operational questions for no technical reason. **OQ-4 is now CLOSED
+(alternative B).** Only OQ-1 remains open, and 10.6 records that its implementation is identical either way, so
+nothing in WU10 is blocked. Task 11.2's comment cites 10.4's rationale but
 is written from design §10.4, so WU11 may land before or after WU10 and its assertion must hold either way.
 
 ---
@@ -141,7 +143,7 @@ because each one is attached to a task that would otherwise silently depend on a
 | **OQ-1** | §12 Q1, flagged in §11 | Is *"on a historical day, show the open record attributed to that day"* the intended reading? The alternative (keep the machine-level `get*Abierta` lookup on every day) would show today's open record on a past day, contradicting exclusive attribution. The design picks the first (§6.3) and says it needs Gerencia-level confirmation. | **Open — decision made in the design, awaiting operational confirmation** | Phase 10 (10.2). The §6.3/§6.4 trade is implemented either way; only the *reasoning* recorded in the code comments depends on the answer. |
 | **OQ-2** | §12 Q2 | How far back does navigation go? The design bounds the top at today and leaves the bottom unbounded. `specs/historical-day-navigation/spec.md` requires no lower bound ("nothing in the specs requires one"), so this is **settled by the specs, recorded here so the navigator task does not invent one**. | **Open in §12, closed by the specs** | Phase 9 (9.1). Implement "unbounded past" and do not add a lower bound. |
 | **OQ-3** | §12 Q3 | Rename `App`'s `hoy` prop to `fechaOperativa`? Kept as `hoy` per DD12 to avoid a ~40-call-site test diff. | **Deferred / out of scope** | Phase 7 (7.1). The prop name stays; its JSDoc changes. A rename is a mechanical follow-up belonging to a **different change**. Do **not** schedule it here. |
-| **OQ-4** | §12 Q4 | An open `parada` under a **different** order is unreachable after day-scoping: `getParadaAbierta(maquinaId, ordenId)` is order-bound (or `ordenId = null`), so no day-free read finds "a `parada` opened under order X while order Y is today's order". The two options are a third day-free lookup, or accepting `estadoMaquina` as order-relative. The specs do not name this state. | **Open — BLOCKS the `estadoMaquina` case** | Phase 10 (10.3). See the explicit dependency note there. |
+| **OQ-4** | §12 Q4 | An open `parada` under a **different** order is unreachable after day-scoping: `getParadaAbierta(maquinaId, ordenId)` is order-bound (or `ordenId = null`), so no day-free read finds "a `parada` opened under order X while order Y is today's order", and no listing can either. | **CLOSED — alternative B (operational answer: the state IS reachable).** `IParadaRepository` gains `getParadaAbiertaDeMaquina(maquinaId)`, a day-free machine-level open-state query whose only predicate is `machine_id = $1 AND fin IS NULL LIMIT 1`. Port + both adapters + parity landed with the decision. | Phase 10 (10.3) — now unblocked. The App-side consumption of the new lookup is task 10.3, gated on nothing. |
 
 ---
 
@@ -619,7 +621,7 @@ elements need no custom focus/keyboard/formatting test of their own.
 
 ## Phase 10: Four list-derived open-state reads (WU 10) — carries **OQ-1** and **OQ-4**
 
-**Depends on:** WU7. Additionally gated on answers for 10.3 and 10.5 — **OQ-1** (historical open-record interpretation) and **OQ-4** (different-order open `parada`). 10.1, 10.2 and 10.4 are unblocked and may proceed; do not write 10.3/10.5 as though the questions were answered.
+**Depends on:** WU7. **OQ-4 is CLOSED (alternative B)** and the `getParadaAbiertaDeMaquina` port method, both adapters, their suites and the cross-adapter parity suite landed with the decision — 10.3 and 10.5 are therefore unblocked. Only **OQ-1** (historical open-record interpretation) is still open, and 10.6 records that the implementation is the same either way: only the recorded rationale depends on the answer.
 
 The machine-level `get*Abierta` lookups stay **day-free** (DD8), because they express a machine-level invariant and an
 open record legitimately spans days — day-scoping them would hide a genuinely open record from **today's** dashboard,
@@ -648,18 +650,14 @@ open disappears. The four read-path call sites of the day-free lookups that this
   same call `handleRegistrarParada` already makes at `App.tsx:474`, so the guard and the card now read one source
   instead of two. **Traces to:** `H:353-364`; design §6.4 item 2.
 - [ ] 10.3 `paradaAbiertaMaquina` (`App.tsx:836-838`) becomes
-  `paradaAbiertaDeMaquina ?? paradaAbierta(paradas, "M1", null)`, where `paradaAbiertaDeMaquina` is fetched **day-free**
-  (`getParadaAbierta` for the current order and for `ordenId = null`) in the same two places. This adds two
-  `useState` values to `App` and four lookups split across four functions.
-  ⚠️ **OPEN QUESTION OQ-4 — this task is BLOCKED on an operational answer and MUST NOT be written as if it were
-  answered.** `getParadaAbierta(maquinaId, ordenId)` is order-bound (or `ordenId = null`), so after day-scoping there
-  is **no reachable day-free read** that finds "a `parada` opened under order X while order Y is today's order". The
-  pre-change expression at `App.tsx:836` found it by scanning the full history; the two lookups here do not. It is a
-  narrow state (order switched while a `parada` stayed open), the specs **do not name it**, and the two options are a
-  third day-free lookup or accepting `estadoMaquina` to be order-relative. **Record the limitation in a code comment
-  and in the change's risks; do not add a third lookup and do not widen the parity suite to cover it, until the
-  operational answer exists.** Note also that the design scopes this gate to "before the parity suite is written for
-  it" — see defect **D5** for why that pointer is mis-placed. **Traces to:** `H:353-364`; design §6.4 item 3, §12 Q4.
+  `paradaAbiertaDeMaquina ?? paradaAbierta(paradas, "M1", null)`, where `paradaAbiertaDeMaquina` is fetched **day-free** in
+  the same two places through the **new** `getParadaAbiertaDeMaquina("M1")` (OQ-4, alternative B — the port method, both
+  adapters, their suites and the cross-adapter parity suite already landed with the decision). This adds two `useState`
+  values to `App` and four lookups split across four functions.
+  One lookup replaces the two `getParadaAbierta` calls: it also reaches a `parada` left open under a *previous* order,
+  which neither of them could. The port JSDoc is the contract — the lookup answers "¿qué está abierto AHORA?" and is
+  consulted **only** when `!soloLectura`, so a historical day keeps answering from its own list and no record is shown on
+  two days. **Traces to:** `H:353-364`; design §6.4 item 3, §12 Q4.
 - [ ] 10.4 The two `useState` **seeds** at `App.tsx:143` and `App.tsx:147` **keep their expression** unchanged. They
   are an optimisation the loaders immediately supersede (which already re-read `:247` / `:268` on mount), and
   changing them would require `RecoveryState` to grow four open-record fields — a contract change to a module this
@@ -671,9 +669,11 @@ open disappears. The four read-path call sites of the day-free lookups that this
   mount on *D + 1*, then assert (a) each open card is visible, (b) `estadoMaquina` still reads `parada`, (c)
   registering a second `limpieza` is refused by `comenzarActividad`'s guard, and (d) after navigating to *D* the
   same records are visible there and **not** on *D + 1* — the day-scoped list and the day-free lookup each answer
-  their own question. ⚠️ Assertion (b) is subject to **OQ-4**: it is only meaningful for a `parada` opened under the
-  **current** order or with `ordenId = null`. Do **not** add the different-order variant — it has no defined
-  expected value until OQ-4 is answered. **Traces to:** `H:353-364`; `H:366-371`; `H:217-228`; design §10.4
+  the same records are visible there and **not** on *D + 1* — the day-scoped list and the day-free lookup each answer
+  their own question. ✅ **OQ-4 is CLOSED (alternative B), so assertion (b) is no longer limited**: add the
+  **different-order variant** — a `parada` opened on *D* under order X, the order switches to Y, the `parada` stays open
+  on *D + 1* — and assert `estadoMaquina` still reads `parada` there, that the day-scoped listing for *D + 1* omits it,
+  and that its `fechaOperativa` is still *D*. **Traces to:** `H:353-364`; `H:366-371`; `H:217-228`; design §10.4
   "Open records across midnight", §6.3, §6.4.
 - [ ] 10.6 Record **OQ-1** next to the derivation it justifies: a code comment on the `soloLectura ?` conditionals
   states that on a historical day the open state is derived from **that day's own list** with the existing pure

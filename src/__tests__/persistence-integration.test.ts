@@ -42,7 +42,8 @@ import type { IActividadPlanificadaRepository } from "../store/actividadesReposi
 import type { IDanoRepository } from "../store/danosRepository";
 import type { IMantenimientoRepository } from "../store/mantenimientoRepository";
 import type { IInspeccionRepository } from "../store/inspeccionRepository";
-import type { Dano, LecturaContador, Orden } from "../domain/types";
+import type { Dano, LecturaContador, Orden, Parada } from "../domain/types";
+import { InMemoryParadaRepository } from "../store/inMemoryParadasRepository";
 
 // ── Almacén persistente falso (equivalente conceptual al archivo SQLite) ────
 
@@ -173,6 +174,7 @@ function crearOperativosFalsos(): {
       listarPorMaquina: async () => [],
       listarPorOrden: async () => [],
       getParadaAbierta: async () => null,
+      getParadaAbiertaDeMaquina: async () => null,
     },
     actividadRepository: {
       insertActividad: noEscrito,
@@ -825,4 +827,123 @@ describe("14. el reinicio con los cinco operativos SQLite reales — G2", () => 
     // solo el daño sembrado por A1b (nunca llega un segundo insert).
     expect(store.dano).toHaveLength(1);
   }, UI_TIMEOUT);
+});
+
+// ── OQ-4: paridad de `getParadaAbiertaDeMaquina` entre adaptadores ───────────
+//
+// Un puerto tiene DOS implementaciones. Un método nuevo que las dos implementan
+// no está completo hasta que se demuestra que devuelven lo MISMO ante el mismo
+// almacén: si difieren, el comportamiento de la aplicación depende de cuál
+// adaptador se montó, y eso no es un detalle de implementación sino del
+// contrato. Estos casos corren el MISMO escenario por los dos adaptadores y
+// comparan el resultado, en vez de repetir la misma expectativa en dos suites
+// que podrían divergir sin que nadie lo note.
+
+describe("OQ-4: paridad InMemory/SQLite de la parada abierta de la máquina", () => {
+  /** Una parada abierta con día y orden explícitos. */
+  function abierta(overrides: Partial<Parada> = {}): Parada {
+    return {
+      id: "par-abierta",
+      maquinaId: "M1",
+      ordenId: null,
+      operatorName: "Laura",
+      causaId: "falta_tela",
+      camposEspecificos: {},
+      fechaOperativa: "2026-09-14",
+      inicio: "2026-09-14T07:00:00.000Z",
+      fin: null,
+      ...overrides,
+    };
+  }
+
+  /** Los dos adaptadores sembrados con las MISMAS paradas. */
+  async function parDeAdaptadores(
+    paradas: Parada[],
+  ): Promise<{ inMemory: IParadaRepository; sqlite: IParadaRepository }> {
+    const store = createFakeSqliteStore();
+    for (const id of ["ord-A", "ord-B"]) {
+      store.orden.push({ id });
+    }
+    const sqlite = new SqliteParadaRepository(store);
+    for (const p of paradas) {
+      // `insertParada` valida la FK: se siembra y se espera antes de comparar,
+      // para no lesterear al adaptador con una lectura sobre un store a medio
+      // escribir.
+      await sqlite.insertParada(p);
+    }
+    return { inMemory: new InMemoryParadaRepository(paradas), sqlite };
+  }
+
+  it("coinciden con la máquina parada y sin orden", async () => {
+    const { inMemory, sqlite } = await parDeAdaptadores([
+      abierta({ id: "p-suelta", ordenId: null }),
+    ]);
+
+    const [uno, otro] = await Promise.all([
+      inMemory.getParadaAbiertaDeMaquina("M1"),
+      sqlite.getParadaAbiertaDeMaquina("M1"),
+    ]);
+
+    expect(uno).toEqual(otro);
+    expect(uno?.id).toBe("p-suelta");
+  });
+
+  it("coinciden con la parada abierta de la orden actual", async () => {
+    const { inMemory, sqlite } = await parDeAdaptadores([
+      abierta({ id: "p-de-hoy", ordenId: "ord-B" }),
+    ]);
+
+    const [uno, otro] = await Promise.all([
+      inMemory.getParadaAbiertaDeMaquina("M1"),
+      sqlite.getParadaAbiertaDeMaquina("M1"),
+    ]);
+
+    expect(uno).toEqual(otro);
+    expect(uno?.id).toBe("p-de-hoy");
+  });
+
+  it("coinciden con la parada abierta de una orden ANTERIOR tras cambiar de orden", async () => {
+    const { inMemory, sqlite } = await parDeAdaptadores([
+      abierta({ id: "p-de-orden-a", ordenId: "ord-A", fechaOperativa: "2026-09-14" }),
+    ]);
+
+    const [uno, otro] = await Promise.all([
+      inMemory.getParadaAbiertaDeMaquina("M1"),
+      sqlite.getParadaAbiertaDeMaquina("M1"),
+    ]);
+
+    expect(uno).toEqual(otro);
+    // Y el día de origen intacto en ambos: no hay reatribución ni duplicado.
+    expect(uno?.fechaOperativa).toBe("2026-09-14");
+    expect(otro?.fechaOperativa).toBe("2026-09-14");
+  });
+
+  it("coinciden cuando la máquina no está parada", async () => {
+    const { inMemory, sqlite } = await parDeAdaptadores([
+      abierta({ fin: "2026-09-14T08:00:00.000Z" }),
+    ]);
+
+    const [uno, otro] = await Promise.all([
+      inMemory.getParadaAbiertaDeMaquina("M1"),
+      sqlite.getParadaAbiertaDeMaquina("M1"),
+    ]);
+
+    expect(uno).toBeNull();
+    expect(otro).toBeNull();
+  });
+
+  it("coinciden al desambiguar varias abiertas de la misma máquina", async () => {
+    const { inMemory, sqlite } = await parDeAdaptadores([
+      abierta({ id: "p-tarde", inicio: "2026-09-14T08:00:00.000Z" }),
+      abierta({ id: "p-temprana", inicio: "2026-09-14T07:00:00.000Z" }),
+    ]);
+
+    const [uno, otro] = await Promise.all([
+      inMemory.getParadaAbiertaDeMaquina("M1"),
+      sqlite.getParadaAbiertaDeMaquina("M1"),
+    ]);
+
+    expect(uno).toEqual(otro);
+    expect(uno?.id).toBe("p-temprana");
+  });
 });

@@ -147,6 +147,7 @@ function crearFakes(bitacora: string[] = []) {
     }),
     listarPorOrden: vi.fn(async () => []),
     getParadaAbierta: vi.fn(async () => null),
+    getParadaAbiertaDeMaquina: vi.fn(async () => null),
   };
 
   const actividadRepository: IActividadPlanificadaRepository = {

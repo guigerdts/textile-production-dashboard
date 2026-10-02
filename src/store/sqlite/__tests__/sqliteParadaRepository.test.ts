@@ -478,6 +478,150 @@ describe("sqliteParadaRepository — getParadaAbierta", () => {
   });
 });
 
+// ── OQ-4: getParadaAbiertaDeMaquina, day-free y sin condición de orden ────────
+
+describe("sqliteParadaRepository — getParadaAbiertaDeMaquina (OQ-4)", () => {
+  it("resuelve null — nunca undefined — cuando la máquina no está parada", async () => {
+    const store = createFakeSqliteStore();
+    const repo = repoSobre(store);
+    await repo.insertParada(parada({ id: "p-cerrada" }));
+
+    await expect(repo.getParadaAbiertaDeMaquina("M1")).resolves.toBeNull();
+  });
+
+  it("encuentra la parada abierta SIN orden", async () => {
+    const store = createFakeSqliteStore();
+    const repo = repoSobre(store);
+    await repo.insertParada(abierta({ id: "p-suelta", ordenId: null }));
+
+    const leida = await repo.getParadaAbiertaDeMaquina("M1");
+
+    expect(leida?.id).toBe("p-suelta");
+    expect(leida?.ordenId).toBeNull();
+  });
+
+  it("encuentra la parada abierta de la orden ACTUAL", async () => {
+    const store = createFakeSqliteStore();
+    const repo = repoSobre(store);
+    sembrarOrden(store, "ord-B");
+    await repo.insertParada(abierta({ id: "p-de-hoy", ordenId: "ord-B" }));
+
+    await expect(repo.getParadaAbiertaDeMaquina("M1")).resolves.toMatchObject({
+      id: "p-de-hoy",
+      ordenId: "ord-B",
+    });
+  });
+
+  it("encuentra la parada abierta de una orden ANTERIOR tras cambiar de orden (OQ-4)", async () => {
+    // El escenario que originó OQ-4: día A con orden A y una parada abierta; día
+    // B con orden B y esa parada todavía abierta.
+    const store = createFakeSqliteStore();
+    const repo = repoSobre(store);
+    sembrarOrden(store, "ord-A");
+    sembrarOrden(store, "ord-B");
+    await repo.insertParada(
+      abierta({
+        id: "p-de-orden-a",
+        ordenId: "ord-A",
+        fechaOperativa: "2026-09-14",
+        inicio: "2026-09-14T07:00:00.000Z",
+      }),
+    );
+
+    // Los dos alcances por orden NO la alcanzan…
+    await expect(repo.getParadaAbierta("M1", "ord-B")).resolves.toBeNull();
+    await expect(repo.getParadaAbierta("M1", null)).resolves.toBeNull();
+    // …pero la máquina está parada, y su día de origen sigue siendo el suyo.
+    const leida = await repo.getParadaAbiertaDeMaquina("M1");
+    expect(leida?.id).toBe("p-de-orden-a");
+    expect(leida?.ordenId).toBe("ord-A");
+    expect(leida?.fechaOperativa).toBe("2026-09-14");
+  });
+
+  it("no reatribuye ni duplica: la fila sigue siendo una sola y con su fecha original", async () => {
+    const store = createFakeSqliteStore();
+    const repo = repoSobre(store);
+    sembrarOrden(store, "ord-A");
+    await repo.insertParada(
+      abierta({ id: "p-de-orden-a", ordenId: "ord-A", fechaOperativa: "2026-09-14" }),
+    );
+
+    await repo.getParadaAbiertaDeMaquina("M1");
+    await repo.getParadaAbiertaDeMaquina("M1");
+
+    // Lectura pura: ni una fila nueva, ni una fecha cambiada, ni un UPDATE.
+    expect(store.parada).toHaveLength(1);
+    expect(store.parada[0].fecha_operativa).toBe("2026-09-14");
+    // Y el listado por máquina sigue devolviéndola una sola vez.
+    expect((await repo.listarPorMaquina("M1")).map((p) => p.id)).toEqual(["p-de-orden-a"]);
+  });
+
+  it("convive con el filtro de fecha: la parada de ayer no pertenece al día de hoy", async () => {
+    // La coexistence que exige la atribución por `fechaOperativa`: el lookup
+    // day-free devuelve un registro que NO es de hoy, y por eso su consumidor
+    // histórico no debe usarlo.
+    const store = createFakeSqliteStore();
+    const repo = repoSobre(store);
+    await repo.insertParada(abierta({ id: "p-de-ayer", fechaOperativa: "2026-09-13" }));
+    await repo.insertParada(abierta({ id: "p-de-hoy", fechaOperativa: "2026-09-14" }));
+
+    // La máquina está parada (una sola puede estarlo): la más antigua.
+    const leida = await repo.getParadaAbiertaDeMaquina("M1");
+    expect(leida?.fechaOperativa).toBe("2026-09-13");
+    // Y las dos conviven en el listado, con su día intacto.
+    expect((await repo.listarPorMaquina("M1")).map((p) => p.fechaOperativa)).toEqual([
+      "2026-09-13",
+      "2026-09-14",
+    ]);
+  });
+
+  it("sobrevive a un reinicio: un repositorio nuevo sobre el mismo store la encuentra", async () => {
+    // "Reinicio" a nivel de adaptador: la parada abierta no vive en memoria del
+    // proceso, se releyó del almacén. Sin el lookup de máquina esto exigiría
+    // conocer la orden con la que se abrió.
+    const store = createFakeSqliteStore();
+    const antesDelReinicio = repoSobre(store);
+    sembrarOrden(store, "ord-A");
+    await antesDelReinicio.insertParada(
+      abierta({ id: "p-de-orden-a", ordenId: "ord-A", fechaOperativa: "2026-09-14" }),
+    );
+
+    const despuesDelReinicio = repoSobre(store);
+
+    await expect(despuesDelReinicio.getParadaAbiertaDeMaquina("M1")).resolves.toMatchObject({
+      id: "p-de-orden-a",
+    });
+  });
+
+  it("ante varias abiertas de la máquina, elige la más antigua (paridad con el port)", async () => {
+    const store = createFakeSqliteStore();
+    const repo = repoSobre(store);
+    await repo.insertParada(abierta({ id: "p-tarde", inicio: "2026-09-14T08:00:00.000Z" }));
+    await repo.insertParada(abierta({ id: "p-temprana", inicio: "2026-09-14T07:00:00.000Z" }));
+
+    const leida = await repo.getParadaAbiertaDeMaquina("M1");
+
+    expect(leida?.id).toBe("p-temprana");
+  });
+
+  it("emite UNA sentencia sin condición de orden ni de fecha, y un solo bind", async () => {
+    const store = createFakeSqliteStore();
+    const { repo, consultas, enlaces } = repoQueRegistra(store);
+    await repo.insertParada(abierta({ id: "p-x" }));
+
+    consultas.length = 0;
+    enlaces.length = 0;
+    await repo.getParadaAbiertaDeMaquina("M1");
+
+    // Ni `orden_id`, ni `fecha_operativa`: ese es exactamente el alcance de la
+    // excepción documentada, y la razón de que no pueda servir a un listado.
+    expect(consultas).toEqual([
+      "SELECT * FROM parada WHERE machine_id = $1 AND fin IS NULL ORDER BY inicio ASC LIMIT 1",
+    ]);
+    expect(enlaces[0].binds).toEqual(["M1"]);
+  });
+});
+
 // ── 7. D2b: FK impuesta por el doble, null aceptado, sin lookup manual ───────
 
 describe("sqliteParadaRepository — D2b: FK de parada, null aceptado, sin lookup", () => {

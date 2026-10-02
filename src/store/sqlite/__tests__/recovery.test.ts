@@ -216,6 +216,7 @@ function createFakes(options: FakesOptions = {}) {
     listarPorMaquina: vi.fn(async () => options.paradas ?? []),
     listarPorOrden: vi.fn(async () => []),
     getParadaAbierta: vi.fn(async () => null),
+    getParadaAbiertaDeMaquina: vi.fn(async () => null),
   } satisfies IParadaRepository;
 
   const actividadRepository = {

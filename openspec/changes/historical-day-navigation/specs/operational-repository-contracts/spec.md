@@ -205,10 +205,38 @@ which of the two survive is a design decision, deliberately left open here.
 
 #### Scenario: Every machine-event read the application performs carries the day
 
-- GIVEN every read of `paradas`, `actividades`, `danos` and `mantenimientos` performed for a selected day
-- WHEN each read is inspected
+- GIVEN every **listing** of `paradas`, `actividades`, `danos` and `mantenimientos` performed for a selected day
+- WHEN each one is inspected
 - THEN each one supplied the selected operational day
-- AND no read of those four collections is day-free
+- AND no **listing** of those four collections is day-free
+
+#### Scenario: The rule binds listings, not open-state queries
+
+The requirement above governs **listings**: the reads that answer *"what happened on this
+day"*. It does not govern an **open-state query**, which answers *"what is open right now"*
+about the machine rather than about a day. The distinction is what lets both hold at once:
+
+- a listing is attributed to exactly one day, because a record is never shown on two days;
+- an open-state query is a machine-level invariant that legitimately spans days, so it takes
+  no day and never re-attributes anything.
+
+`IParadaRepository.getParadaAbiertaDeMaquina(maquinaId)` is the single declared exception. It
+resolves the machine's one open `parada` with no order and no day predicate, and it is
+**never** a substitute for a listing: it returns at most one open record and cannot produce
+history.
+
+- GIVEN a `parada` opened on day `D-1` under an order that is no longer current, still open on `D`
+- WHEN the application resolves the machine's operational state for `D`
+- THEN it obtains that `parada` through the machine-level open-state query
+- AND the day-scoped listing for `D` still omits it, because it belongs to `D-1`
+- AND the `parada` keeps `fechaOperativa = D-1` — it is neither re-attributed nor duplicated
+
+#### Scenario: An open-state query is never used to answer a historical day
+
+- GIVEN a day that is not today is selected
+- WHEN the application resolves what happened on it
+- THEN every read it performs is day-scoped
+- AND no day-free open-state query contributes to that day's result
 
 ## Interaction with the pending `operational-event-operative-date` delta
 

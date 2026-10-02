@@ -5,8 +5,10 @@
  * (Phase 2, Unit B2). It stores paradas in the `parada` table of migrations
  * 004+005 (10 columns) and implements the same port contract as
  * `InMemoryParadaRepository`: insert vs update explicit, pre-check + one
- * statement (D2j), chronological order by `inicio` for listados, and a
- * null-safe `getParadaAbierta` bound to machine + optional order.
+ * statement (D2j), chronological order by `inicio` for listados, a
+ * null-safe `getParadaAbierta` bound to machine + optional order, and a
+ * machine-scoped `getParadaAbiertaDeMaquina` that ignores both the order and
+ * the operative day to answer the machine's current operational state (OQ-4).
  *
  * WHAT THIS IS NOT
  * ================
@@ -287,6 +289,26 @@ export class SqliteParadaRepository implements IParadaRepository {
     );
     const fila = filas[0];
     // `fin IS NULL` en la sentencia hace la cast segura, igual que el port.
+    return fila ? (mapParadaRow(fila) as ParadaAbierta) : null;
+  }
+
+  /**
+   * La parada abierta de la máquina, sea cual sea su orden y su día (OQ-4).
+   *
+   * Mismo predicado que `getParadaAbiertaDeMaquina` del port en memoria:
+   * `fin IS NULL` y NINGUNA condición sobre `orden_id` ni `fecha_operativa`.
+   * `ORDER BY inicio ASC LIMIT 1` desambigua igual que allí, de modo que los
+   * dos adaptadores devuelven la misma parada ante el mismo almacén.
+   *
+   * NO es un listado: no devuelve historial ni toca `fechaOperativa`. Responde
+   * solo por el estado operativo actual de la máquina.
+   */
+  async getParadaAbiertaDeMaquina(maquinaId: string): Promise<ParadaAbierta | null> {
+    const filas = await this.db.select<ParadaRow[]>(
+      "SELECT * FROM parada WHERE machine_id = $1 AND fin IS NULL ORDER BY inicio ASC LIMIT 1",
+      [maquinaId],
+    );
+    const fila = filas[0];
     return fila ? (mapParadaRow(fila) as ParadaAbierta) : null;
   }
 }
