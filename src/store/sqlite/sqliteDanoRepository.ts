@@ -373,6 +373,11 @@ export class SqliteDanoRepository implements IDanoRepository {
    *
    * Sin columna, índice ni migración nueva: el predicado lo sirve el índice
    * `idx_dano_maquina_fecha (machine_id, fecha_operativa)` de la migración 005.
+   * Orden: cronológico por `inicio`. Dos registros con el `inicio` idéntico
+   * quedan en orden indefinido entre sí — el método no afirma determinismo
+   * ahí, y el llamador no debe suponerlo. El caso se nombra en el contrato
+   * de listado por día (`dayScopedListingContract.ts`, forma 5) en vez de
+   * quedar sólo como un comment.
    */
   async listarPorMaquinaYFecha(maquinaId: string, fechaOperativa: string): Promise<Dano[]> {
     const rows = await this.db.select<DanoRow[]>(

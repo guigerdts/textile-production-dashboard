@@ -57,6 +57,11 @@ export class InMemoryParadaRepository implements IParadaRepository {
    * La igualdad es sobre el `fechaOperativa` persistido: nunca se deriva de
    * `inicio`/`fin`. Un día sin paradas devuelve `[]` y nunca un error — un día
    * vacío es un resultado legítimo, no un fallo.
+   * Orden: cronológico por `inicio`. Dos registros con el `inicio` idéntico
+   * quedan en orden indefinido entre sí — el método no afirma determinismo
+   * ahí, y el llamador no debe suponerlo. El caso se nombra en el contrato
+   * de listado por día (`dayScopedListingContract.ts`, forma 5) en vez de
+   * quedar sólo como un comment.
    */
   async listarPorMaquinaYFecha(maquinaId: string, fechaOperativa: string): Promise<Parada[]> {
     return [...this.porId.values()]

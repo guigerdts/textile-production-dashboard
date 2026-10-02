@@ -151,7 +151,7 @@ because each one is attached to a task that would otherwise silently depend on a
 
 **Depends on:** nothing. This is the entry gate for the whole change: `851172c` is already the zero-diff baseline at `c1bf533` (verified), so the guard is green on arrival. If it is red, stop — every later phase is blocked.
 
-- [ ] 1.1 Create `src/__tests__/noDomainDiff.test.ts` (`// @vitest-environment node`, `execFileSync` from
+- [x] 1.1 Create `src/__tests__/noDomainDiff.test.ts` (`// @vitest-environment node`, `execFileSync` from
   `node:child_process` under the project's existing `// @ts-expect-error type error without @types/node package`
   convention, `vite.config.ts:4-5`). Two `git` calls, both name-based and read-only, with
   `const BASE = "851172c"` — the **declared precondition commit, not HEAD** (HEAD has since moved to `c1bf533`;
@@ -162,11 +162,11 @@ because each one is attached to a task that would otherwise silently depend on a
   **Traces to:** `specs/historical-day-navigation/spec.md:418-423` ("A change to `src/domain/**` fails the change" / "GIVEN a regression guard over
   `src/domain/**` … THEN the guard fails"); design §10.3, §10.5; boundary B1+B2. **File: `src/domain/**` is
   `(read-only)` — the guard only ever reads it.**
-- [ ] 1.2 Verify the guard starts **green** before any other phase runs:
+- [x] 1.2 Verify the guard starts **green** before any other phase runs:
   `git diff --name-only 851172c -- src/domain src-tauri/migrations` returns empty (already confirmed at `c1bf533`),
   then `npx vitest run src/__tests__/noDomainDiff.test.ts` passes. A red guard here means the precondition itself is
   dirty and every later phase is blocked.
-- [ ] 1.3 Confirm the guard's rejected alternative is genuinely unavailable, so the choice is recorded rather than
+- [x] 1.3 Confirm the guard's rejected alternative is genuinely unavailable, so the choice is recorded rather than
   assumed: a content grep would already fire on the untouched tree — `new Date(` appears throughout `src/domain/**`
   (e.g. `src/domain/actividades.ts` (read-only)), the domain suites are **co-located** `src/domain/*.test.ts` with no
   `src/domain/__tests__/` to hang a `?raw` reader on, and `src/domain/calidad.test.ts:14` (read-only) legitimately
@@ -183,7 +183,7 @@ because each one is attached to a task that would otherwise silently depend on a
 
 **Depends on:** WU1 green. No code dependency on WU3; the two adapter families are independent and may be written in either order.
 
-- [ ] 2.1 Add `listarPorMaquinaYFecha(maquinaId: string, fechaOperativa: string): Promise<T[]>` to exactly four
+- [x] 2.1 Add `listarPorMaquinaYFecha(maquinaId: string, fechaOperativa: string): Promise<T[]>` to exactly four
   ports, with `fechaOperativa` as a **required positional parameter** so a day-free call cannot type-check (DD1):
   `src/store/paradasRepository.ts` (next to `listarPorMaquina` at `:48` and `getParadaAbierta` at `:61`),
   `src/store/actividadesRepository.ts` (next to `:50`, `getActividadAbierta` at `:58`),
@@ -191,10 +191,10 @@ because each one is attached to a task that would otherwise silently depend on a
   Add the JSDoc line stating the day is an equality match on the persisted `fechaOperativa` and is never derived
   from `inicio`/`fin`. **Traces to:** `R:37-49` ("each exposes a machine listing that requires an operational day";
   "WHEN it is type-checked without supplying the operational day THEN compilation fails"); DD1, DD2, DD3; §2.
-- [ ] 2.2 Do **not** narrow or remove `listarPorMaquina(maquinaId)`. It survives unchanged and complete — it is the
+- [x] 2.2 Do **not** narrow or remove `listarPorMaquina(maquinaId)`. It survives unchanged and complete — it is the
   seam for a future full-history view, and its existing per-adapter assertions must keep asserting full history
   (DD2). **Traces to:** `R:183-198` ("A surviving day-free listing is unchanged").
-- [ ] 2.3 Implement the four in-memory adapters following the exact shape at
+- [x] 2.3 Implement the four in-memory adapters following the exact shape at
   `src/store/inMemoryParadasRepository.ts:46-51`: filter `p.fechaOperativa === fechaOperativa` **inside the
   adapter** (DD3), sort `a.inicio.localeCompare(b.inicio)`, `.map(structuredClone)` for the defensive copy, `[]` for
   an empty day, never an error. Files: `src/store/inMemoryParadasRepository.ts`,
@@ -202,14 +202,14 @@ because each one is attached to a task that would otherwise silently depend on a
   `src/store/inMemoryMantenimientoRepository.ts`. **Traces to:** `R:91-96` ("The in-memory adapter filters within
   its own read path"); `R:123-148` (exact day, empty array, `ordenId: null` included, order owned by the adapter);
   `R:150-155` (no business-rule validation added); `H:161-166` (chronological order).
-- [ ] 2.4 Add the day cases to the four existing in-memory suites — `src/store/paradasRepository.test.ts`,
+- [x] 2.4 Add the day cases to the four existing in-memory suites — `src/store/paradasRepository.test.ts`,
   `src/store/actividadesRepository.test.ts`, `src/store/danosRepository.test.ts`,
   `src/store/mantenimientoRepository.test.ts` — **adding** cases and keeping every current assertion. Each case
   asserts the day predicate *next to* the surviving full-history assertion, so DD2's guarantee is visible in one
   place. Minimal shape is intentional: the six attribution shapes belong to WU4's shared factory, not here (see
   defect **D4**). **Traces to:** `H:457-462` ("The existing adapter suites keep their coverage … AND no assertion
   is deleted to make the day predicate pass"); `R:193-198`.
-- [ ] 2.5 Record the ordering caveat in each added method's JSDoc rather than claiming determinism:
+- [x] 2.5 Record the ordering caveat in each added method's JSDoc rather than claiming determinism:
   `inicio.localeCompare` is not a total order when two records of the same day share an `inicio`. The day-free
   listing has the same property today; this change adds no determinism claim and removes none (design §3.1).
 
@@ -226,7 +226,7 @@ untouched (B1–B4).
 
 **Depends on:** WU1 green. No code dependency on WU2 — the SQLite method is one added `WHERE` conjunct over an existing index, and only WU4 needs both families.
 
-- [ ] 3.1 Add `listarPorMaquinaYFecha` to the four SQLite adapters — one added `WHERE` conjunct, nothing else
+- [x] 3.1 Add `listarPorMaquinaYFecha` to the four SQLite adapters — one added `WHERE` conjunct, nothing else
   changes. Follow the exact shape of `src/store/sqlite/sqliteParadaRepository.ts:262-268` (which issues
   `SELECT * FROM parada WHERE machine_id = $1 ORDER BY inicio ASC`): add `AND fecha_operativa = $2`, pass
   `[maquinaId, fechaOperativa]`, keep `ORDER BY inicio ASC`, reuse the existing row mapper unchanged. Files:
@@ -235,21 +235,21 @@ untouched (B1–B4).
   **Traces to:** `R:84-89` ("the statement it issues restricts its result by the persisted `fecha_operativa` value …
   the restriction is part of the read, not a filter applied to an already-read full result"); `H:485-490` ("the
   day predicate reads the existing column"); DD3, DD11.
-- [ ] 3.2 Do not add a column, an index, or a schema change. The predicate is served by the index migration 005
+- [x] 3.2 Do not add a column, an index, or a schema change. The predicate is served by the index migration 005
   already declared at `src-tauri/migrations/005_event_fecha_operativa.sql:36-39`
   (`idx_parada_maquina_fecha`, `idx_actividad_maquina_fecha`, `idx_dano_maquina_fecha`,
   `idx_mantenimiento_maquina_fecha`, each on `(machine_id, fecha_operativa)`); the superseded
   `(machine_id, inicio)` indexes at `src-tauri/migrations/004_operational_events.sql:114-117` (read-only) stay and
   keep serving `get*Abierta`. **Traces to:** `H:472-490` ("No migration is added … migrations 001–005 are
   byte-identical"); DD11; boundary B1.
-- [ ] 3.3 Add day cases to the four existing modelled-double suites —
+- [x] 3.3 Add day cases to the four existing modelled-double suites —
   `src/store/sqlite/__tests__/sqliteParadaRepository.test.ts` (imports `createFakeSqliteStore` at `:24`),
   `sqliteActividadPlanificadaRepository.test.ts`, `sqliteDanoRepository.test.ts`,
   `sqliteMantenimientoRepository.test.ts` — **adding** cases and keeping every current assertion. Note that
   `fakeSqliteStore` must be taught to honour the new conjunct, otherwise these cases pass vacuously: verify the
   double actually filters, do not accept a case that returns the full history. **Traces to:** `H:457-462`;
   `R:199-211` ("The day-scoped path does not build on the day-free listing").
-- [ ] 3.4 Do **not** treat the double-based cases as parity evidence. The spec is explicit that parity proved
+- [x] 3.4 Do **not** treat the double-based cases as parity evidence. The spec is explicit that parity proved
   solely against a double would not prove the real engine enforces the filter; the real-engine run is WU4 and is
   **added to**, not substituted for, these suites. **Traces to:** `H:425-447`, `H:464-470`.
 
@@ -263,13 +263,13 @@ is empty.
 
 **Depends on:** WU2 **and** WU3 both complete — the whole point of this slice is one contract suite run against two adapter families. Also requires a host with a working `node:sqlite` `DatabaseSync`; if unavailable, this slice is **blocked**, not deferred to N/A.
 
-- [ ] 4.1 Create the directory `src/store/__tests__/` — it does not exist yet — and in it
+- [x] 4.1 Create the directory `src/store/__tests__/` — it does not exist yet — and in it
   `src/store/__tests__/dayScopedListingContract.ts`: **one** exported factory
   `describeDayScopedListingContract<T>(familia, crearCaso)` that runs every day-scoped listing case against
   whichever family `crearCaso` builds, so a shape cannot pass in one family and fail in the other (DD10).
   **Traces to:** `H:435-440` ("it runs every case against the in-memory family and against the SQLite family AND
   both families pass every case"); DD10; design §8.
-- [ ] 4.2 The factory MUST cover the six attribution shapes for **each of the four** event types (DD8, design §8):
+- [x] 4.2 The factory MUST cover the six attribution shapes for **each of the four** event types (DD8, design §8):
   (1) a record with an order; (2) a record with **no** order (`ordenId: null` — must still be visible on its day);
   (3) a midnight-crossing record (`inicio` 23:50 → `fin` 00:10 next day); (4) an **open** record spanning midnight
   (`fin: null`, `inicio` the previous day); (5) two records with **identical `inicio`** but different
@@ -277,30 +277,30 @@ is empty.
   case also assert chronological order is preserved and that the day-free `listarPorMaquina` still returns the
   machine's full history (DD2). **Traces to:** `H:449-455` ("Parity covers the attribution shapes, not only the happy
   path"); `H:203-241` (exclusive attribution); `H:168-201` (records with no order).
-- [ ] 4.3 Assert the exact-match semantics, not a loose date match: a record whose `inicio`/`fin` both fall on `D-1`
+- [x] 4.3 Assert the exact-match semantics, not a loose date match: a record whose `inicio`/`fin` both fall on `D-1`
   while `fechaOperativa = D` is **not** returned for `D-1`; a still-open record matches only its own day; a
   persisted `jornada` takes no part in the decision (no window, overlap or "still open" predicate anywhere).
   **Traces to:** `R:157-181`; `H:203-241`.
-- [ ] 4.4 Create `src/store/sqlite/__tests__/realSqlite.ts`: a `DatabaseSync` shim over `node:sqlite` implementing
+- [x] 4.4 Create `src/store/sqlite/__tests__/realSqlite.ts`: a `DatabaseSync` shim over `node:sqlite` implementing
   only the two methods the adapters use — `select<T>(sql, binds)` and `execute(sql, binds)` — plus `close()`. Migrations
   001–005 are applied in-process via `?raw` imports, following the exact pattern at
   `src/store/sqlite/__tests__/migration005.test.ts:36-41`. The **shim must inject only a `Database`**; the SQLite
   adapter classes run **unmodified**, which is what makes the run evidence about the adapter rather than about a
   re-implementation of it. **Traces to:** `H:442-447`; design §8 "The real SQLite side", §11.
-- [ ] 4.5 The shim must handle the two `node:sqlite` behaviours the design recorded empirically: `$1`/`$2` binds are
+- [x] 4.5 The shim must handle the two `node:sqlite` behaviours the design recorded empirically: `$1`/`$2` binds are
   **named** to `node:sqlite`, so a ~12-line rewrite maps `$N` → `?` before preparing (or binds
   `{'1': …, '2': …}`); and the environment container refuses to bundle the builtin, so the test file opens with
   `// @vitest-environment node`. TypeScript accepts the import under the project's existing
   `// @ts-expect-error type error without @types/node package` convention (`vite.config.ts:4-5`) — `npx tsc --noEmit`
   must still pass. **Traces to:** design §8 table; `H:464-470` ("the guardrails pass").
-- [ ] 4.6 Create `src/store/sqlite/__tests__/dayScopedListing.parity.test.ts`, opening with
+- [x] 4.6 Create `src/store/sqlite/__tests__/dayScopedListing.parity.test.ts`, opening with
   `// @vitest-environment node`, calling `describeDayScopedListingContract` twice — once for `"in-memory"`, once for
   `"sqlite"` over the real engine. **Traces to:** `H:435-447`.
-- [ ] 4.7 Assert the index is actually used: `EXPLAIN QUERY PLAN SELECT * FROM parada WHERE machine_id = ? AND
+- [x] 4.7 Assert the index is actually used: `EXPLAIN QUERY PLAN SELECT * FROM parada WHERE machine_id = ? AND
   fecha_operativa = ?` reports `SEARCH parada USING INDEX idx_parada_maquina_fecha (machine_id=? AND
   fecha_operativa=?)`. The design observed exactly this plan in-session; the suite turns that observation into
   evidence. **Traces to:** `H:485-490`; DD11; design §3.3, §11 ("Index assumptions wrong").
-- [ ] 4.8 Give the new suite the same two honesty blocks `migration005.test.ts:14-33` already uses: a
+- [x] 4.8 Give the new suite the same two honesty blocks `migration005.test.ts:14-33` already uses: a
   *"WHAT THIS SUITE IS NOT"* block stating it does not run the Tauri migration, and a
   *"SEPARATE EVIDENCE, NOT CLAIMED HERE"* block pointing at `src-tauri/migrations/validate_r56.py` (read-only) with
   its own caveat (a Python `sqlite3` script; `executescript` autocommit vs sqlx's per-migration transaction — not
