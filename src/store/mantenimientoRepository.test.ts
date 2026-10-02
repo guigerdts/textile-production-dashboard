@@ -67,6 +67,46 @@ describe("InMemoryMantenimientoRepository — listar por máquina", () => {
     ]);
   });
 
+  // Casos de día junto a la aserción de historia completa de arriba, para que DD2
+  // se lea en un solo lugar. Ninguna aserción existente se borra.
+  it("lista solo los mantenimientos del día operativo pedido", async () => {
+    const repo = new InMemoryMantenimientoRepository(crearFixtureMantenimientos());
+
+    expect((await repo.listarPorMaquinaYFecha(M1, "2026-09-11")).map((m) => m.id)).toEqual([
+      "mnt-001",
+      "mnt-002",
+    ]);
+    // el día intermedio también existe: el filtro no es "el primero" ni "el último"
+    expect((await repo.listarPorMaquinaYFecha(M1, "2026-09-12")).map((m) => m.id)).toEqual([
+      "mnt-003",
+    ]);
+    // y el listado sin día no se vio afectado
+    expect(await repo.listarPorMaquina(M1)).toHaveLength(4);
+  });
+
+  it("devuelve un array vacío para un día sin mantenimientos, sin error", async () => {
+    const repo = new InMemoryMantenimientoRepository(crearFixtureMantenimientos());
+
+    await expect(repo.listarPorMaquinaYFecha(M1, "2026-09-13")).resolves.toEqual([]);
+  });
+
+  it("usa el fechaOperativa persistido, no el inicio: un mantenimiento que cruza la medianoche sigue en su día", async () => {
+    const base = crearFixtureMantenimientos()[0];
+    const repo = new InMemoryMantenimientoRepository([
+      {
+        ...base,
+        inicio: "2026-09-14T23:30:00.000Z",
+        fechaOperativa: "2026-09-15",
+        fin: null,
+      },
+    ]);
+
+    expect((await repo.listarPorMaquinaYFecha(M1, "2026-09-15")).map((m) => m.id)).toEqual([
+      base.id,
+    ]);
+    expect(await repo.listarPorMaquinaYFecha(M1, "2026-09-14")).toEqual([]);
+  });
+
   it("devuelve array vacío para máquina sin mantenimientos", async () => {
     const repo = new InMemoryMantenimientoRepository([]);
     expect(await repo.listarPorMaquina(M1)).toEqual([]);

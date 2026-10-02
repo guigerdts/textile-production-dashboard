@@ -269,6 +269,24 @@ export class SqliteParadaRepository implements IParadaRepository {
     return filas.map((fila) => mapParadaRow(fila));
   }
 
+  /**
+   * Listado de UN DÍA OPERATIVO. El filtro por día viaja en la consulta — un
+   * `WHERE` más, nada más (DD3): el predicado lo aplica la base, nunca el
+   * llamador.
+   *
+   * Un día sin paradas devuelve `[]`: el SQL no lanza por cero filas.
+   *
+   * Sin columna, índice ni migración nueva: el predicado lo sirve el índice
+   * `idx_parada_maquina_fecha (machine_id, fecha_operativa)` de la migración 005.
+   */
+  async listarPorMaquinaYFecha(maquinaId: string, fechaOperativa: string): Promise<Parada[]> {
+    const filas = await this.db.select<ParadaRow[]>(
+      "SELECT * FROM parada WHERE machine_id = $1 AND fecha_operativa = $2 ORDER BY inicio ASC",
+      [maquinaId, fechaOperativa],
+    );
+    return filas.map((fila) => mapParadaRow(fila));
+  }
+
   async listarPorOrden(ordenId: string): Promise<Parada[]> {
     const filas = await this.db.select<ParadaRow[]>(
       "SELECT * FROM parada WHERE orden_id = $1 ORDER BY inicio ASC",

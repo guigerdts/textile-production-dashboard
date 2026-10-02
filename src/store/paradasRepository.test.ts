@@ -60,6 +60,58 @@ describe("InMemoryParadaRepository — listar por máquina y por orden", () => {
     ]);
   });
 
+  // Los casos de día van AQUÍ, junto a la aserción de historia completa de arriba,
+  // para que la garantía DD2 se lea en un solo lugar: el listado sin día sigue
+  // devolviendo 5 registros y el de un día devuelve los suyos. Ninguna aserción
+  // existente se borra ni se relaja para que el predicado de día pase.
+  it("lista solo las paradas del día operativo pedido", async () => {
+    const repo = new InMemoryParadaRepository(crearFixtureParadas());
+
+    const delDia = await repo.listarPorMaquinaYFecha(M1, "2026-09-11");
+
+    expect(delDia.map((p) => p.id)).toEqual(["par-001", "par-002", "par-004", "par-005"]);
+    // y el listado sin día no se vio afectado
+    expect(await repo.listarPorMaquina(M1)).toHaveLength(5);
+  });
+
+  it("devuelve un array vacío para un día sin paradas, sin error", async () => {
+    const repo = new InMemoryParadaRepository(crearFixtureParadas());
+
+    // Un día vacío es un resultado legítimo, no un fallo: por eso [] y no throw.
+    await expect(repo.listarPorMaquinaYFecha(M1, "2026-09-12")).resolves.toEqual([]);
+  });
+
+  it("incluye en el día la parada sin orden (ordenId null)", async () => {
+    const repo = new InMemoryParadaRepository([
+      abierta({ id: "par-sin-orden", fechaOperativa: "2026-09-14" }),
+      abierta({ id: "par-otro-dia", fechaOperativa: "2026-09-15" }),
+    ]);
+
+    const delDia = await repo.listarPorMaquinaYFecha(M1, "2026-09-14");
+
+    // `listarPorOrden` excluye las paradas sin orden; este listado es por día, y
+    // el día no distingue órdenes: la parada sin orden pertenece a su día igual
+    // que cualquier otra.
+    expect(delDia.map((p) => p.id)).toEqual(["par-sin-orden"]);
+  });
+
+  it("usa el fechaOperativa persistido, no el inicio: un registro que empezó antes sigue en su día", async () => {
+    const repo = new InMemoryParadaRepository([
+      abierta({
+        id: "par-cruzada",
+        // empezó el día 14, a las 23:30, y sigue abierta: pertenece al 15
+        inicio: "2026-09-14T23:30:00.000Z",
+        fechaOperativa: "2026-09-15",
+      }),
+    ]);
+
+    expect((await repo.listarPorMaquinaYFecha(M1, "2026-09-15")).map((p) => p.id)).toEqual([
+      "par-cruzada",
+    ]);
+    // el día del `inicio` NO la muestra: el día es el de origen, no el del reloj
+    expect(await repo.listarPorMaquinaYFecha(M1, "2026-09-14")).toEqual([]);
+  });
+
   it("lista por orden solo las paradas de esa orden (sin paradas null)", async () => {
     const repo = new InMemoryParadaRepository(crearFixtureParadas());
     const de101 = await repo.listarPorOrden("ord-101");

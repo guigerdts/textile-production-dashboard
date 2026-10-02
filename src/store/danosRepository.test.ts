@@ -72,6 +72,52 @@ describe("InMemoryDanoRepository — listar por máquina y por orden", () => {
     ]);
   });
 
+  // Casos de día junto a la aserción de historia completa de arriba, para que DD2
+  // se lea en un solo lugar. Ninguna aserción existente se borra.
+  it("lista solo los daños del día operativo pedido", async () => {
+    const repo = new InMemoryDanoRepository(crearFixtureDanos());
+
+    expect((await repo.listarPorMaquinaYFecha(M1, "2026-09-11")).map((d) => d.id)).toEqual([
+      "dan-001",
+      "dan-002",
+      "dan-004",
+    ]);
+    // y el listado sin día no se vio afectado
+    expect(await repo.listarPorMaquina(M1)).toHaveLength(4);
+  });
+
+  it("devuelve un array vacío para un día sin daños, sin error", async () => {
+    const repo = new InMemoryDanoRepository(crearFixtureDanos());
+
+    await expect(repo.listarPorMaquinaYFecha(M1, "2026-09-12")).resolves.toEqual([]);
+  });
+
+  it("incluye en el día el daño sin orden (ordenId null)", async () => {
+    const repo = new InMemoryDanoRepository([DANO_4_SIN_ORDEN_CERRADO]);
+
+    // `listarPorOrden` excluye los daños sin orden; el listado por día no lo hace:
+    // el día no distingue órdenes.
+    expect((await repo.listarPorMaquinaYFecha(M1, DANO_4_SIN_ORDEN_CERRADO.fechaOperativa)).map(
+      (d) => d.id
+    )).toEqual([DANO_4_SIN_ORDEN_CERRADO.id]);
+  });
+
+  it("usa el fechaOperativa persistido, no el inicio: un daño abierto a la medianoche sigue en su día", async () => {
+    const repo = new InMemoryDanoRepository([
+      {
+        ...DANO_4_SIN_ORDEN_CERRADO,
+        inicio: "2026-09-14T23:30:00.000Z",
+        fechaOperativa: "2026-09-15",
+        fin: null,
+      },
+    ]);
+
+    expect((await repo.listarPorMaquinaYFecha(M1, "2026-09-15")).map((d) => d.id)).toEqual([
+      DANO_4_SIN_ORDEN_CERRADO.id,
+    ]);
+    expect(await repo.listarPorMaquinaYFecha(M1, "2026-09-14")).toEqual([]);
+  });
+
   it("lista por orden solo los daños de esa orden (sin daños null)", async () => {
     const repo = new InMemoryDanoRepository(crearFixtureDanos());
     const de101 = await repo.listarPorOrden("ord-101");

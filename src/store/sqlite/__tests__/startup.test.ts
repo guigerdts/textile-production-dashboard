@@ -145,6 +145,10 @@ function crearFakes(bitacora: string[] = []) {
       bitacora.push("parada:listarPorMaquina");
       return [];
     }),
+    // Stub NEUTRO: recovery todavia no consume este metodo (se re-apunta en WU5).
+    // No escribe en `bitacora` a proposito — anadir una entrada aqui moveria las
+    // aserciones de orden de lectura (I2) sin que exista una lectura real.
+    listarPorMaquinaYFecha: vi.fn(async () => []),
     listarPorOrden: vi.fn(async () => []),
     getParadaAbierta: vi.fn(async () => null),
     getParadaAbiertaDeMaquina: vi.fn(async () => null),
@@ -158,6 +162,10 @@ function crearFakes(bitacora: string[] = []) {
       bitacora.push("actividad:listarPorMaquina");
       return [];
     }),
+    // Stub NEUTRO: recovery todavia no consume este metodo (se re-apunta en WU5).
+    // No escribe en `bitacora` a proposito — anadir una entrada aqui moveria las
+    // aserciones de orden de lectura (I2) sin que exista una lectura real.
+    listarPorMaquinaYFecha: vi.fn(async () => []),
     getActividadAbierta: vi.fn(async () => null),
   };
 
@@ -169,6 +177,10 @@ function crearFakes(bitacora: string[] = []) {
       bitacora.push("dano:listarPorMaquina");
       return [];
     }),
+    // Stub NEUTRO: recovery todavia no consume este metodo (se re-apunta en WU5).
+    // No escribe en `bitacora` a proposito — anadir una entrada aqui moveria las
+    // aserciones de orden de lectura (I2) sin que exista una lectura real.
+    listarPorMaquinaYFecha: vi.fn(async () => []),
     listarPorOrden: vi.fn(async () => []),
     getDanoAbierto: vi.fn(async () => null),
   };
@@ -181,6 +193,10 @@ function crearFakes(bitacora: string[] = []) {
       bitacora.push("mantenimiento:listarPorMaquina");
       return [];
     }),
+    // Stub NEUTRO: recovery todavia no consume este metodo (se re-apunta en WU5).
+    // No escribe en `bitacora` a proposito — anadir una entrada aqui moveria las
+    // aserciones de orden de lectura (I2) sin que exista una lectura real.
+    listarPorMaquinaYFecha: vi.fn(async () => []),
     getMantenimientoAbierto: vi.fn(async () => null),
   };
 

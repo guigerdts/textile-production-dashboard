@@ -57,6 +57,28 @@ export interface IDanoRepository {
   listarPorMaquina(maquinaId: string): Promise<Dano[]>;
 
   /**
+   * Lista los daños de una máquina de UN DÍA OPERATIVO, en orden cronológico
+   * por `inicio`.
+   *
+   * `fechaOperativa` es un parámetro posicional **obligatorio** (DD1): sin él la
+   * llamada no compila, así que no existe un camino de lectura sin día.
+   *
+   * El día es una **igualdad exacta sobre el `fechaOperativa` persistido** y
+   * NUNCA se deriva de `inicio` ni de `fin`: un daño abierto a la medianoche
+   * sigue perteneciendo a su día de origen, y `fin` es `null` en los registros
+   * abiertos, así que derivar de él descartaría justamente los casos que este
+   * listado debe mostrar.
+   *
+   * Orden: `inicio.localeCompare` NO es un orden total cuando dos registros del
+   * mismo día comparten `inicio`. El listado sin día tiene la misma propiedad
+   * hoy; este método no añade determinismo ni lo quita (design §3.1).
+   *
+   * `listarPorMaquina` sobrevive intacto y completo: es la costura para una
+   * vista de historia completa (DD2).
+   */
+  listarPorMaquinaYFecha(maquinaId: string, fechaOperativa: string): Promise<Dano[]>;
+
+  /**
    * Lista daños asociados a una orden concreta (orden cronológico).
    * NO incluye daños sin orden (ordenId null).
    */

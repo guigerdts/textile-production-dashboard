@@ -50,6 +50,21 @@ export class InMemoryParadaRepository implements IParadaRepository {
       .map((p) => structuredClone(p));
   }
 
+  /**
+   * Listado de UN DÍA OPERATIVO. El filtro por día vive AQUÍ, dentro de la ruta
+   * de lectura del adaptador (DD3), no en el llamador.
+   *
+   * La igualdad es sobre el `fechaOperativa` persistido: nunca se deriva de
+   * `inicio`/`fin`. Un día sin paradas devuelve `[]` y nunca un error — un día
+   * vacío es un resultado legítimo, no un fallo.
+   */
+  async listarPorMaquinaYFecha(maquinaId: string, fechaOperativa: string): Promise<Parada[]> {
+    return [...this.porId.values()]
+      .filter((p) => p.maquinaId === maquinaId && p.fechaOperativa === fechaOperativa)
+      .sort((a, b) => a.inicio.localeCompare(b.inicio))
+      .map((p) => structuredClone(p));
+  }
+
   async listarPorOrden(ordenId: string): Promise<Parada[]> {
     return [...this.porId.values()]
       .filter((p) => p.ordenId === ordenId)

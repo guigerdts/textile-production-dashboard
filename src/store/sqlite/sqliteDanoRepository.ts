@@ -365,6 +365,24 @@ export class SqliteDanoRepository implements IDanoRepository {
   }
 
   /**
+   * Listado de UN DÍA OPERATIVO. El filtro por día viaja en la consulta — un
+   * `WHERE` más, nada más (DD3): el predicado lo aplica la base, nunca el
+   * llamador.
+   *
+   * Un día sin daños devuelve `[]`: el SQL no lanza por cero filas.
+   *
+   * Sin columna, índice ni migración nueva: el predicado lo sirve el índice
+   * `idx_dano_maquina_fecha (machine_id, fecha_operativa)` de la migración 005.
+   */
+  async listarPorMaquinaYFecha(maquinaId: string, fechaOperativa: string): Promise<Dano[]> {
+    const rows = await this.db.select<DanoRow[]>(
+      "SELECT * FROM dano WHERE machine_id = $1 AND fecha_operativa = $2 ORDER BY inicio ASC",
+      [maquinaId, fechaOperativa]
+    );
+    return rows.map(mapDanoRow);
+  }
+
+  /**
    * Lista los daños asociados a una orden concreta, en orden cronológico por
    * `inicio`.
    *

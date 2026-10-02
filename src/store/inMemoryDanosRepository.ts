@@ -52,6 +52,21 @@ export class InMemoryDanoRepository implements IDanoRepository {
       .map((d) => structuredClone(d));
   }
 
+  /**
+   * Listado de UN DÍA OPERATIVO. El filtro por día vive AQUÍ, dentro de la ruta
+   * de lectura del adaptador (DD3), no en el llamador.
+   *
+   * La igualdad es sobre el `fechaOperativa` persistido: nunca se deriva de
+   * `inicio`/`fin`. Un día sin daños devuelve `[]` y nunca un error — un día
+   * vacío es un resultado legítimo, no un fallo.
+   */
+  async listarPorMaquinaYFecha(maquinaId: string, fechaOperativa: string): Promise<Dano[]> {
+    return [...this.porId.values()]
+      .filter((d) => d.maquinaId === maquinaId && d.fechaOperativa === fechaOperativa)
+      .sort((a, b) => a.inicio.localeCompare(b.inicio))
+      .map((d) => structuredClone(d));
+  }
+
   async listarPorOrden(ordenId: string): Promise<Dano[]> {
     return [...this.porId.values()]
       .filter((d) => d.ordenId === ordenId)

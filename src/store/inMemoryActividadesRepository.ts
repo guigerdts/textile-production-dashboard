@@ -52,6 +52,24 @@ export class InMemoryActividadPlanificadaRepository
       .map((a) => structuredClone(a));
   }
 
+  /**
+   * Listado de UN DÍA OPERATIVO. El filtro por día vive AQUÍ, dentro de la ruta
+   * de lectura del adaptador (DD3), no en el llamador.
+   *
+   * La igualdad es sobre el `fechaOperativa` persistido: nunca se deriva de
+   * `inicio`/`fin`. Un día sin actividades devuelve `[]` y nunca un error — un
+   * día vacío es un resultado legítimo, no un fallo.
+   */
+  async listarPorMaquinaYFecha(
+    maquinaId: string,
+    fechaOperativa: string
+  ): Promise<ActividadPlanificada[]> {
+    return [...this.porId.values()]
+      .filter((a) => a.maquinaId === maquinaId && a.fechaOperativa === fechaOperativa)
+      .sort((a, b) => a.inicio.localeCompare(b.inicio))
+      .map((a) => structuredClone(a));
+  }
+
   async getActividadAbierta(
     maquinaId: string,
     tipo: TipoActividadPlanificada,

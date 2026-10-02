@@ -172,6 +172,7 @@ function crearOperativosFalsos(): {
       updateParada: noEscrito,
       obtenerPorId: async () => undefined,
       listarPorMaquina: async () => [],
+      listarPorMaquinaYFecha: async () => [],
       listarPorOrden: async () => [],
       getParadaAbierta: async () => null,
       getParadaAbiertaDeMaquina: async () => null,
@@ -181,6 +182,7 @@ function crearOperativosFalsos(): {
       updateActividad: noEscrito,
       obtenerPorId: async () => undefined,
       listarPorMaquina: async () => [],
+      listarPorMaquinaYFecha: async () => [],
       getActividadAbierta: async () => null,
     },
     danoRepository: {
@@ -188,6 +190,7 @@ function crearOperativosFalsos(): {
       updateDano: noEscrito,
       obtenerPorId: async () => undefined,
       listarPorMaquina: async () => [],
+      listarPorMaquinaYFecha: async () => [],
       listarPorOrden: async () => [],
       getDanoAbierto: async () => null,
     },
@@ -196,6 +199,7 @@ function crearOperativosFalsos(): {
       updateMantenimiento: noEscrito,
       obtenerPorId: async () => undefined,
       listarPorMaquina: async () => [],
+      listarPorMaquinaYFecha: async () => [],
       getMantenimientoAbierto: async () => null,
     },
     inspeccionRepository: {

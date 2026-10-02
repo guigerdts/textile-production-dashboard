@@ -440,3 +440,82 @@ describe("sqliteActividadPlanificadaRepository — update en el mismo lugar", ()
     expect(fila.id).toBe("act-completa");
   });
 });
+
+// ── Listado por día operativo ────────────────────────────────────────────────
+
+/**
+ * HONESTY: estos casos pasan sobre el DOBLE, así que NO son evidencia de paridad.
+ * El doble aplica el predicado en JavaScript: demuestran que el adaptador emite
+ * la sentencia que dice y liga bien sus binds, y nada más. No demuestran que
+ * SQLite evalúe ese `WHERE`, ni que el índice `(machine_id, fecha_operativa)` de
+ * la migración 005 se use — para eso está `EXPLAIN QUERY PLAN` sobre un SQLite
+ * real. La paridad entre las dos familias se demuestra en
+ * `dayScopedListing.parity.test.ts` (WU4).
+ */
+
+describe("SqliteActividadPlanificadaRepository — listarPorMaquinaYFecha", () => {
+  it("emite machine_id y fecha_operativa en un solo WHERE, con el día ligado en $2", async () => {
+    const store = createFakeSqliteStore();
+    const consultas: string[] = [];
+    const enlaces: Array<{ query: string; binds: unknown[] }> = [];
+    const db = {
+      path: store.path,
+      select: async (query: string, binds?: unknown[]) => {
+        consultas.push(query);
+        enlaces.push({ query, binds: binds ?? [] });
+        return store.select(query, binds);
+      },
+      execute: async (query: string, binds?: unknown[]) => {
+        consultas.push(query);
+        enlaces.push({ query, binds: binds ?? [] });
+        return store.execute(query, binds);
+      },
+      close: async () => true,
+    } as unknown as Database;
+    const repo = new SqliteActividadPlanificadaRepository(db);
+    await repo.insertActividad(actividad({ id: "a-a", fechaOperativa: "2026-09-11" }));
+
+    await repo.listarPorMaquinaYFecha("M1", "2026-09-11");
+
+    expect(consultas[consultas.length - 1]).toBe(
+      "SELECT * FROM actividad_planificada WHERE machine_id = $1 AND fecha_operativa = $2 ORDER BY inicio ASC"
+    );
+    // se asserta el ÚLTIMO enlace, no cualquiera: el INSERT previo también emite
+    // un SELECT de pre-chequeo con sus propios binds.
+    expect(enlaces[enlaces.length - 1].binds).toEqual(["M1", "2026-09-11"]);
+  });
+
+  it("devuelve solo las actividades del día pedido, en orden cronológico", async () => {
+    const store = createFakeSqliteStore();
+    const repo = repoSobre(store);
+    await repo.insertActividad(actividad({ id: "a-a", inicio: "2026-09-11T09:00:00.000Z", fechaOperativa: "2026-09-11" }));
+    await repo.insertActividad(actividad({ id: "a-b", inicio: "2026-09-11T07:00:00.000Z", fechaOperativa: "2026-09-11" }));
+    await repo.insertActividad(actividad({ id: "a-c", inicio: "2026-09-15T08:00:00.000Z", fechaOperativa: "2026-09-15" }));
+
+    expect((await repo.listarPorMaquinaYFecha("M1", "2026-09-11")).map((a) => a.id)).toEqual([
+      "a-b",
+      "a-a",
+    ]);
+  });
+
+  it("devuelve un array vacío para un día sin actividades, sin error", async () => {
+    const store = createFakeSqliteStore();
+    const repo = repoSobre(store);
+    await repo.insertActividad(actividad({ id: "a-a", fechaOperativa: "2026-09-11" }));
+
+    await expect(repo.listarPorMaquinaYFecha("M1", "2026-09-12")).resolves.toEqual([]);
+  });
+
+  it("filtra por el fechaOperativa persistido, no por el inicio", async () => {
+    const store = createFakeSqliteStore();
+    const repo = repoSobre(store);
+    await repo.insertActividad(
+      abierta({ id: "a-cruzada", inicio: "2026-09-14T23:30:00.000Z", fechaOperativa: "2026-09-15" })
+    );
+
+    expect((await repo.listarPorMaquinaYFecha("M1", "2026-09-15")).map((a) => a.id)).toEqual([
+      "a-cruzada",
+    ]);
+    expect(await repo.listarPorMaquinaYFecha("M1", "2026-09-14")).toEqual([]);
+  });
+});

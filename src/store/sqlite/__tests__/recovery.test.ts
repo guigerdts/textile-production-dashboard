@@ -214,6 +214,10 @@ function createFakes(options: FakesOptions = {}) {
     updateParada: vi.fn(async () => undefined),
     obtenerPorId: vi.fn(async () => undefined),
     listarPorMaquina: vi.fn(async () => options.paradas ?? []),
+    // Stub NEUTRO: recovery todavia no consume este metodo (se re-apunta en WU5).
+    // No propaga `fallaLecturaDano` a proposito: esa opcion pertenece a la lectura
+    // que recovery si hace hoy; no partirla hacia una lectura que no existe.
+    listarPorMaquinaYFecha: vi.fn(async () => []),
     listarPorOrden: vi.fn(async () => []),
     getParadaAbierta: vi.fn(async () => null),
     getParadaAbiertaDeMaquina: vi.fn(async () => null),
@@ -223,6 +227,10 @@ function createFakes(options: FakesOptions = {}) {
     insertActividad: vi.fn(async () => undefined),
     updateActividad: vi.fn(async () => undefined),
     obtenerPorId: vi.fn(async () => undefined),
+    // Stub NEUTRO: recovery todavia no consume este metodo (se re-apunta en WU5).
+    // No propaga `fallaLecturaDano` a proposito: esa opcion pertenece a la lectura
+    // que recovery si hace hoy; no partirla hacia una lectura que no existe.
+    listarPorMaquinaYFecha: vi.fn(async () => []),
     listarPorMaquina: vi.fn(async () => options.actividades ?? []),
     getActividadAbierta: vi.fn(async () => null),
   } satisfies IActividadPlanificadaRepository;
@@ -235,6 +243,10 @@ function createFakes(options: FakesOptions = {}) {
       if (options.fallaLecturaDano) throw new Error(options.fallaLecturaDano);
       return options.danos ?? [];
     }),
+    // Stub NEUTRO: recovery todavia no consume este metodo (se re-apunta en WU5).
+    // No propaga `fallaLecturaDano` a proposito: esa opcion pertenece a la lectura
+    // que recovery si hace hoy; no partirla hacia una lectura que no existe.
+    listarPorMaquinaYFecha: vi.fn(async () => []),
     listarPorOrden: vi.fn(async () => []),
     getDanoAbierto: vi.fn(async () => null),
   } satisfies IDanoRepository;
@@ -243,6 +255,10 @@ function createFakes(options: FakesOptions = {}) {
     insertMantenimiento: vi.fn(async () => undefined),
     updateMantenimiento: vi.fn(async () => undefined),
     obtenerPorId: vi.fn(async () => undefined),
+    // Stub NEUTRO: recovery todavia no consume este metodo (se re-apunta en WU5).
+    // No propaga `fallaLecturaDano` a proposito: esa opcion pertenece a la lectura
+    // que recovery si hace hoy; no partirla hacia una lectura que no existe.
+    listarPorMaquinaYFecha: vi.fn(async () => []),
     listarPorMaquina: vi.fn(async () => options.mantenimientos ?? []),
     getMantenimientoAbierto: vi.fn(async () => null),
   } satisfies IMantenimientoRepository;

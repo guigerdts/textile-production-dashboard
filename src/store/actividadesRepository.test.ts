@@ -61,6 +61,46 @@ describe("InMemoryActividadPlanificadaRepository — listar por máquina", () =>
     ]);
   });
 
+  // Casos de día junto a la aserción de historia completa de arriba, para que DD2
+  // se lea en un solo lugar. Ninguna aserción existente se borra.
+  it("lista solo las actividades del día operativo pedido", async () => {
+    const repo = new InMemoryActividadPlanificadaRepository(crearFixtureActividades());
+
+    expect((await repo.listarPorMaquinaYFecha(M1, "2026-09-11")).map((a) => a.id)).toEqual([
+      "act-001",
+      "act-002",
+    ]);
+    expect((await repo.listarPorMaquinaYFecha(M1, "2026-09-15")).map((a) => a.id)).toEqual([
+      "act-003",
+      "act-004",
+    ]);
+    // y el listado sin día no se vio afectado
+    expect(await repo.listarPorMaquina(M1)).toHaveLength(4);
+  });
+
+  it("devuelve un array vacío para un día sin actividades, sin error", async () => {
+    const repo = new InMemoryActividadPlanificadaRepository(crearFixtureActividades());
+
+    await expect(repo.listarPorMaquinaYFecha(M1, "2026-09-12")).resolves.toEqual([]);
+  });
+
+  it("usa el fechaOperativa persistido, no el inicio: una actividad abierta a la medianoche sigue en su día", async () => {
+    const abierta = crearFixtureActividades().find((a) => a.id === "act-003")!;
+    const repo = new InMemoryActividadPlanificadaRepository([
+      {
+        ...abierta,
+        inicio: "2026-09-14T23:30:00.000Z",
+        fechaOperativa: "2026-09-15",
+        fin: null,
+      },
+    ]);
+
+    expect((await repo.listarPorMaquinaYFecha(M1, "2026-09-15")).map((a) => a.id)).toEqual([
+      "act-003",
+    ]);
+    expect(await repo.listarPorMaquinaYFecha(M1, "2026-09-14")).toEqual([]);
+  });
+
   it("no lista actividades de otra máquina", async () => {
     const repo = new InMemoryActividadPlanificadaRepository(crearFixtureActividades());
     expect(await repo.listarPorMaquina("M2")).toEqual([]);

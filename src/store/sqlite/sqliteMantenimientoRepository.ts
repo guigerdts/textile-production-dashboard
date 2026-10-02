@@ -395,6 +395,25 @@ export class SqliteMantenimientoRepository implements IMantenimientoRepository {
   }
 
   /**
+   * Listado de UN DÍA OPERATIVO. El filtro por día viaja en la consulta — un
+   * `WHERE` más, nada más (DD3): el predicado lo aplica la base, nunca el
+   * llamador.
+   *
+   * Un día sin mantenimientos devuelve `[]`: el SQL no lanza por cero filas.
+   *
+   * Sin columna, índice ni migración nueva: el predicado lo sirve el índice
+   * `idx_mantenimiento_maquina_fecha (machine_id, fecha_operativa)` de la
+   * migración 005.
+   */
+  async listarPorMaquinaYFecha(maquinaId: string, fechaOperativa: string): Promise<Mantenimiento[]> {
+    const rows = await this.db.select<MantenimientoRow[]>(
+      "SELECT * FROM mantenimiento WHERE machine_id = $1 AND fecha_operativa = $2 ORDER BY inicio ASC",
+      [maquinaId, fechaOperativa]
+    );
+    return rows.map(mapMantenimientoRow);
+  }
+
+  /**
    * Returns the open maintenance (`fin = null`) of the machine, or `null` if
    * there is none.
    *

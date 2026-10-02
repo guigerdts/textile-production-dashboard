@@ -799,3 +799,65 @@ describe("sqliteDanoRepository — update en el mismo lugar", () => {
     expect(update).toContain("WHERE id = $1");
   });
 });
+
+// ── Listado por día operativo ────────────────────────────────────────────────
+
+/**
+ * HONESTY: estos casos pasan sobre el DOBLE, así que NO son evidencia de paridad.
+ * El doble aplica el predicado en JavaScript: demuestran que el adaptador emite
+ * la sentencia que dice y liga bien sus binds, y nada más. No demuestran que
+ * SQLite evalúe ese `WHERE`, ni que el índice `(machine_id, fecha_operativa)` de
+ * la migración 005 se use — para eso está `EXPLAIN QUERY PLAN` sobre un SQLite
+ * real. La paridad entre las dos familias se demuestra en
+ * `dayScopedListing.parity.test.ts` (WU4).
+ */
+
+describe("SqliteDanoRepository — listarPorMaquinaYFecha", () => {
+  it("emite machine_id y fecha_operativa en un solo WHERE, con el día ligado en $2", async () => {
+    const store = createFakeSqliteStore();
+    const { repo, consultas, enlaces } = repoQueRegistra(store);
+    await repo.insertDano(dano({ id: "d-a", fechaOperativa: "2026-09-11" }));
+
+    await repo.listarPorMaquinaYFecha("M1", "2026-09-11");
+
+    expect(consultas[consultas.length - 1]).toBe(
+      "SELECT * FROM dano WHERE machine_id = $1 AND fecha_operativa = $2 ORDER BY inicio ASC"
+    );
+    expect(enlaces[enlaces.length - 1].binds).toEqual(["M1", "2026-09-11"]);
+  });
+
+  it("devuelve solo los daños del día pedido, en orden cronológico", async () => {
+    const store = createFakeSqliteStore();
+    const repo = repoSobre(store);
+    await repo.insertDano(dano({ id: "d-a", inicio: "2026-09-11T09:00:00.000Z", fechaOperativa: "2026-09-11" }));
+    await repo.insertDano(dano({ id: "d-b", inicio: "2026-09-11T07:00:00.000Z", fechaOperativa: "2026-09-11" }));
+    await repo.insertDano(dano({ id: "d-c", inicio: "2026-09-15T08:00:00.000Z", fechaOperativa: "2026-09-15" }));
+
+    expect((await repo.listarPorMaquinaYFecha("M1", "2026-09-11")).map((d) => d.id)).toEqual([
+      "d-b",
+      "d-a",
+    ]);
+  });
+
+  it("devuelve un array vacío para un día sin daños, sin error", async () => {
+    const store = createFakeSqliteStore();
+    const repo = repoSobre(store);
+    await repo.insertDano(dano({ id: "d-a", fechaOperativa: "2026-09-11" }));
+
+    await expect(repo.listarPorMaquinaYFecha("M1", "2026-09-12")).resolves.toEqual([]);
+  });
+
+  it("incluye en el día el daño sin orden y filtra por el fechaOperativa persistido, no por el inicio", async () => {
+    const store = createFakeSqliteStore();
+    const repo = repoSobre(store);
+    // `ordenId: null` es el default de `dano()`: el listado por día no lo excluye.
+    await repo.insertDano(
+      abierto({ id: "d-cruzada", inicio: "2026-09-14T23:30:00.000Z", fechaOperativa: "2026-09-15" })
+    );
+
+    expect((await repo.listarPorMaquinaYFecha("M1", "2026-09-15")).map((d) => d.id)).toEqual([
+      "d-cruzada",
+    ]);
+    expect(await repo.listarPorMaquinaYFecha("M1", "2026-09-14")).toEqual([]);
+  });
+});

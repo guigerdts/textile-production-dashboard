@@ -52,6 +52,21 @@ export class InMemoryMantenimientoRepository implements IMantenimientoRepository
       .map((m) => structuredClone(m));
   }
 
+  /**
+   * Listado de UN DÍA OPERATIVO. El filtro por día vive AQUÍ, dentro de la ruta
+   * de lectura del adaptador (DD3), no en el llamador.
+   *
+   * La igualdad es sobre el `fechaOperativa` persistido: nunca se deriva de
+   * `inicio`/`fin`. Un día sin mantenimientos devuelve `[]` y nunca un error —
+   * un día vacío es un resultado legítimo, no un fallo.
+   */
+  async listarPorMaquinaYFecha(maquinaId: string, fechaOperativa: string): Promise<Mantenimiento[]> {
+    return [...this.porId.values()]
+      .filter((m) => m.maquinaId === maquinaId && m.fechaOperativa === fechaOperativa)
+      .sort((a, b) => a.inicio.localeCompare(b.inicio))
+      .map((m) => structuredClone(m));
+  }
+
   async getMantenimientoAbierto(maquinaId: string): Promise<MantenimientoAbierto | null> {
     for (const m of this.porId.values()) {
       if (m.fin === null && m.maquinaId === maquinaId) {
