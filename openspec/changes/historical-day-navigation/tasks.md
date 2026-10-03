@@ -902,22 +902,66 @@ to scanning the day-scoped list and the two seeds are untouched.
 
 **Depends on:** WU9 (it navigates) and WU7. Independent of WU8, WU10, **OQ-1** and **OQ-4**.
 
-- [ ] 12.1 Add `listarPorMaquinaYFecha` to the four repository fakes in
+- [x] 12.1 Add `listarPorMaquinaYFecha` to the four repository fakes in
   `src/__tests__/persistence-integration.test.ts` at `:173`, `:181`, `:188`, `:196`, keeping their
   `listarPorMaquina`. **Traces to:** design §9, §10.2 item 3.
-- [ ] 12.2 Add the real day-change flow: materialise two days of orders and events, navigate between them, assert
+- [x] 12.2 Add the real day-change flow: materialise two days of orders and events, navigate between them, assert
   each view shows only its own rows, and assert **no write reaches the store from a historical day**. This is the
   integration-level counterpart of `specs/historical-day-navigation/spec.md:105-124` (same sources re-read for the new day; nothing written as a
   consequence of navigating) and of `specs/historical-day-navigation/spec.md:319-324` (a read-only day can never produce a write). It exercises the
   real `recoverPersistedState` seam, not a fake, so it is the only place the two new callers — startup and
   `Raiz.seleccionarDia` — are covered together. **Traces to:** `H:105-124`; `H:319-324`; `W:73-99`;
   `W:175-201`; design §10.2 item 3.
-- [ ] 12.3 Confirm the failure-propagation discipline end to end: a rejected day-scoped read inside recovery at
+- [x] 12.3 Confirm the failure-propagation discipline end to end: a rejected day-scoped read inside recovery at
   startup still renders `InicializacionFallida` and `App` never mounts, while a rejected day change leaves the
   previous day on screen with the `role="alert"` message. **Traces to:** `W:232-238`; design §5.2.
 
 **Finish when:** `npx vitest run src/__tests__/persistence-integration.test.ts` passes with the new flow green.
 **Rollback:** test-only — delete the added flow and the 4 fake methods.
+
+> **12.x status: COMPLETE. Test-only, as specified — no production file was touched.**
+> `src/__tests__/persistence-integration.test.ts` is **16 passed / 16**; the full root suite is **1128 passed across 38
+> files** (1115 + 8 from Phase 11 + 5 from here — the arithmetic reconciles exactly). `tsc --noEmit` clean.
+> `git diff -- src/App.tsx src/ui src/store src/domain src-tauri src/Raiz.tsx` is **empty**. The 14 deletions are all
+> accounted for and **none of them is an assertion**: one import, three doc-comment lines, one function signature, and
+> the nine `async () => []` fake stubs replaced by real seeded, date-filtering implementations.
+>
+> **12.1 was stale as written, and the staleness was the real task.** `listarPorMaquinaYFecha` **already existed** on
+> all four fakes — the earlier interface extension had added it — but every one of them was `async () => []`. The port
+> signature already matched the spec while the *behaviour* was a stub, so a test written against it would have been
+> green and meaningless. Each fake now holds seeded rows and applies `fechaOperativa === fecha` **inside the fake**,
+> never in the caller; `listarPorMaquina` stays alongside it and is asserted non-empty for both days so the day-free
+> path cannot regress to `[]`.
+>
+> **Falsifiability demonstrated, with the leak made visible.** The seed `SEMILLA_DOS_DIAS` includes three *fantasma*
+> records whose `fechaOperativa` is `DIA_B` but whose `inicio` falls inside `DIA_A`, because otherwise "a record from
+> another day" cannot exist and the predicate is untestable. Dropping the `parada` and `actividad` date predicates
+> produced `expected [ 'par-a', 'par-b', 'par-fantasma' ] to deeply equal [ 'par-a' ]` and a `DIA_B` parada rendering
+> inside `Historial de paradas` on `2026-09-11`. Both mutations were reverted and re-verified.
+>
+> **Write-surface accounting, stated rather than assumed.** The pre-existing `noEscrito` covers **10** methods
+> (`insert`/`update` across the five operational ports) and still throws on any call. It does **not** cover
+> `saveOrder`, `materializeOrder`, `reserveSequence`, `completeLecture` or `guardarJornada`. 12.2 closes that gap with
+> `vigilarEscrituras()` — **15** spies, plus an executable assertion that the spied name list equals exactly those 15 so
+> it cannot rot silently, plus a byte-for-byte `JSON.stringify` comparison of `almacen.ordenes` and `almacen.lecturas`
+> before and after navigating. Those five use a no-op rather than `noEscrito` deliberately: a floating rejection would
+> abort the navigation instead of being *observed*.
+>
+> **12.3 asserts both directions in both halves.** A rejected day change keeps `DIA_B`'s markers on screen *and* shows
+> `role="alert"` with the wrapped cause; a rejected startup renders `InicializacionFallida` with the message and proves
+> `App` never mounted (no `h1` "Dashboard de Estampado", `dashboard-home` testid null, no date field, no `.selector-dia`).
+> 12.3b drives the **real** `main.tsx`, `Raiz`, `recoverPersistedState`, `materializarPrograma` and the eight real
+> `Sqlite*` repositories over a fake `Database`, mocking only `store/sqlite/database` — so `vi.resetModules()` is not
+> needed and no React-identity mismatch is introduced.
+>
+> **Three limits recorded honestly:**
+> - `.paradas__historial` and `.inspecciones__historial` are double-filtered by `ordenId` in `App.tsx:923`, so their day
+>   scoping is proven at **port** level, not through the DOM; only actividad/daño/mantenimiento leaks are UI-visible.
+>   The `fantasma` parada carries `DIA_A`'s own order id, which is what makes the parada case UI-falsifiable anyway.
+> - `ParadasSection` only renders inside `OrderInProduction`, so the seeded orders are forced to
+>   `estado: "in_production"` after `materializarPrograma` — otherwise half the UI assertions would be vacuously green.
+> - The default Vitest reporter does not stream to a redirected file, so the full suite looks hung when piped;
+>   `--reporter=dot` is the reliable way to watch it.
 
 ---
 

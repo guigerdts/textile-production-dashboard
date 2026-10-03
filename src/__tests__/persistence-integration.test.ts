@@ -42,8 +42,17 @@ import type { IActividadPlanificadaRepository } from "../store/actividadesReposi
 import type { IDanoRepository } from "../store/danosRepository";
 import type { IMantenimientoRepository } from "../store/mantenimientoRepository";
 import type { IInspeccionRepository } from "../store/inspeccionRepository";
-import type { Dano, LecturaContador, Orden, Parada } from "../domain/types";
+import type {
+  ActividadPlanificada,
+  Dano,
+  InspeccionTela,
+  LecturaContador,
+  Mantenimiento,
+  Orden,
+  Parada,
+} from "../domain/types";
 import { InMemoryParadaRepository } from "../store/inMemoryParadasRepository";
+import { Raiz, type LosOchosRepositorios } from "../Raiz";
 
 // ── Almacén persistente falso (equivalente conceptual al archivo SQLite) ────
 
@@ -152,11 +161,39 @@ function crearJornadaFalsa(): IJornadaRepository {
 }
 
 /**
- * Los cinco contratos operativos vacíos (paradas, actividades, daños,
+ * Semilla de los cinco contratos operativos (WU 12.1). Todos los días comparten
+ * la máquina M1 y el mismo `ordenId`, para que lo ÚNICO que separa un registro
+ * de otro sea su `fechaOperativa`.
+ */
+interface SemillaOperativa {
+  paradas?: Parada[];
+  actividades?: ActividadPlanificada[];
+  danos?: Dano[];
+  mantenimientos?: Mantenimiento[];
+  inspecciones?: InspeccionTela[];
+}
+
+/**
+ * Los cinco contratos operativos (paradas, actividades, daños,
  * mantenimientos, inspecciones — G1). El recovery solo LOS LEE; los métodos
  * de escritura existen para cumplir el contrato y nunca se llaman aquí.
+ *
+ * WU 12.1 — los cuatro listados por máquina existen en DOS variantes y las dos
+ * son de verdad sobre la semilla:
+ *
+ *  - `listarPorMaquina` (día libre, DD2) devuelve los registros de TODOS los
+ *    días de esa máquina.
+ *  - `listarPorMaquinaYFecha` devuelve SOLO los de `fechaOperativa`, con el
+ *    predicado APLICADO EN EL FALSO (nunca en el llamador, H:125-130).
+ *
+ * `bitacora` anota cada lectura diaria como `<dominio>:<fecha>` para poder
+ * exigir que el cambio de día relea las mismas ocho fuentes acotadas al día
+ * nuevo y nada más.
  */
-function crearOperativosFalsos(): {
+function crearOperativosFalsos(
+  semilla: SemillaOperativa = {},
+  bitacora: string[] = [],
+): {
   paradaRepository: IParadaRepository;
   actividadRepository: IActividadPlanificadaRepository;
   danoRepository: IDanoRepository;
@@ -166,14 +203,24 @@ function crearOperativosFalsos(): {
   const noEscrito = () => {
     throw new Error("método de escritura no usado por recovery en este test");
   };
+  const paradas = semilla.paradas ?? [];
+  const actividades = semilla.actividades ?? [];
+  const danos = semilla.danos ?? [];
+  const mantenimientos = semilla.mantenimientos ?? [];
+  const inspecciones = semilla.inspecciones ?? [];
   return {
     paradaRepository: {
       insertParada: noEscrito,
       updateParada: noEscrito,
       obtenerPorId: async () => undefined,
-      listarPorMaquina: async () => [],
-      listarPorMaquinaYFecha: async () => [],
-      listarPorOrden: async () => [],
+      listarPorMaquina: async (maquinaId) => paradas.filter((p) => p.maquinaId === maquinaId),
+      listarPorMaquinaYFecha: async (maquinaId, fechaOperativa) => {
+        bitacora.push(`paradas:${fechaOperativa}`);
+        return paradas.filter(
+          (p) => p.maquinaId === maquinaId && p.fechaOperativa === fechaOperativa,
+        );
+      },
+      listarPorOrden: async (ordenId) => paradas.filter((p) => p.ordenId === ordenId),
       getParadaAbierta: async () => null,
       getParadaAbiertaDeMaquina: async () => null,
     },
@@ -181,32 +228,52 @@ function crearOperativosFalsos(): {
       insertActividad: noEscrito,
       updateActividad: noEscrito,
       obtenerPorId: async () => undefined,
-      listarPorMaquina: async () => [],
-      listarPorMaquinaYFecha: async () => [],
+      listarPorMaquina: async (maquinaId) =>
+        actividades.filter((a) => a.maquinaId === maquinaId),
+      listarPorMaquinaYFecha: async (maquinaId, fechaOperativa) => {
+        bitacora.push(`actividades:${fechaOperativa}`);
+        return actividades.filter(
+          (a) => a.maquinaId === maquinaId && a.fechaOperativa === fechaOperativa,
+        );
+      },
       getActividadAbierta: async () => null,
     },
     danoRepository: {
       insertDano: noEscrito,
       updateDano: noEscrito,
       obtenerPorId: async () => undefined,
-      listarPorMaquina: async () => [],
-      listarPorMaquinaYFecha: async () => [],
-      listarPorOrden: async () => [],
+      listarPorMaquina: async (maquinaId) => danos.filter((d) => d.maquinaId === maquinaId),
+      listarPorMaquinaYFecha: async (maquinaId, fechaOperativa) => {
+        bitacora.push(`danos:${fechaOperativa}`);
+        return danos.filter(
+          (d) => d.maquinaId === maquinaId && d.fechaOperativa === fechaOperativa,
+        );
+      },
+      listarPorOrden: async (ordenId) => danos.filter((d) => d.ordenId === ordenId),
       getDanoAbierto: async () => null,
     },
     mantenimientoRepository: {
       insertMantenimiento: noEscrito,
       updateMantenimiento: noEscrito,
       obtenerPorId: async () => undefined,
-      listarPorMaquina: async () => [],
-      listarPorMaquinaYFecha: async () => [],
+      listarPorMaquina: async (maquinaId) =>
+        mantenimientos.filter((m) => m.maquinaId === maquinaId),
+      listarPorMaquinaYFecha: async (maquinaId, fechaOperativa) => {
+        bitacora.push(`mantenimientos:${fechaOperativa}`);
+        return mantenimientos.filter(
+          (m) => m.maquinaId === maquinaId && m.fechaOperativa === fechaOperativa,
+        );
+      },
       getMantenimientoAbierto: async () => null,
     },
     inspeccionRepository: {
       insertInspeccion: noEscrito,
       updateInspeccion: noEscrito,
       obtenerPorId: async () => undefined,
-      listarPorOrden: async () => [],
+      listarPorOrden: async (ordenId) => {
+        bitacora.push(`inspecciones:${ordenId}`);
+        return inspecciones.filter((i) => i.ordenId === ordenId);
+      },
     },
   };
 }
@@ -954,4 +1021,669 @@ describe("OQ-4: paridad InMemory/SQLite de la parada abierta de la máquina", ()
     expect(uno).toEqual(otro);
     expect(uno?.id).toBe("p-temprana");
   });
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// WU 12 — cambio de día sobre el seam REAL de recovery (tareas 12.1–12.3)
+//
+// Spec: `specs/historical-day-navigation/spec.md:100-124` (un cambio de día
+// relée las MISMAS ocho fuentes; la navegación no escribe nada) y `:313-324`
+// (un día de solo lectura nunca puede producir una escritura; los controles de
+// escritura simplemente no existen en pantalla). Design §9 (`:558`), §10.2
+// (`:612`), §5.2 (`:178`).
+//
+// El seam bajo prueba es `Raiz.seleccionarDia` → `recoverPersistedState`, con
+// los OCHO puertos reales (fakes del propio archivo, ya sembrados en 12.1).
+// No se mockea ningún módulo de producción en 12.1/12.2/12.3a.
+// ══════════════════════════════════════════════════════════════════════════
+
+/** Día A: ord-101 «Jessie» (fixture). Día B: ord-102 «Palm» (fixture). */
+const DIA_A = "2026-09-11";
+const DIA_B = "2026-09-15";
+const ORDEN_A = "ord-101";
+const ORDEN_B = "ord-102";
+const MAQUINA = "M1";
+
+/**
+ * Semilla de los DOS días sobre la misma máquina, más TRES registros «fantasma»
+ * cuyo `fechaOperativa` pertenece a DIA_B pero cuyo `inicio` cae dentro de
+ * DIA_A.
+ *
+ * Ese desacople es el que hace falsificable la aserción: si el predicado del
+ * puerto se derivara de `inicio` (o se soltara del todo), los fantasmas
+ * entrarían en la vista de DIA_A y las negativas de abajo reventarían.
+ */
+const SEMILLA_DOS_DIAS: SemillaOperativa = {
+  paradas: [
+    {
+      id: "par-a",
+      maquinaId: "M1",
+      ordenId: ORDEN_A,
+      operatorName: "Laura",
+      causaId: "falta_color",
+      camposEspecificos: { color: "rojo" },
+      fechaOperativa: DIA_A,
+      inicio: `${DIA_A}T10:00:00.000Z`,
+      fin: `${DIA_A}T10:15:00.000Z`,
+    },
+    {
+      id: "par-b",
+      maquinaId: "M1",
+      ordenId: ORDEN_B,
+      operatorName: "Laura",
+      causaId: "falta_tela",
+      camposEspecificos: {},
+      fechaOperativa: DIA_B,
+      inicio: `${DIA_B}T10:00:00.000Z`,
+      fin: `${DIA_B}T10:15:00.000Z`,
+    },
+    {
+      id: "par-fantasma",
+      maquinaId: "M1",
+      ordenId: ORDEN_A,
+      operatorName: "Laura",
+      causaId: "atasco_tela",
+      camposEspecificos: {},
+      // Pertenece a DIA_B; `inicio` y `fin` caen dentro de DIA_A.
+      fechaOperativa: DIA_B,
+      inicio: `${DIA_A}T23:50:00.000Z`,
+      fin: `${DIA_A}T23:55:00.000Z`,
+    },
+  ],
+  actividades: [
+    {
+      id: "act-a",
+      maquinaId: "M1",
+      tipo: "limpieza",
+      queSeLimpio: "MESA-DIA-A",
+      fechaOperativa: DIA_A,
+      inicio: `${DIA_A}T12:00:00.000Z`,
+      fin: `${DIA_A}T12:30:00.000Z`,
+      operatorName: "Laura",
+    },
+    {
+      id: "act-b",
+      maquinaId: "M1",
+      tipo: "limpieza",
+      queSeLimpio: "MESA-DIA-B",
+      fechaOperativa: DIA_B,
+      inicio: `${DIA_B}T12:00:00.000Z`,
+      fin: `${DIA_B}T12:30:00.000Z`,
+      operatorName: "Laura",
+    },
+    {
+      id: "act-fantasma",
+      maquinaId: "M1",
+      tipo: "limpieza",
+      queSeLimpio: "MESA-FANTASMA",
+      fechaOperativa: DIA_B,
+      inicio: `${DIA_A}T23:40:00.000Z`,
+      fin: `${DIA_A}T23:45:00.000Z`,
+      operatorName: "Laura",
+    },
+  ],
+  danos: [
+    {
+      id: "dan-a",
+      maquinaId: "M1",
+      ordenId: ORDEN_A,
+      operatorName: "Laura",
+      tipo: "mecanico",
+      componente: "COMPONENTE-DIA-A",
+      fechaOperativa: DIA_A,
+      inicio: `${DIA_A}T13:00:00.000Z`,
+      fin: `${DIA_A}T13:45:00.000Z`,
+      causoParada: false,
+      paradaId: null,
+      posibleSegunda: false,
+    },
+    {
+      id: "dan-b",
+      maquinaId: "M1",
+      ordenId: ORDEN_B,
+      operatorName: "Laura",
+      tipo: "mecanico",
+      componente: "COMPONENTE-DIA-B",
+      fechaOperativa: DIA_B,
+      inicio: `${DIA_B}T13:00:00.000Z`,
+      fin: `${DIA_B}T13:45:00.000Z`,
+      causoParada: false,
+      paradaId: null,
+      posibleSegunda: false,
+    },
+    {
+      id: "dan-fantasma",
+      maquinaId: "M1",
+      ordenId: ORDEN_A,
+      operatorName: "Laura",
+      tipo: "electrico",
+      componente: "COMPONENTE-FANTASMA",
+      fechaOperativa: DIA_B,
+      inicio: `${DIA_A}T23:45:00.000Z`,
+      fin: `${DIA_A}T23:49:00.000Z`,
+      causoParada: false,
+      paradaId: null,
+      posibleSegunda: false,
+    },
+  ],
+  mantenimientos: [
+    {
+      id: "man-a",
+      maquinaId: "M1",
+      tipo: "preventivo",
+      motivo: "MOTIVO-DIA-A",
+      queSeRevisoReparo: "REVISION-DIA-A",
+      fechaOperativa: DIA_A,
+      inicio: `${DIA_A}T14:00:00.000Z`,
+      fin: `${DIA_A}T14:30:00.000Z`,
+      danoId: null,
+      operatorName: "Laura",
+    },
+    {
+      id: "man-b",
+      maquinaId: "M1",
+      tipo: "preventivo",
+      motivo: "MOTIVO-DIA-B",
+      queSeRevisoReparo: "REVISION-DIA-B",
+      fechaOperativa: DIA_B,
+      inicio: `${DIA_B}T14:00:00.000Z`,
+      fin: `${DIA_B}T14:30:00.000Z`,
+      danoId: null,
+      operatorName: "Laura",
+    },
+    {
+      id: "man-fantasma",
+      maquinaId: "M1",
+      tipo: "reactivo",
+      motivo: "MOTIVO-FANTASMA",
+      queSeRevisoReparo: "REVISION-FANTASMA",
+      fechaOperativa: DIA_B,
+      inicio: `${DIA_A}T23:55:00.000Z`,
+      fin: `${DIA_A}T23:59:00.000Z`,
+      danoId: null,
+      operatorName: "Laura",
+    },
+  ],
+  inspecciones: [
+    {
+      id: "ins-a",
+      ordenId: ORDEN_A,
+      operatorName: "Laura",
+      lote: "LOTE-DIA-A",
+      items: [
+        { id: "absorcion", estado: "conforme" },
+        { id: "tundido", estado: "conforme" },
+        { id: "manchas", estado: "conforme" },
+        { id: "dimensiones", estado: "conforme" },
+        { id: "estado_general", estado: "conforme" },
+      ],
+      timestamp: `${DIA_A}T08:00:00.000Z`,
+      resolucion: null,
+    },
+    {
+      id: "ins-b",
+      ordenId: ORDEN_B,
+      operatorName: "Laura",
+      lote: "LOTE-DIA-B",
+      items: [
+        { id: "absorcion", estado: "conforme" },
+        { id: "tundido", estado: "conforme" },
+        { id: "manchas", estado: "conforme" },
+        { id: "dimensiones", estado: "conforme" },
+        { id: "estado_general", estado: "conforme" },
+      ],
+      timestamp: `${DIA_B}T08:00:00.000Z`,
+      resolucion: null,
+    },
+  ],
+};
+
+/**
+ * Almacén con las DOS órdenes materializadas y ambas en producción.
+ *
+ * `in_production` no es decorativo: `ParadasSection` (única sección que pinta
+ * `.paradas__historial`) solo existe en `OrderInProduction`, así que sin ese
+ * estado la mitad de las aserciones de pantalla serían vacías.
+ */
+async function programaDeLosDosDias(): Promise<AlmacenFalso> {
+  const almacen = crearAlmacen();
+  await materializarPrograma(crearOrdenFalsa(almacen), crearFixtureOrdenes());
+  for (const orden of almacen.ordenes.values()) orden.estado = "in_production";
+  expect(almacen.ordenes.size).toBe(2);
+  return almacen;
+}
+
+/** Los OCHO puertos sobre el mismo almacén, con la semilla de los dos días. */
+function reposDeLosDosDias(almacen: AlmacenFalso, bitacora: string[]): LosOchosRepositorios {
+  return {
+    repository: crearOrdenFalsa(almacen),
+    jornadaRepository: crearJornadaFalsa(),
+    lecturaRepository: crearLecturaFalsa(almacen),
+    ...crearOperativosFalsos(SEMILLA_DOS_DIAS, bitacora),
+  };
+}
+
+/** Recovery REAL (el mismo que usa `main.tsx` y `Raiz`). */
+function estadoDe(repos: LosOchosRepositorios, fechaOperativa: string): Promise<RecoveryState> {
+  return recoverPersistedState(
+    repos.jornadaRepository,
+    repos.repository,
+    repos.lecturaRepository,
+    repos.paradaRepository,
+    repos.actividadRepository,
+    repos.danoRepository,
+    repos.mantenimientoRepository,
+    repos.inspeccionRepository,
+    fechaOperativa,
+    MAQUINA,
+  );
+}
+
+/**
+ * Vigila las QUINCE escrituras de los ocho puertos con implementación silenciosa.
+ *
+ * Por qué con `mockImplementation` y no con `noEscrito`: los diez métodos que
+ * `noEscrito` ya protege lanzarían una excepción flotante (un rechazo sin
+ * contexto dentro de un `useEffect`), mientras que acá el fallo es una ASERCIÓN
+ * NOMBRADA que dice qué método escribió. Los cinco que `noEscrito` NO cubre
+ * (`saveOrder`, `materializeOrder`, `reserveSequence`, `completeLecture`,
+ * `guardarJornada`) quedan cubiertos por el mismo techo.
+ */
+function vigilarEscrituras(repos: LosOchosRepositorios) {
+  return {
+    saveOrder: vi.spyOn(repos.repository, "saveOrder").mockImplementation(async () => {}),
+    materializeOrder: vi
+      .spyOn(repos.repository, "materializeOrder")
+      .mockImplementation(async () => false),
+    reserveSequence: vi.spyOn(repos.lecturaRepository, "reserveSequence").mockImplementation(async () => 0),
+    completeLecture: vi
+      .spyOn(repos.lecturaRepository, "completeLecture")
+      .mockImplementation(async () => {}),
+    guardarJornada: vi
+      .spyOn(repos.jornadaRepository, "guardarJornada")
+      .mockImplementation(async () => {}),
+    insertParada: vi.spyOn(repos.paradaRepository, "insertParada").mockImplementation(async () => {}),
+    updateParada: vi.spyOn(repos.paradaRepository, "updateParada").mockImplementation(async () => {}),
+    insertActividad: vi
+      .spyOn(repos.actividadRepository, "insertActividad")
+      .mockImplementation(async () => {}),
+    updateActividad: vi
+      .spyOn(repos.actividadRepository, "updateActividad")
+      .mockImplementation(async () => {}),
+    insertDano: vi.spyOn(repos.danoRepository, "insertDano").mockImplementation(async () => {}),
+    updateDano: vi.spyOn(repos.danoRepository, "updateDano").mockImplementation(async () => {}),
+    insertMantenimiento: vi
+      .spyOn(repos.mantenimientoRepository, "insertMantenimiento")
+      .mockImplementation(async () => {}),
+    updateMantenimiento: vi
+      .spyOn(repos.mantenimientoRepository, "updateMantenimiento")
+      .mockImplementation(async () => {}),
+    insertInspeccion: vi
+      .spyOn(repos.inspeccionRepository, "insertInspeccion")
+      .mockImplementation(async () => {}),
+    updateInspeccion: vi
+      .spyOn(repos.inspeccionRepository, "updateInspeccion")
+      .mockImplementation(async () => {}),
+  };
+}
+
+/** Monta `Raiz` (la raíz REAL del arranque) con el estado de un día dado. */
+async function montarRaiz(repos: LosOchosRepositorios, estado: RecoveryState): Promise<void> {
+  await mountApp(createElement(Raiz, { repos, estadoInicial: estado, fechaOperativaInicial: DIA_B }));
+}
+
+/**
+ * Dispara el cambio de día por el seam del navegador (mismo camino que
+ * `onSeleccionar`). `fireEvent` dentro de `act`, no `userEvent`: el cambio es
+ * un solo evento sintético y `act` drene la promesa de `seleccionarDia`.
+ */
+async function navegarA(fechaOperativa: string): Promise<void> {
+  await act(async () => {
+    fireEvent.change(screen.getByLabelText("Fecha operativa"), {
+      target: { value: fechaOperativa },
+    });
+  });
+  await act(async () => {});
+}
+
+function marcasDeLosDosDias(): { propias: string[]; ajenas: string[] } {
+  return {
+    propias: ["MESA-DIA-A", "COMPONENTE-DIA-A", "MOTIVO-DIA-A", "REVISION-DIA-A", "LOTE-DIA-A"],
+    ajenas: [
+      "MESA-DIA-B",
+      "MESA-FANTASMA",
+      "COMPONENTE-DIA-B",
+      "COMPONENTE-FANTASMA",
+      "MOTIVO-DIA-B",
+      "MOTIVO-FANTASMA",
+      "REVISION-DIA-B",
+      "REVISION-FANTASMA",
+      "LOTE-DIA-B",
+      "Falta de materia prima (tela)",
+      "Atasco o rotura de tela en la máquina",
+    ],
+  };
+}
+
+// ── 12.1 ────────────────────────────────────────────────────────────────────
+
+describe("12.1 — los cuatro listados por máquina existen y filtran por fechaOperativa", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("día libre vs día acotado en los cuatro puertos, con el registro fantasma fuera de su día", async () => {
+    const almacen = await programaDeLosDosDias();
+    const repos = reposDeLosDosDias(almacen, []);
+
+    // ── Día libre (DD2): los DOS días, incluidos los fantasmas. ──
+    expect((await repos.paradaRepository.listarPorMaquina(MAQUINA)).map((p) => p.id).sort()).toEqual([
+      "par-a",
+      "par-b",
+      "par-fantasma",
+    ]);
+    expect(
+      (await repos.actividadRepository.listarPorMaquina(MAQUINA)).map((a) => a.id).sort(),
+    ).toEqual(["act-a", "act-b", "act-fantasma"]);
+    expect((await repos.danoRepository.listarPorMaquina(MAQUINA)).map((d) => d.id).sort()).toEqual([
+      "dan-a",
+      "dan-b",
+      "dan-fantasma",
+    ]);
+    expect(
+      (await repos.mantenimientoRepository.listarPorMaquina(MAQUINA)).map((m) => m.id).sort(),
+    ).toEqual(["man-a", "man-b", "man-fantasma"]);
+
+    // ── Día acotado (DD1/DD3): SOLO ese día, con el predicado en el puerto. ──
+    expect((await repos.paradaRepository.listarPorMaquinaYFecha(MAQUINA, DIA_A)).map((p) => p.id)).toEqual([
+      "par-a",
+    ]);
+    expect(
+      (await repos.actividadRepository.listarPorMaquinaYFecha(MAQUINA, DIA_A)).map((a) => a.id),
+    ).toEqual(["act-a"]);
+    expect((await repos.danoRepository.listarPorMaquinaYFecha(MAQUINA, DIA_A)).map((d) => d.id)).toEqual([
+      "dan-a",
+    ]);
+    expect(
+      (await repos.mantenimientoRepository.listarPorMaquinaYFecha(MAQUINA, DIA_A)).map((m) => m.id),
+    ).toEqual(["man-a"]);
+
+    // En DIA_B SÍ están los fantasmas: su fechaOperativa manda, no su `inicio`.
+    expect(
+      (await repos.paradaRepository.listarPorMaquinaYFecha(MAQUINA, DIA_B)).map((p) => p.id).sort(),
+    ).toEqual(["par-b", "par-fantasma"]);
+    expect(
+      (await repos.actividadRepository.listarPorMaquinaYFecha(MAQUINA, DIA_B)).map((a) => a.id).sort(),
+    ).toEqual(["act-b", "act-fantasma"]);
+    expect(
+      (await repos.danoRepository.listarPorMaquinaYFecha(MAQUINA, DIA_B)).map((d) => d.id).sort(),
+    ).toEqual(["dan-b", "dan-fantasma"]);
+    expect(
+      (await repos.mantenimientoRepository.listarPorMaquinaYFecha(MAQUINA, DIA_B)).map((m) => m.id).sort(),
+    ).toEqual(["man-b", "man-fantasma"]);
+
+    // ── El quinto dominio es por ORDEN (G1: inspecciones viajan con la orden). ──
+    expect((await repos.inspeccionRepository.listarPorOrden(ORDEN_A)).map((i) => i.id)).toEqual([
+      "ins-a",
+    ]);
+    expect((await repos.inspeccionRepository.listarPorOrden(ORDEN_B)).map((i) => i.id)).toEqual([
+      "ins-b",
+    ]);
+  });
+});
+
+// ── 12.2 ────────────────────────────────────────────────────────────────────
+
+describe("12.2 — el cambio de día relée las ocho fuentes y no escribe nada", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("de DIA_B a DIA_A: misma máquina, mismas ocho fuentes, cero escrituras y pantalla acotada", async () => {
+    const almacen = await programaDeLosDosDias();
+    const bitacora: string[] = [];
+    const repos = reposDeLosDosDias(almacen, bitacora);
+
+    // Las TRES lecturas que no viajan por `bitacora` se espían aparte.
+    const lectorJornada = vi.spyOn(repos.jornadaRepository, "obtenerParaFecha");
+    const lectorOrden = vi.spyOn(repos.repository, "getOrderByFechaOperativa");
+    const lectorLecturas = vi.spyOn(repos.lecturaRepository, "getLecturasByOrden");
+    const escrituras = vigilarEscrituras(repos);
+
+    // Cobertura ejecutable: si alguien saca un espía, el test falla acá y no
+    // en una aserción que deja de existir.
+    expect(Object.keys(escrituras).sort()).toEqual(
+      [
+        "completeLecture",
+        "guardarJornada",
+        "insertActividad",
+        "insertDano",
+        "insertInspeccion",
+        "insertMantenimiento",
+        "insertParada",
+        "materializeOrder",
+        "reserveSequence",
+        "saveOrder",
+        "updateActividad",
+        "updateDano",
+        "updateInspeccion",
+        "updateMantenimiento",
+        "updateParada",
+      ].sort(),
+    );
+
+    await montarRaiz(repos, await estadoDe(repos, DIA_B));
+
+    const { propias, ajenas } = marcasDeLosDosDias();
+    await vi.waitFor(() => {
+      expect(document.body.textContent).toContain("MESA-DIA-B");
+    });
+    expect(document.body.textContent).toContain("Fecha operativa: " + DIA_B);
+    expect(document.body.textContent).toContain("OP-102");
+    for (const marca of propias) expect(document.body.textContent).not.toContain(marca);
+
+    // ── Instantánea de los dos almacenes ANTES del cambio. ──
+    const antes = JSON.stringify({
+      ordenes: [...almacen.ordenes.values()],
+      lecturas: almacen.lecturas,
+    });
+
+    // ── Se limpia todo rastro del montaje inicial y se navega. ──
+    bitacora.length = 0;
+    lectorJornada.mockClear();
+    lectorOrden.mockClear();
+    lectorLecturas.mockClear();
+    await navegarA(DIA_A);
+
+    // ── Las OCHO fuentes se relén, acotadas al día nuevo. ──
+    await vi.waitFor(() => {
+      expect(document.body.textContent).toContain("MESA-DIA-A");
+    });
+    expect(bitacora).toEqual(
+      expect.arrayContaining([
+        `paradas:${DIA_A}`,
+        `actividades:${DIA_A}`,
+        `danos:${DIA_A}`,
+        `mantenimientos:${DIA_A}`,
+        `inspecciones:${ORDEN_A}`,
+      ]),
+    );
+    // Ninguna fuente tocó el día anterior ni la orden del día anterior.
+    expect(bitacora.filter((entrada) => entrada.includes(DIA_B))).toEqual([]);
+    expect(bitacora.filter((entrada) => entrada.includes(ORDEN_B))).toEqual([]);
+
+    expect(lectorJornada).toHaveBeenCalled();
+    expect(lectorJornada.mock.calls.every(([fecha]) => fecha === DIA_A)).toBe(true);
+    expect(lectorOrden).toHaveBeenCalled();
+    expect(lectorOrden.mock.calls.every(([fecha]) => fecha === DIA_A)).toBe(true);
+    expect(lectorLecturas).toHaveBeenCalled();
+    expect(lectorLecturas.mock.calls.every(([ordenId]) => ordenId === ORDEN_A)).toBe(true);
+
+    // ── Pantalla: el día nuevo y SOLO el día nuevo. ──
+    expect(document.body.textContent).toContain("Fecha operativa: " + DIA_A);
+    expect(document.body.textContent).toContain("OP-101");
+    for (const marca of propias) expect(document.body.textContent).toContain(marca);
+    for (const marca of ajenas) expect(document.body.textContent).not.toContain(marca);
+
+    // ── NINGUNA escritura: quince espías en silencio + almacén byte a byte. ──
+    for (const [nombre, espia] of Object.entries(escrituras)) {
+      expect(espia, `el cambio de día no debe llamar ${nombre}`).not.toHaveBeenCalled();
+    }
+    expect(JSON.stringify({ ordenes: [...almacen.ordenes.values()], lecturas: almacen.lecturas })).toBe(
+      antes,
+    );
+  }, UI_TIMEOUT);
+
+  it("el navegador habilita el día anterior y lo deshabilita el cambio terminado", async () => {
+    const almacen = await programaDeLosDosDias();
+    const repos = reposDeLosDosDias(almacen, []);
+    await montarRaiz(repos, await estadoDe(repos, DIA_B));
+
+    const campo = () => screen.getByLabelText("Fecha operativa") as HTMLInputElement;
+    await vi.waitFor(() => {
+      expect(campo().disabled).toBe(false);
+    });
+    expect(campo().value).toBe(DIA_B);
+    expect(
+      (screen.getByRole("button", { name: "Día operativo siguiente" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(
+      (screen.getByRole("button", { name: "Día operativo anterior" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+
+    await navegarA(DIA_A);
+    await vi.waitFor(() => {
+      expect(campo().value).toBe(DIA_A);
+    });
+    expect(campo().disabled).toBe(false);
+    expect(screen.queryByRole("alert")).toBeNull();
+  }, UI_TIMEOUT);
+});
+
+// ── 12.3a ───────────────────────────────────────────────────────────────────
+
+describe("12.3a — si el cambio de día falla, el día anterior queda y el error es visible", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("recovery rechazado en el cambio: DIA_B sigue en pantalla y role=\"alert\" explica el fallo", async () => {
+    const almacen = await programaDeLosDosDias();
+    const repos = reposDeLosDosDias(almacen, []);
+
+    // Se inyecta el fallo EN el puerto que recovery va a llamar para DIA_A,
+    // dejando el día inicial (DIA_B) intacto.
+    const listarDelDia = repos.paradaRepository.listarPorMaquinaYFecha;
+    repos.paradaRepository.listarPorMaquinaYFecha = async (maquinaId, fechaOperativa) => {
+      if (fechaOperativa === DIA_A) {
+        throw new Error("no se pudo recuperar las paradas de la máquina " + MAQUINA);
+      }
+      return listarDelDia(maquinaId, fechaOperativa);
+    };
+
+    await montarRaiz(repos, await estadoDe(repos, DIA_B));
+    const { propias } = marcasDeLosDosDias();
+    await vi.waitFor(() => {
+      expect(document.body.textContent).toContain("MESA-DIA-B");
+    });
+
+    await navegarA(DIA_A);
+
+    // 1) El fallo es VISIBLE (design §5.2): `role="alert"` con el mensaje real.
+    await vi.waitFor(() => {
+      expect(screen.queryAllByRole("alert").length).toBeGreaterThan(0);
+    });
+    const mensajes = screen
+      .queryAllByRole("alert")
+      .map((nodo) => nodo.textContent ?? "")
+      .join("\n");
+    expect(mensajes).toContain("No se pudo cargar ese día");
+    expect(mensajes).toContain("no se pudo recuperar las paradas de la máquina " + MAQUINA);
+
+    // 2) El día ANTERIOR sigue en pantalla, con sus datos y sin los del día fallido.
+    expect(document.body.textContent).toContain("Fecha operativa: " + DIA_B);
+    expect(document.body.textContent).toContain("OP-102");
+    for (const marca of ["MESA-DIA-B", "COMPONENTE-DIA-B", "MOTIVO-DIA-B", "LOTE-DIA-B"]) {
+      expect(document.body.textContent).toContain(marca);
+    }
+    // NADA del día que falló entró: recovery rechazó ANTES de tocar `vista`.
+    for (const marca of propias) {
+      expect(document.body.textContent).not.toContain(marca);
+    }
+    expect(document.body.textContent).not.toContain("OP-101");
+    expect(document.body.textContent).not.toContain("Jessie");
+
+    // 3) Sigue siendo reintentable: el navegador no quedó inoperativo.
+    expect((screen.getByLabelText("Fecha operativa") as HTMLInputElement).disabled).toBe(false);
+  }, UI_TIMEOUT);
+});
+
+// ── 12.3b ───────────────────────────────────────────────────────────────────
+
+describe("12.3b — si el recovery falla en el ARRANQUE, la pantalla de fallo y jamás el dashboard", () => {
+  afterEach(() => {
+    vi.doUnmock("../store/sqlite/database");
+    document.getElementById("root")?.remove();
+  });
+
+  it("main.tsx renderiza InicializacionFallida con el error, y el DOM del App no existe", async () => {
+    const contenedor = document.createElement("div");
+    contenedor.id = "root";
+    document.body.appendChild(contenedor);
+
+    // ÚNICO mock del caso: la frontera SQLite. `../store/sqlite/database` no
+    // está importado por ningún otro módulo de esta suite, así que este es su
+    // PRIMERA importación y el mock entra sin discutir. Todo lo demás —
+    // main.tsx, Raiz, recoverPersistedState, materializarPrograma y los ocho
+    // repositorios Sqlite — corre de verdad sobre ese doble de `Database`.
+    //
+    // El doble responde `[]` a cualquier SELECT y `rowsAffected: 1` a cualquier
+    // INSERT (materialización idónea) y RECHAZA el único SELECT que filtra
+    // `parada` por `fecha_operativa`: exactamente la lectura día-acotada del
+    // cuarto paso del arranque.
+    const dbDoble = {
+      select: vi.fn(async (sql: string) => {
+        if (sql.includes("FROM parada") && sql.includes("fecha_operativa")) {
+          throw new Error("no se pudo recuperar las paradas de la máquina " + MAQUINA);
+        }
+        return [];
+      }),
+      execute: vi.fn(async () => ({ rowsAffected: 1 })),
+    };
+    vi.doMock("../store/sqlite/database", () => ({
+      initDatabase: async () => dbDoble,
+      getDatabase: () => dbDoble,
+      closeDatabase: async () => true,
+      getJournalMode: async () => "wal",
+      getSynchronous: async () => 1,
+      getForeignKeys: async () => 1,
+    }));
+
+    await import("../main");
+    await vi.waitFor(
+      () => {
+        expect(document.body.textContent).toContain("No se pudo iniciar el dashboard");
+      },
+      { timeout: 10_000 },
+    );
+
+    // La lectura que falló es la del recovery (paso 4), no la base ni la
+    // materialización: su mensaje llega íntegro a la pantalla de fallo.
+    expect(document.body.textContent).toContain("Error de inicialización");
+    expect(document.body.textContent).toContain(
+      "no se pudo recuperar las paradas de la máquina " + MAQUINA,
+    );
+
+    // `h1.app__titulo` existe en las DOS pantallas: se distingue por el TEXTO,
+    // no por el selector.
+    const titulos = [...document.querySelectorAll("h1")].map((h) => h.textContent);
+    expect(titulos).toContain("No se pudo iniciar el dashboard");
+    expect(titulos).not.toContain("Dashboard de Estampado");
+
+    // El dashboard NUNCA montó: sin app real, sin home y sin navegador de día.
+    expect(document.body.textContent).not.toContain("Dashboard de Estampado");
+    expect(document.querySelector('[data-testid="dashboard-home"]')).toBeNull();
+    expect(screen.queryByLabelText("Fecha operativa")).toBeNull();
+    expect(document.querySelector(".selector-dia")).toBeNull();
+  }, UI_TIMEOUT);
 });
