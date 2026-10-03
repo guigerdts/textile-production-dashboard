@@ -42,22 +42,6 @@ export interface RaizProps {
   fechaOperativaInicial: string;
 }
 
-/**
- * Costura del día (design §5.4.5; tareas 7.2 y 7.7): `AppProps` todavía no
- * declara estos cuatro props — el navegador y la referencia de reloj inyectada
- * se agregan en la Fase 7. Raiz los pasa igual desde ya, mediante SPREAD: el
- * chequeo de propiedades excedentes no aplica a los spreads, así `tsc --noEmit`
- * sigue limpio mientras que `repos`, `estadoInicial` y `hoy` siguen chequeados
- * atributo por atributo. Al declararlos en 7.2/7.7, convertir esta costura en
- * atributos nombrados.
- */
-interface CosturaDelDia {
-  onSeleccionarDia: (fechaOperativa: string) => void;
-  cargandoDia: boolean;
-  errorCambioDia: string | null;
-  fechaOperativaHoy: string;
-}
-
 export function Raiz({ repos, estadoInicial, fechaOperativaInicial }: RaizProps) {
   // UN solo valor de estado: el día y sus datos no pueden desacordarse (DD5).
   const [vista, setVista] = useState<{ fechaOperativa: string; estado: RecoveryState }>(
@@ -102,13 +86,6 @@ export function Raiz({ repos, estadoInicial, fechaOperativaInicial }: RaizProps)
     }
   }
 
-  const costuraDelDia: CosturaDelDia = {
-    onSeleccionarDia: seleccionarDia,
-    cargandoDia: cargando,
-    errorCambioDia: errorDia,
-    fechaOperativaHoy: fechaOperativaInicial,
-  };
-
   return (
     <App
       /* `key`: cambiar de día DESMONTA App (DD5) — App siembra diez useState desde
@@ -118,7 +95,10 @@ export function Raiz({ repos, estadoInicial, fechaOperativaInicial }: RaizProps)
       {...repos}
       estadoInicial={vista.estado}
       hoy={vista.fechaOperativa}
-      {...costuraDelDia}
+      onSeleccionarDia={seleccionarDia}
+      cargandoDia={cargando}
+      errorCambioDia={errorDia}
+      fechaOperativaHoy={fechaOperativaInicial}
     />
   );
 }

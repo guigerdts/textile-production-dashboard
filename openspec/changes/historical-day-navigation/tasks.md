@@ -457,27 +457,27 @@ the suite's honesty note at `startup.test.ts:20-23` is unedited.
 
 **Depends on:** WU6 (`Raiz` owns and supplies the selected day; `App` cannot be plumbed before its caller exists).
 
-- [ ] 7.1 Update `App`'s `hoy` JSDoc (`App.tsx:99`) from *"En runtime se usa el día de hoy"* to *"the selected
+- [x] 7.1 Update `App`'s `hoy` JSDoc (`App.tsx:99`) from *"En runtime se usa el día de hoy"* to *"the selected
   operational day; the navigator owns it"*. **The prop name stays `hoy`** — see **OQ-3**, this is deferred to a
   different change. **Traces to:** `H:86-90` ("The selected day is displayed"); `H:92-98`; DD12.
-- [ ] 7.2 Add one optional prop to `AppProps`, declared immediately after `hoy` (`App.tsx:100`):
+- [x] 7.2 Add one optional prop to `AppProps`, declared immediately after `hoy` (`App.tsx:100`):
   `fechaOperativaHoy?: string` — the **injected read-only reference** and the navigator's upper bound, defaulting to
   the local-calendar clock. The import it names is `fechaOperativaHoy` from `./store/fixtures` (`App.tsx:30` →
   `src/store/fixtures.ts:27-29` → `src/store/clock.ts:37-39`). **Traces to:** `H:126-128` ("`max` blocks future
   days"); `H:326-344`; design §5.3, DD7.
-- [ ] 7.3 Destructure it **renamed**: `fechaOperativaHoy: hoyReal = fechaOperativaHoy()`. The pattern's *key* is
+- [x] 7.3 Destructure it **renamed**: `fechaOperativaHoy: hoyReal = fechaOperativaHoy()`. The pattern's *key* is
   `fechaOperativaHoy` but its *binding* is `hoyReal`, so the pattern introduces no local with that name and the call
   inside it resolves to the module import. The rename is **load-bearing, not cosmetic**: with the same name on both
   sides (`{ a = f(), f = f() }`) V8 throws `ReferenceError: Cannot access 'f' before initialization` at
   parameter-evaluation time — a `ReferenceError` on every `App` mount. Record that reasoning as a comment so the
   next reader does not "tidy" it back. **Traces to:** design §5.3 (verified in-session, not assumed).
-- [ ] 7.4 Derive `soloLectura` **exactly once**, in the destructuring block: `const soloLectura = hoy !== hoyReal;`.
+- [x] 7.4 Derive `soloLectura` **exactly once**, in the destructuring block: `const soloLectura = hoy !== hoyReal;`.
   This value is the *only* place it is computed in the whole change. No loader, handler, section or module may
   recompute it, and **no code may write `hoy !== fechaOperativaHoy()`** — that expression reads the module import,
   ignores the injected prop, and would make every fixture-injected mount read-only. Every other consumer receives it
   as a prop. **Traces to:** `H:319-324` ("A read-only day can never produce a write"); `H:353-364`; `H:373-378`;
   DD7; design §5.3, §5.4 item 2.
-- [ ] 7.5 Add the selected day to the **four mount loaders and four `recargar*()` helpers** — in the call **and** in
+- [x] 7.5 Add the selected day to the **four mount loaders and four `recargar*()` helpers** — in the call **and** in
   the dependency array. All eight current call sites are at `App.tsx:206, 218, 246, 267, 305, 309, 314, 325`; a
   forgotten dependency array is the specific way this feature silently reverts to full history and overwrites the
   day-scoped seed. `cargarOrden` (`:182`) and `cargarJornada` (`:229`) already depend on `hoy` and already pass it —
@@ -485,7 +485,7 @@ the suite's honesty note at `startup.test.ts:20-23` is unedited.
   it (B3, B4). **Traces to:** `W:101-134` ("The four machine-event loaders use the day-scoped listings with the
   selected day"; "Changing the selected day re-runs the mount loaders"); `W:175-201` ("A successful write triggers a
   re-seed with the selected day"); DD6; design §11 (first risk row).
-- [ ] 7.6 Add the `soloLectura` guard as the **first statement** of all 15 write handlers — `handleIniciar`
+- [x] 7.6 Add the `soloLectura` guard as the **first statement** of all 15 write handlers — `handleIniciar`
   (`App.tsx:359`), `handleRegistrarLectura` (`:386`), `handleFinalizar` (`:423`), `handleRegistrarParada` (`:449`),
   `handleCerrarParada` (`:470`), `handleRegistrarActividad` (`:495`), `handleCerrarActividad` (`:515`),
   `handleRegistrarDano` (`:553`), `handleCerrarDano` (`:583`), `handleRegistrarInspeccion` (`:605`),
@@ -495,13 +495,13 @@ the suite's honesty note at `startup.test.ts:20-23` is unedited.
   (`["no se puede registrar en un día que no es hoy"]`), returned as the handler's domain-error array, so the shape
   every caller already handles is reused. **Traces to:** `H:319-324`; `H:278-285` ("Hidden is the required
   behaviour"); design §5.4 item 6, §6.2, §11.
-- [ ] 7.7 Add the three defaulted navigator props to `AppProps`: `onSeleccionarDia?: (fechaOperativa: string) =>
+- [x] 7.7 Add the three defaulted navigator props to `AppProps`: `onSeleccionarDia?: (fechaOperativa: string) =>
   void`, `cargandoDia?: boolean` (default `false`), `errorCambioDia?: string | null` (default `null`). The header
   renders the navigator and the `role="alert"` message **inside one `{onSeleccionarDia && (…)}` block** after the
   existing `Fecha operativa: {hoy}` span (`App.tsx:886`), which stays. `Raiz` always defines `onSeleccionarDia`;
   no existing `App` mount does, so their DOM is byte-identical to today's (asserted in Phase 11).
   **Traces to:** `H:61-98`; `H:326-344`; design §5.4 item 5, §7.
-- [ ] 7.8 Add `fechaOperativaHoy` to **all 44 fixture-injected `App` mounts** across three files, so each test states
+- [x] 7.8 Add `fechaOperativaHoy` to **all 44 fixture-injected `App` mounts** across three files, so each test states
   its assumption — *"for this test, that fixture day IS today"* — instead of depending on the machine's clock:
   - `src/App.test.tsx` — 37 mounts: 33 direct JSX mounts plus the four helpers `renderApp`
     (`src/App.test.tsx:53-54`), `renderAppConActividades` (`:57`, day at `:62`), `renderAppConTiempo` (`:779`, day at
@@ -521,6 +521,36 @@ the suite's honesty note at `startup.test.ts:20-23` is unedited.
   arithmetically to today's exact expressions.
 
 **Finish when:** all three suites pass with zero new cases, and no existing assertion was changed.
+
+> **7.9 status: NOT met (recorded, not papered over).** Baseline at `851172c`/working-tree HEAD is **107/107 green**
+> in `src/App.test.tsx`; after 7.1–7.8 it is **102 passed / 5 failed** (case count unchanged, zero assertions edited).
+> `tsc --noEmit` is clean, `persistence-integration` + `lecturaWiring` + `noDomainDiff` are green (18/18), and
+> `git diff 851172c -- src/domain src-tauri/migrations` is empty. The five failures are all **cross-day records
+> hidden by the 7.5 day-scoped listing** — the §6.4 exposure, visible between Phase 7 and Phase 10:
+> 1. `una actividad abierta de la máquina no bloquea finalizar la orden` — `A3_LIMPIEZA_ABIERTA` (`2026-09-15`) vs mount `2026-09-11` → planned fix **10.1** (card list).
+> 2. `una parada abierta sin orden determina PARADA` — parada `2026-09-10` vs mount `2026-09-11` → planned fix **10.3**.
+> 3. `los loaders de montaje re-leen el repositorio para el hoy inyectado (el seed stale pierde)` — both seed and repo paradas `2026-09-10` vs mount `2026-09-11` → planned fix **10.3**.
+> 4. `un daño abierto preexistente de la máquina bloquea registrar otro` — `DANO_3_ABIERTO` (`2026-09-15`); `handleRegistrarDano` passes the day-scoped `danos` to `registrarDano` (`src/domain/danos.ts:212`) → **no Phase 10 task covers this** (10.1 widens only `comenzarActividad`'s argument).
+> 5. `ya hay un mantenimiento abierto: registrar otro muestra error del dominio` — `MANT_4_ABIERTO` (`2026-09-15`); same shape through `registrarMantenimiento` (`src/domain/mantenimiento.ts:195`) → **no Phase 10 task covers this either.**
+>
+> Failures 4 and 5 are the two this plan did not schedule: the write-path domain guards filter a *list*, and the day-free
+> `getDanoAbierto`/`getMantenimientoAbierto` reads that already exist are consumed only for the banner, never as the
+> domain's argument. 10.1's union pattern is the template.
+>
+> **DECIDED (orchestrator, verified against the working tree — not papered over): extend Phase 10 with 10.7 and 10.8.**
+> The alternative considered was "accept these two as a separate task", and it was rejected on evidence, not taste:
+> `registrarDano` enforces *"ya hay un daño abierto para la máquina"* by filtering `fin === null` over the list it is
+> handed (`src/domain/danos.ts:208-215`), and `handleRegistrarDano` (`src/App.tsx:597`, call at `:609`) hands it the
+> **day-scoped** `danos` state. `registrarMantenimiento` is the identical shape (`src/domain/mantenimiento.ts:189-197`,
+> call at `src/App.tsx:743`). So a record opened on day *A* and still open on day *B* stops blocking a second one **on
+> today** — a real machine-invariant break introduced by 7.5, and for maintenance a direct violation of the CONTEXT.md
+> rule *"One open maintenance per machine at a time"*. The plan's own DD8 states why: the machine-level `get*Abierta`
+> lookups stay day-free so that *"today behaves exactly as today"*. Phase 10 applied that rule to `comenzarActividad`
+> (10.1) and simply missed these two write paths — an inconsistency in the plan, not a design fork. Nothing here is an
+> architectural change: 10.7/10.8 add **no** port method, **no** domain rule and **no** new read (the day-free open
+> record is already in `App` state), so DD8 and the "no second source of truth" rule are untouched. **They are scheduled
+> as Phase 10 tasks, not a separate change, because they are the same bug class as 10.1 and splitting them would leave
+> WU7's gate red for no gain.**
 **Rollback:** revert the `AppProps` additions, the destructuring rename, the 8 call-site edits and the 44 mount
 edits. The `hoy` prop and every existing test return to their pre-change shape.
 **Boundary check:** no `src/domain/**` diff, no migration, no change to the two order-reached ports (B1–B4).
@@ -629,7 +659,7 @@ elements need no custom focus/keyboard/formatting test of their own.
 
 ---
 
-## Phase 10: Four list-derived open-state reads (WU 10) — carries **OQ-1** and **OQ-4**
+## Phase 10: Six list-derived open-state reads (WU 10) — carries **OQ-1** and **OQ-4**
 
 **Depends on:** WU7. **OQ-4 is CLOSED (alternative B)** and the `getParadaAbiertaDeMaquina` port method, both adapters, their suites and the cross-adapter parity suite landed with the decision — 10.3 and 10.5 are therefore unblocked. Only **OQ-1** (historical open-record interpretation) is still open, and 10.6 records that the implementation is the same either way: only the recorded rationale depends on the answer.
 
@@ -641,6 +671,16 @@ open disappears. The four read-path call sites of the day-free lookups that this
 (`App.tsx:247`, `:268`) and the two `recargar*` helpers (`:315`, `:326`). The other four (`App.tsx:474`, `:518`,
 `:584`, `:716`) sit inside write handlers, unreachable on a historical day because every handler opens with the task
 7.6 guard.
+
+> ⚠️ **Correction to the paragraph above, added by the WU7 verification (7.9) and NOT present in the original plan.**
+> The claim that those write-handler sites need no change is **wrong**, and the reason it is wrong matters: it reasons
+> about a *historical* day, while the break is on **today**. The 7.6 guard makes the argument unreachable when
+> `soloLectura === true`, but on today (`soloLectura === false`) the handler runs and passes a day-scoped list to a
+> domain guard that filters `fin === null` — so a record opened yesterday and still open disappears from the machine's
+> current operational state. Four of the eight are genuinely display-only (`paradaActivaDeOrden`, and the three
+> close-handlers that re-read the port directly), but the two covered by 10.7/10.8 are **domain-level exposures of the
+> same class as 10.1**. "Unreachable on a historical day" was never sufficient justification; the correct test is
+> "unreachable **or harmless** when the day changes", and these two fail the second half.
 
 - [ ] 10.1 `actividadesAbiertas` (`App.tsx:757-759`) becomes state rather than a filter. `cargarActividades`
   (`:217`, call at `:218`) and `recargarActividades` (`:308`, call at `:309`) additionally read
@@ -692,9 +732,32 @@ open disappears. The four read-path call sites of the day-free lookups that this
   day. The alternative reading — keep `get*Abierta` on every day — is what OQ-1 asks Gerencia to confirm. **The
   implementation is the same either way; only the recorded rationale depends on the answer.**
   **Traces to:** `H:126-152`; `H:411-416`; design §6.3, §11 (ninth risk row), §12 Q1.
+- [ ] 10.7 `handleRegistrarDano` (`App.tsx:597`, call at `:609`) stops handing `registrarDano` the day-scoped `danos`
+  state as its `danosExistentes`. The domain enforces *"ya hay un daño abierto para la máquina. Cierre el daño actual
+  antes de registrar otro"* by filtering `fin === null` over that argument (`src/domain/danos.ts:208-215`), so after
+  7.5 a `dano` opened on a previous day and still open no longer blocks a second one **on today**. Pass the union of
+  the day's list and the day-free open record that is **already in state**: `[...danos, ...(danoAbiertoDeMaquina ?
+  [danoAbiertoDeMaquina] : [])]`. **No new read** — `recargarDanos` already fetches `getDanoAbierto("M1")` day-free
+  at `:349` and stores it at `:353`; a duplicate entry is harmless because the guard only `.find()`s. **No
+  `soloLectura` branch**: the 7.6 guard at `:598` returns before the argument is ever built, so on a historical day
+  the expression is unreachable — which is exactly why this is a today-only fix. **Traces to:** design §6.4 item 1,
+  DD8; tasks.md 7.9 failure 4 (*"un daño abierto preexistente de la máquina bloquea registrar otro"*).
+- [ ] 10.8 `handleRegistrarMantenimiento` (`App.tsx:732`, call at `:743`) gets the identical treatment:
+  `registrarMantenimiento` filters `fin === null` over its `existentes` argument
+  (`src/domain/mantenimiento.ts:189-197`) and the day-free open record is already in state as
+  `mantenimientoAbiertoDeMaquina` (`App.tsx:179-182`, set day-free at `:363` from the read at `:360`). CONTEXT.md
+  records *"One open maintenance per machine at a time (temporary operational restriction, relaxable if the flow
+  requires it)"*, so this is a documented machine invariant, not a UI preference. Same union, same absence of a
+  `soloLectura` branch (the 7.6 guard at `:733` returns first). **Traces to:** design §6.4 item 1, DD8; tasks.md 7.9
+  failure 5 (*"ya hay un mantenimiento abierto: registrar otro muestra error del dominio"*).
 
-**Finish when:** `npx vitest run src/App.test.tsx` passes, no existing assertion moved, and OQ-4's limitation is
-written down in code rather than papered over.
+> **10.7/10.8 need no new test.** Both are already covered by the two existing App cases named above, which fail today
+> and must pass once the union lands — they are the day-*A*-record-blocks-on-day-*B* case for these two domains. Adding
+> a duplicate case would be the "new cases" that 7.9 forbids.
+
+**Finish when:** `npx vitest run src/App.test.tsx` passes — which requires all five of 7.9's failures to be green,
+since 7.9 is this work unit's own gate — no existing assertion moved, and OQ-4's limitation is written down in code
+rather than papered over.
 **Rollback:** remove the two added `useState` values and the four conditional derivations. `estadoMaquina` returns
 to scanning the day-scoped list and the two seeds are untouched.
 **Boundary check:** zero `src/domain/**` diff — the `comenzarActividad` guard is *consumed*, never modified.

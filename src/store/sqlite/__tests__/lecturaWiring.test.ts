@@ -178,6 +178,7 @@ describe("Wiring: dos fases reserve → complete → saveOrder — Ticket 10.8",
         jornadaRepository: new InMemoryJornadaRepository([]),
         lecturaRepository,
         hoy: FECHA_CON_ORDEN,
+        fechaOperativaHoy: FECHA_CON_ORDEN,
       }),
     );
 
@@ -233,6 +234,7 @@ describe("Wiring: dos fases reserve → complete → saveOrder — Ticket 10.8",
         jornadaRepository: new InMemoryJornadaRepository([]),
         lecturaRepository,
         hoy: FECHA_CON_ORDEN,
+        fechaOperativaHoy: FECHA_CON_ORDEN,
       }),
     );
 
@@ -271,6 +273,7 @@ describe("Wiring: dos fases reserve → complete → saveOrder — Ticket 10.8",
         jornadaRepository: new InMemoryJornadaRepository([]),
         // lecturaRepository ausente a propósito: ruta legacy.
         hoy: FECHA_CON_ORDEN,
+        fechaOperativaHoy: FECHA_CON_ORDEN,
       }),
     );
 

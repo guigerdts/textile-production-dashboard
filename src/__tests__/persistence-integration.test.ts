@@ -232,6 +232,7 @@ function appDe(ordenRepo: IOrderRepository, lecturaRepo: ILecturaGolpeRepository
     jornadaRepository: crearJornadaFalsa(),
     lecturaRepository: lecturaRepo,
     hoy: FECHA_CON_ORDEN,
+    fechaOperativaHoy: FECHA_CON_ORDEN,
   });
 }
 
@@ -490,6 +491,7 @@ describe("14. el reinicio con los cinco operativos SQLite reales — G2", () => 
         jornadaRepository: crearJornadaFalsa(),
         lecturaRepository: lecturaRepo,
         hoy: FECHA_CON_ORDEN,
+        fechaOperativaHoy: FECHA_CON_ORDEN,
         paradaRepository: operativos.parada,
         actividadRepository: operativos.actividad,
         danoRepository: operativos.dano,
@@ -707,6 +709,7 @@ describe("14. el reinicio con los cinco operativos SQLite reales — G2", () => 
         jornadaRepository: crearJornadaFalsa(),
         lecturaRepository: crearLecturaFalsa(almacen),
         hoy: FECHA_CON_ORDEN,
+        fechaOperativaHoy: FECHA_CON_ORDEN,
         estadoInicial: estado,
         paradaRepository: reinicio.parada,
         actividadRepository: reinicio.actividad,
@@ -796,6 +799,7 @@ describe("14. el reinicio con los cinco operativos SQLite reales — G2", () => 
         jornadaRepository: crearJornadaFalsa(),
         lecturaRepository: lecturaRepo,
         hoy: FECHA_CON_ORDEN,
+        fechaOperativaHoy: FECHA_CON_ORDEN,
         paradaRepository: new SqliteParadaRepository(store),
         danoRepository,
       }),

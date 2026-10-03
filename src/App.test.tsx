@@ -51,7 +51,7 @@ async function mountApp(ui: ReactElement) {
 }
 
 async function renderApp(hoy: string) {
-  return await mountApp(<App repository={new InMemoryOrderRepository()} hoy={hoy} />);
+  return await mountApp(<App repository={new InMemoryOrderRepository()} hoy={hoy} fechaOperativaHoy={hoy} />);
 }
 
 async function renderAppConActividades(hoy: string, actividadRepository?: InMemoryActividadPlanificadaRepository) {
@@ -59,7 +59,7 @@ async function renderAppConActividades(hoy: string, actividadRepository?: InMemo
     <App
       repository={new InMemoryOrderRepository()}
       actividadRepository={actividadRepository ?? new InMemoryActividadPlanificadaRepository([])}
-      hoy={hoy}
+      hoy={hoy} fechaOperativaHoy={hoy}
     />,
   );
 }
@@ -128,7 +128,7 @@ describe("App — ciclo 2: iniciar producción", () => {
     { operario = "Laura", lectura = "100" }: { operario?: string; lectura?: string } = {},
   ) {
     const user = userEvent.setup();
-    await mountApp(<App repository={repo} hoy={FECHA_CON_ORDEN} />);
+    await mountApp(<App repository={repo} hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />);
     if (operario) await user.type(screen.getByRole("textbox", { name: /operario \(obligatorio\)/i }), operario);
     if (lectura) await user.type(screen.getByRole("spinbutton", { name: /lectura inicial/i }), lectura);
     await user.click(screen.getByRole("button", { name: /Iniciar producción/i }));
@@ -177,7 +177,7 @@ describe("App — ciclo 2: iniciar producción", () => {
     if (!res.orden) throw new Error("precondition failed");
     await repo.saveOrder(res.orden);
 
-    await mountApp(<App repository={repo} hoy={FECHA_CON_ORDEN} />);
+    await mountApp(<App repository={repo} hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />);
     expectTexto("En producción");
     expectTexto("Ana");
     expect(screen.queryByRole("button", { name: /Iniciar producción/i })).toBeNull();
@@ -192,7 +192,7 @@ describe("App — ciclo 2: iniciar producción", () => {
     if (!finalizada.orden) throw new Error("precondition failed");
     await repo.saveOrder(finalizada.orden);
 
-    await mountApp(<App repository={repo} hoy={FECHA_CON_ORDEN} />);
+    await mountApp(<App repository={repo} hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />);
     expectTexto("Finalizada");
     expect(screen.queryByRole("button", { name: /Iniciar producción/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /Registrar lectura/i })).toBeNull();
@@ -207,7 +207,7 @@ describe("App — ciclo 3: registrar lecturas posteriores", () => {
     nuevaLectura: string,
   ) {
     const user = userEvent.setup();
-    await mountApp(<App repository={repo} hoy={FECHA_CON_ORDEN} />);
+    await mountApp(<App repository={repo} hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />);
     await user.type(screen.getByRole("textbox", { name: /operario \(obligatorio\)/i }), "Laura");
     await user.type(screen.getByRole("spinbutton", { name: /lectura inicial/i }), lecturaInicial);
     await user.click(screen.getByRole("button", { name: /Iniciar producción/i }));
@@ -261,7 +261,7 @@ describe("App — ciclo 3: registrar lecturas posteriores", () => {
     if (!finalizada.orden) throw new Error("precondition failed");
     await repo.saveOrder(finalizada.orden);
 
-    await mountApp(<App repository={repo} hoy={FECHA_CON_ORDEN} />);
+    await mountApp(<App repository={repo} hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />);
     expect(screen.queryByRole("button", { name: /Registrar lectura/i })).toBeNull();
     expect(screen.queryByRole("spinbutton", { name: /nueva lectura/i })).toBeNull();
   }, UI_TIMEOUT);
@@ -283,7 +283,7 @@ describe("App — ticket 02: paradas / incidencias (UI)", () => {
     const user = userEvent.setup();
     const repo = new InMemoryOrderRepository();
     const repoParadas = new InMemoryParadaRepository(opciones.paradas ?? []);
-    await mountApp(<App repository={repo} paradaRepository={repoParadas} hoy={FECHA_CON_ORDEN} />);
+    await mountApp(<App repository={repo} paradaRepository={repoParadas} hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />);
     await user.type(screen.getByRole("textbox", { name: /operario \(obligatorio\)/i }), "Laura");
     await user.type(screen.getByRole("spinbutton", { name: /lectura inicial/i }), "100");
     await user.click(screen.getByRole("button", { name: /Iniciar producción/i }));
@@ -342,7 +342,7 @@ describe("App — ticket 02: paradas / incidencias (UI)", () => {
       fin: null,
     };
     const repoParadas = new InMemoryParadaRepository([abierta]);
-    await mountApp(<App repository={repo} paradaRepository={repoParadas} hoy={FECHA_CON_ORDEN} />);
+    await mountApp(<App repository={repo} paradaRepository={repoParadas} hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />);
 
     const activa = screen.getByTestId("parada-activa");
     expect(activa.textContent).toContain("Atasco o rotura de tela en la máquina");
@@ -451,7 +451,7 @@ describe("App — ciclo 4: finalización de orden", () => {
   async function iniciarParaFinalizar(lecturaInicial = "100") {
     const user = userEvent.setup();
     const repo = new InMemoryOrderRepository();
-    await mountApp(<App repository={repo} hoy={FECHA_CON_ORDEN} />);
+    await mountApp(<App repository={repo} hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />);
     await user.type(screen.getByRole("textbox", { name: /operario \(obligatorio\)/i }), "Laura");
     await user.type(screen.getByRole("spinbutton", { name: /lectura inicial/i }), lecturaInicial);
     await user.click(screen.getByRole("button", { name: /Iniciar producción/i }));
@@ -523,7 +523,7 @@ describe("App — ticket 03: actividades planificadas (UI)", () => {
       <App
         repository={repo}
         actividadRepository={repoActividades}
-        hoy={FECHA_CON_ORDEN}
+        hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
       />,
     );
     await user.type(screen.getByRole("textbox", { name: /operario \(obligatorio\)/i }), "Laura");
@@ -623,7 +623,7 @@ describe("App — ticket 03: actividades planificadas (UI)", () => {
       <App
         repository={repo}
         actividadRepository={repoActividades}
-        hoy={FECHA_CON_ORDEN}
+        hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
       />,
     );
 
@@ -792,7 +792,7 @@ describe("App — ticket 04: resumen del turno (UI)", () => {
           opciones.actividadRepository ?? new InMemoryActividadPlanificadaRepository([])
         }
         jornadaRepository={opciones.jornadaRepository ?? new InMemoryJornadaRepository([])}
-        hoy={hoy}
+        hoy={hoy} fechaOperativaHoy={hoy}
       />,
     );
   }
@@ -923,7 +923,7 @@ describe("App — ticket 05: daños / eventos (UI)", () => {
         repository={repo}
         danoRepository={repoDanos}
         paradaRepository={repoParadas}
-        hoy={FECHA_CON_ORDEN}
+        hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
       />,
     );
     await user.type(screen.getByRole("textbox", { name: /operario \(obligatorio\)/i }), "Laura");
@@ -993,7 +993,7 @@ describe("App — ticket 05: daños / eventos (UI)", () => {
         repository={repo}
         paradaRepository={repoParadas}
         danoRepository={repoDanos}
-        hoy={FECHA_CON_ORDEN}
+        hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
       />,
     );
 
@@ -1066,7 +1066,7 @@ it("cierra el daño activo con solución aplicada y lo mueve al historial", asyn
   await repo.saveOrder(iniciada);
   const repoDanos = new InMemoryDanoRepository([]);
   await mountApp(
-    <App repository={repo} danoRepository={repoDanos} hoy={FECHA_CON_ORDEN} />,
+    <App repository={repo} danoRepository={repoDanos} hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />,
   );
 
   fireEvent.change(screen.getByLabelText(/tipo de daño/i), { target: { value: "mecanico" } });
@@ -1107,7 +1107,7 @@ it("cierra sin solución aplicada: error del dominio", async () => {
   await repo.saveOrder(iniciada);
   const repoDanos = new InMemoryDanoRepository([]);
   await mountApp(
-    <App repository={repo} danoRepository={repoDanos} hoy={FECHA_CON_ORDEN} />,
+    <App repository={repo} danoRepository={repoDanos} hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />,
   );
 
   fireEvent.change(screen.getByLabelText(/tipo de daño/i), { target: { value: "mecanico" } });
@@ -1147,7 +1147,7 @@ it("cierra sin solución aplicada: error del dominio", async () => {
       DANO_1_CERRADO_CON_PARADA,
       DANO_2_CERRADO_SIN_PARADA,
     ]);
-    await mountApp(<App repository={repo} danoRepository={repoDanos} hoy={FECHA_CON_ORDEN} />);
+    await mountApp(<App repository={repo} danoRepository={repoDanos} hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />);
 
     expectTexto("Historial de daños");
     expectTexto(/Daño mecánico en eje trasero/);
@@ -1170,7 +1170,7 @@ it("cierra sin solución aplicada: error del dominio", async () => {
       DANO_1_CERRADO_CON_PARADA,
       DANO_2_CERRADO_SIN_PARADA,
     ]);
-    await mountApp(<App repository={repo} danoRepository={repoDanos} hoy={FECHA_CON_ORDEN} />);
+    await mountApp(<App repository={repo} danoRepository={repoDanos} hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />);
 
     expectTexto("Finalizada");
     expectTexto("Historial de daños");
@@ -1187,7 +1187,7 @@ describe("App — ticket 06: bloque de proyección de 2da (UI)", () => {
     const repo = new InMemoryOrderRepository();
     const repoDanos = new InMemoryDanoRepository(opciones.danos ?? []);
     await mountApp(
-      <App repository={repo} danoRepository={repoDanos} hoy={FECHA_CON_ORDEN} />,
+      <App repository={repo} danoRepository={repoDanos} hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />,
     );
     await user.type(screen.getByRole("textbox", { name: /operario \(obligatorio\)/i }), "Laura");
     await user.type(screen.getByRole("spinbutton", { name: /lectura inicial/i }), "100");
@@ -1337,7 +1337,7 @@ describe("App — ticket 06: bloque de proyección de 2da (UI)", () => {
     const finalizada = finalizarProduccion(conLectura, "2026-09-11T12:00:00.000Z").orden!;
     await repo.saveOrder(finalizada);
     const repoDanos = new InMemoryDanoRepository([DANO_1_CERRADO_CON_PARADA]);
-    await mountApp(<App repository={repo} danoRepository={repoDanos} hoy={FECHA_CON_ORDEN} />);
+    await mountApp(<App repository={repo} danoRepository={repoDanos} hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />);
 
     expectTexto("Finalizada");
     const bloque = bloqueCalidad();
@@ -1389,7 +1389,7 @@ describe("App — ticket 07: inspección de tela (UI)", () => {
       <App
         repository={repo}
         inspeccionRepository={repoInspecciones}
-        hoy={FECHA_CON_ORDEN}
+        hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
       />,
     );
     await user.type(screen.getByRole("textbox", { name: /operario \(obligatorio\)/i }), "Laura");
@@ -1428,7 +1428,7 @@ describe("App — ticket 07: inspección de tela (UI)", () => {
       <App
         repository={new InMemoryOrderRepository()}
         inspeccionRepository={repoInspecciones}
-        hoy={FECHA_CON_ORDEN}
+        hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
       />,
     );
 
@@ -1589,7 +1589,7 @@ describe("App — ticket 07: inspección de tela (UI)", () => {
       <App
         repository={repo}
         inspeccionRepository={repoInspecciones}
-        hoy={FECHA_CON_ORDEN}
+        hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
       />,
     );
 
@@ -1624,7 +1624,7 @@ describe("App — ticket 07: inspección de tela (UI)", () => {
       <App
         repository={repo}
         inspeccionRepository={repoInspecciones}
-        hoy={FECHA_CON_ORDEN}
+        hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
       />,
     );
 
@@ -1651,7 +1651,7 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
       <App
         repository={new InMemoryOrderRepository()}
         mantenimientoRepository={opciones.mantenimientoRepository ?? new InMemoryMantenimientoRepository([])}
-        hoy={hoy}
+        hoy={hoy} fechaOperativaHoy={hoy}
       />,
     );
   }
@@ -1666,7 +1666,7 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
       <App
         repository={repo}
         mantenimientoRepository={repoMantenimiento}
-        hoy={FECHA_CON_ORDEN}
+        hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
       />,
     );
     await user.type(screen.getByRole("textbox", { name: /operario \(obligatorio\)/i }), "Laura");
@@ -1751,7 +1751,7 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
       <App
         repository={repo}
         mantenimientoRepository={repoMantenimiento}
-        hoy={FECHA_CON_ORDEN}
+        hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
       />,
     );
 
@@ -1817,7 +1817,7 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
       <App
         repository={repo}
         mantenimientoRepository={repoMantenimiento}
-        hoy={FECHA_CON_ORDEN}
+        hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
       />,
     );
 
@@ -1863,7 +1863,7 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
       <App
         repository={repo}
         mantenimientoRepository={repoMantenimiento}
-        hoy={FECHA_CON_ORDEN}
+        hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
       />,
     );
 
@@ -2060,7 +2060,7 @@ describe("App — ticket 09: DashboardHome", () => {
       <App
         repository={new InMemoryOrderRepository()}
         paradaRepository={repoParadas}
-        hoy={FECHA_CON_ORDEN}
+        hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
       />,
     );
     expectTexto(/PARADA/);
@@ -2088,7 +2088,7 @@ describe("App — ticket 09: DashboardHome", () => {
       fin: null,
     };
     const repoParadas = new InMemoryParadaRepository([abierta]);
-    await mountApp(<App repository={repo} paradaRepository={repoParadas} hoy={FECHA_CON_ORDEN} />);
+    await mountApp(<App repository={repo} paradaRepository={repoParadas} hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />);
 
     expectTexto(/PARADA/);
     expectTexto(/Falta de color/);
@@ -2108,7 +2108,7 @@ describe("App — ticket 09: DashboardHome", () => {
     if (!finalizada.orden) throw new Error("precondition failed");
     await repo.saveOrder(finalizada.orden);
 
-    await mountApp(<App repository={repo} hoy={FECHA_CON_ORDEN} />);
+    await mountApp(<App repository={repo} hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />);
     expectTexto(/OCIOSA/);
     // Calidad no visible en orden finalizada
     expect(screen.queryByText(/Buena racha/)).toBeNull();
@@ -2150,7 +2150,7 @@ describe("App — phase 14 (G2): el puerto como fuente de verdad (14.1–14.5)",
 
     const user = userEvent.setup();
     await mountApp(
-      <App repository={repo} paradaRepository={repoParadas} hoy={FECHA_CON_ORDEN} />,
+      <App repository={repo} paradaRepository={repoParadas} hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />,
     );
     // El historial muestra la parada sembrada antes del intento.
     expect(screen.getAllByText(/Falta de materia prima/).length).toBeGreaterThan(0);
@@ -2186,7 +2186,7 @@ describe("App — phase 14 (G2): el puerto como fuente de verdad (14.1–14.5)",
         repository={repo}
         danoRepository={repoDanos}
         paradaRepository={new InMemoryParadaRepository([])}
-        hoy={FECHA_CON_ORDEN}
+        hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
       />,
     );
 
@@ -2234,7 +2234,7 @@ describe("App — phase 14 (G2): el puerto como fuente de verdad (14.1–14.5)",
         repository={repo}
         mantenimientoRepository={repoMantenimientos}
         danoRepository={new InMemoryDanoRepository([])}
-        hoy={FECHA_CON_ORDEN}
+        hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
       />,
     );
 
@@ -2299,7 +2299,7 @@ describe("App — phase 14 (G2): el puerto como fuente de verdad (14.1–14.5)",
         repository={new InMemoryOrderRepository()}
         paradaRepository={new InMemoryParadaRepository([paradaRepo])}
         estadoInicial={estadoInicial}
-        hoy={FECHA_CON_ORDEN}
+        hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
       />,
     );
 

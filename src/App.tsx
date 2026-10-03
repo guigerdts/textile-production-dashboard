@@ -96,8 +96,28 @@ interface AppProps {
    * orden y jornada. App NUNCA recibe promesas ni calcula recovery.
    */
   estadoInicial?: RecoveryState;
-  /** Fecha operativa consultada. En runtime se usa el día de hoy; en pruebas se inyecta (sin selector en la UI). */
+  /**
+   * Fecha operativa consultada: the selected operational day; the navigator owns it
+   * (OQ-3 mantiene el nombre de la prop). En pruebas se sigue inyectando.
+   */
   hoy?: string;
+  /**
+   * Fecha operativa de HOY (YYYY-MM-DD): the read-only reference and the navigator's
+   * upper bound. Defaults to the local-calendar clock. Tests inject it so a fixture
+   * day can be declared "today" without depending on the wall clock.
+   */
+  fechaOperativaHoy?: string;
+  /** Seam del navegador de días: `Raiz` SIEMPRE lo define, un montaje directo de `App` no. */
+  onSeleccionarDia?: (fechaOperativa: string) => void;
+  /**
+   * Un cambio de día está en vuelo: el navegador lo usa como `disabled` de flechas e
+   * input (tarea 9.4), único consumidor — por eso todavía no se destructura acá con su
+   * default `false`: un binding sin lectura rompe `noUnusedParameters` en
+   * `tsc --noEmit`. 9.4 lo destructura como `cargandoDia = false` junto a ese consumidor.
+   */
+  cargandoDia?: boolean;
+  /** Error del último cambio de día fallido; se renderiza como `role="alert"` (tarea 7.7). Default `null`. */
+  errorCambioDia?: string | null;
 }
 
 function App({
@@ -111,7 +131,21 @@ function App({
   lecturaRepository,
   estadoInicial,
   hoy = fechaOperativaHoy(),
+  // El RENAME al destructurar es load-bearing, NO cosmético: la CLAVE del patrón es
+  // `fechaOperativaHoy` pero el binding es `hoyReal`, así que el patrón no introduce
+  // una local con ese nombre y la llamada del default resuelve al import del módulo.
+  // Con el mismo nombre a ambos lados (`{ a = f(), f = f() }`) V8 lanza
+  // `ReferenceError: Cannot access 'f' before initialization` al evaluar los
+  // parámetros: un ReferenceError en CADA montaje de App. No "simplificar" esto.
+  fechaOperativaHoy: hoyReal = fechaOperativaHoy(),
+  onSeleccionarDia,
+  errorCambioDia = null,
 }: AppProps) {
+  // ÚNICA derivación de soloLectura en todo el cambio (design §5.3/§5.4.2): ningún
+  // loader, handler, sección ni módulo la recalcula, y ningún código escribe
+  // `hoy !== fechaOperativaHoy()` — eso leería el import del módulo, ignoraría la
+  // prop inyectada y volvería de solo lectura cada montaje con fixture.
+  const soloLectura = hoy !== hoyReal;
   // Semilla desde el estado recuperado (10.8): el loader de montaje vuelve a leer los
   // mismos repositorios (relectura idempotente, misma data) y no cambia el resultado.
   // Phase 14.1 (D2h): las cinco listas operativas se siembran incondicionalmente desde
@@ -203,26 +237,26 @@ function App({
   useEffect(() => {
     let cancelled = false;
     async function cargarParadas() {
-      const paradasCargadas = await paradaRepository.listarPorMaquina("M1");
+      const paradasCargadas = await paradaRepository.listarPorMaquinaYFecha("M1", hoy);
       if (!cancelled) setParadas(paradasCargadas);
     }
     cargarParadas();
     return () => {
       cancelled = true;
     };
-  }, [paradaRepository]);
+  }, [paradaRepository, hoy]);
 
   useEffect(() => {
     let cancelled = false;
     async function cargarActividades() {
-      const actividadesCargadas = await actividadRepository.listarPorMaquina("M1");
+      const actividadesCargadas = await actividadRepository.listarPorMaquinaYFecha("M1", hoy);
       if (!cancelled) setActividades(actividadesCargadas);
     }
     cargarActividades();
     return () => {
       cancelled = true;
     };
-  }, [actividadRepository]);
+  }, [actividadRepository, hoy]);
 
   useEffect(() => {
     let cancelled = false;
@@ -243,7 +277,7 @@ function App({
     let cancelled = false;
     async function cargarDanos() {
       const [danosCargados, abierto, deOrden] = await Promise.all([
-        danoRepository.listarPorMaquina("M1"),
+        danoRepository.listarPorMaquinaYFecha("M1", hoy),
         danoRepository.getDanoAbierto("M1"),
         orden ? danoRepository.listarPorOrden(orden.id) : Promise.resolve([]),
       ]);
@@ -256,7 +290,7 @@ function App({
     return () => {
       cancelled = true;
     };
-  }, [danoRepository, orden?.id]);
+  }, [danoRepository, orden?.id, hoy]);
 
   useEffect(() => {
     // Phase 14.1: lista y abierto de mantenimientos se re-leen juntos; el abierto
@@ -264,7 +298,7 @@ function App({
     let cancelled = false;
     async function cargarMantenimientos() {
       const [deMaquina, abierto] = await Promise.all([
-        mantenimientoRepository.listarPorMaquina("M1"),
+        mantenimientoRepository.listarPorMaquinaYFecha("M1", hoy),
         mantenimientoRepository.getMantenimientoAbierto("M1"),
       ]);
       if (cancelled) return;
@@ -275,7 +309,7 @@ function App({
     return () => {
       cancelled = true;
     };
-  }, [mantenimientoRepository]);
+  }, [mantenimientoRepository, hoy]);
 
   useEffect(() => {
     // La inspección siempre pertenece a su orden: se recarga al cambiar la orden.
@@ -302,16 +336,16 @@ function App({
    * el daño abierto) queda viejo mientras su lista ya está fresca.
    */
   async function recargarParadas(): Promise<void> {
-    setParadas(await paradaRepository.listarPorMaquina("M1"));
+    setParadas(await paradaRepository.listarPorMaquinaYFecha("M1", hoy));
   }
 
   async function recargarActividades(): Promise<void> {
-    setActividades(await actividadRepository.listarPorMaquina("M1"));
+    setActividades(await actividadRepository.listarPorMaquinaYFecha("M1", hoy));
   }
 
   async function recargarDanos(): Promise<void> {
     const [danosDeMaquina, abierto, deOrden] = await Promise.all([
-      danoRepository.listarPorMaquina("M1"),
+      danoRepository.listarPorMaquinaYFecha("M1", hoy),
       danoRepository.getDanoAbierto("M1"),
       orden ? danoRepository.listarPorOrden(orden.id) : Promise.resolve([]),
     ]);
@@ -322,7 +356,7 @@ function App({
 
   async function recargarMantenimientos(): Promise<void> {
     const [deMaquina, abierto] = await Promise.all([
-      mantenimientoRepository.listarPorMaquina("M1"),
+      mantenimientoRepository.listarPorMaquinaYFecha("M1", hoy),
       mantenimientoRepository.getMantenimientoAbierto("M1"),
     ]);
     setMantenimientos(deMaquina);
@@ -357,6 +391,7 @@ function App({
 
   /** Única vía available -> in_production: dominio + repositorio; React no duplica reglas. */
   async function handleIniciar(operatorName: string, lecturaInicial: number): Promise<string[]> {
+    if (soloLectura) return ["no se puede registrar en un día que no es hoy"];
     if (!orden || orden.estado !== "available") {
       return ["solo se puede iniciar una orden disponible"];
     }
@@ -384,6 +419,9 @@ function App({
 
   /** Única vía in_production -> nueva lectura: dominio + repositorio; React no duplica reglas. */
   async function handleRegistrarLectura(valor: number): Promise<ResultadoRegistroLectura> {
+    if (soloLectura) {
+      return { errores: ["no se puede registrar en un día que no es hoy"], sinIncremento: false };
+    }
     if (!orden || orden.estado !== "in_production") {
       return { errores: ["solo se registran lecturas en una orden en producción"], sinIncremento: false };
     }
@@ -421,6 +459,7 @@ function App({
 
   /** Única vía in_production -> finished: dominio + repositorio; React no duplica reglas. */
   async function handleFinalizar(): Promise<string[]> {
+    if (soloLectura) return ["no se puede registrar en un día que no es hoy"];
     if (!orden || orden.estado !== "in_production") {
       return ["solo se finaliza una orden en producción"];
     }
@@ -447,6 +486,7 @@ function App({
 
   /** Única vía registrar parada: dominio + repositorio; React no duplica reglas. */
   async function handleRegistrarParada(input: RegistrarParadaInput): Promise<string[]> {
+    if (soloLectura) return ["no se puede registrar en un día que no es hoy"];
     if (!orden || orden.estado !== "in_production") {
       return ["solo se registran paradas en una orden en producción"];
     }
@@ -468,6 +508,7 @@ function App({
 
   /** Única vía cerrar parada: dominio + repositorio; React no duplica reglas. */
   async function handleCerrarParada(): Promise<string[]> {
+    if (soloLectura) return ["no se puede registrar en un día que no es hoy"];
     if (!orden) {
       return ["no hay orden activa"];
     }
@@ -495,6 +536,7 @@ function App({
   async function handleRegistrarActividad(
     input: RegistrarActividadInput,
   ): Promise<string[]> {
+    if (soloLectura) return ["no se puede registrar en un día que no es hoy"];
     const resultado = comenzarActividad(actividades, input);
     if (resultado.errores.length > 0) {
       return resultado.errores;
@@ -515,6 +557,7 @@ function App({
   async function handleCerrarActividad(
     tipo: TipoActividadPlanificada,
   ): Promise<string[]> {
+    if (soloLectura) return ["no se puede registrar en un día que no es hoy"];
     const abierta = await actividadRepository.getActividadAbierta("M1", tipo);
     if (!abierta) {
       return ["no hay una actividad abierta para cerrar"];
@@ -537,6 +580,7 @@ function App({
 
   /** Única vía editar el fin de jornada (overtime): repositorio valida; React no duplica reglas. */
   async function handleCambiarFinJornada(fin: string): Promise<string[]> {
+    if (soloLectura) return ["no se puede registrar en un día que no es hoy"];
     const finIso = `${hoy}T${fin}:00.000Z`;
     const nuevaJornada: JornadaTurno = { inicio: jornada.inicio, fin: finIso };
     try {
@@ -551,6 +595,7 @@ function App({
 
   /** Única vía registrar daño: dominio + repositorio; React no duplica reglas. */
   async function handleRegistrarDano(input: RegistrarDanoInput): Promise<string[]> {
+    if (soloLectura) return ["no se puede registrar en un día que no es hoy"];
     // Phase 14.5 — Approach A (D2i): un solo `await` al puerto con la parada
     // vinculada (los datos más frescos posibles), y el closure que recibe el
     // dominio queda síncrono. `registrarDano` siempre recibe `Parada | undefined`,
@@ -581,6 +626,7 @@ function App({
 
   /** Única vía cerrar daño: dominio + repositorio; React no duplica reglas. */
   async function handleCerrarDano(fin: string, solucionAplicada: string): Promise<string[]> {
+    if (soloLectura) return ["no se puede registrar en un día que no es hoy"];
     const abierto = await danoRepository.getDanoAbierto("M1");
     if (!abierto) {
       return ["no hay un daño abierto para cerrar"];
@@ -603,6 +649,7 @@ function App({
 
   /** Única vía registrar inspección de tela (ticket 07): dominio + repositorio; React no duplica reglas. */
   async function handleRegistrarInspeccion(input: RegistrarInspeccionInput): Promise<string[]> {
+    if (soloLectura) return ["no se puede registrar en un día que no es hoy"];
     if (!orden) {
       return ["la inspección de tela debe estar asociada a una orden de producción"];
     }
@@ -627,6 +674,7 @@ function App({
     inspeccionId: string,
     input: RegistrarDevolucionInput,
   ): Promise<string[]> {
+    if (soloLectura) return ["no se puede registrar en un día que no es hoy"];
     if (!orden) {
       return ["la inspección de tela debe estar asociada a una orden de producción"];
     }
@@ -656,6 +704,7 @@ function App({
     inspeccionId: string,
     input: RegistrarAutorizacionInput,
   ): Promise<string[]> {
+    if (soloLectura) return ["no se puede registrar en un día que no es hoy"];
     if (!orden) {
       return ["la inspección de tela debe estar asociada a una orden de producción"];
     }
@@ -683,6 +732,7 @@ function App({
   async function handleRegistrarMantenimiento(
     input: RegistrarMantenimientoInput,
   ): Promise<string[]> {
+    if (soloLectura) return ["no se puede registrar en un día que no es hoy"];
     // Phase 14.5 — Approach A (D2i): idéntico a handleRegistrarDano; un solo await
     // al puerto para el daño vinculado y closure síncrono. El dominio recibe
     // `Dano | undefined`, nunca una Promise; un id colgado falla con el mensaje
@@ -713,6 +763,7 @@ function App({
     fin: string,
     queSeRevisoReparo: string,
   ): Promise<string[]> {
+    if (soloLectura) return ["no se puede registrar en un día que no es hoy"];
     const abierto = await mantenimientoRepository.getMantenimientoAbierto("M1");
     if (!abierto) {
       return ["no hay un mantenimiento abierto para cerrar"];
@@ -884,6 +935,19 @@ function App({
       <header className="app__header">
         <h1 className="app__titulo">Dashboard de Estampado</h1>
         <span className="app__fecha">Fecha operativa: {hoy}</span>
+        {/* Bloque ÚNICO del día (tarea 7.7): `Raiz` siempre define `onSeleccionarDia`,
+            un montaje directo de `App` no, así que su DOM no cambia. El navegador
+            (`SelectorDiaOperativa`, tarea 9.4) entra en este MISMO bloque, antes del
+            alerta; el alerta `role="alert"` es el render diferido de la tarea 6.3. */}
+        {onSeleccionarDia && (
+          <>
+            {errorCambioDia && (
+              <p className="selector-dia__error" role="alert">
+                No se pudo cargar ese día: {errorCambioDia}
+              </p>
+            )}
+          </>
+        )}
       </header>
 
       <DashboardHome
