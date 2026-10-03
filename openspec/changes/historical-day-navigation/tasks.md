@@ -714,7 +714,7 @@ open disappears. The four read-path call sites of the day-free lookups that this
 > same class as 10.1**. "Unreachable on a historical day" was never sufficient justification; the correct test is
 > "unreachable **or harmless** when the day changes", and these two fail the second half.
 
-- [ ] 10.1 `actividadesAbiertas` (`App.tsx:757-759`) becomes state rather than a filter. `cargarActividades`
+- [x] 10.1 `actividadesAbiertas` (`App.tsx:757-759`) becomes state rather than a filter. `cargarActividades`
   (`:217`, call at `:218`) and `recargarActividades` (`:308`, call at `:309`) additionally read
   `getActividadAbierta("M1", tipo)` — the port method **already exists** (`src/store/actividadesRepository.ts:58`)
   and is **already called in the write path** (`App.tsx:518`), so nothing new is invented. The card list and
@@ -727,11 +727,11 @@ open disappears. The four read-path call sites of the day-free lookups that this
   **four** (`cambio_diseno`, `limpieza`, `almuerzo`, `pausa` — `src/domain/types.ts:112-116` (read-only)).
   Implement over **all four** and record the deviation; do not narrow to two.
   **Traces to:** `H:353-364` ("Today's derived values are unchanged"); design §6.4 item 1, §11 (fifth risk row).
-- [ ] 10.2 `paradaActivaDeOrden` (`App.tsx:754`) reads `getParadaAbierta("M1", orden.id)` fetched alongside the
+- [x] 10.2 `paradaActivaDeOrden` (`App.tsx:754`) reads `getParadaAbierta("M1", orden.id)` fetched alongside the
   day-scoped list in `cargarParadas` (`:205`, call at `:206`) and `recargarParadas` (`:304`, call at `:305`) — the
   same call `handleRegistrarParada` already makes at `App.tsx:474`, so the guard and the card now read one source
   instead of two. **Traces to:** `H:353-364`; design §6.4 item 2.
-- [ ] 10.3 `paradaAbiertaMaquina` (`App.tsx:836-838`) becomes
+- [x] 10.3 `paradaAbiertaMaquina` (`App.tsx:836-838`) becomes
   `paradaAbiertaDeMaquina ?? paradaAbierta(paradas, "M1", null)`, where `paradaAbiertaDeMaquina` is fetched **day-free** in
   the same two places through the **new** `getParadaAbiertaDeMaquina("M1")` (OQ-4, alternative B — the port method, both
   adapters, their suites and the cross-adapter parity suite already landed with the decision). This adds two `useState`
@@ -740,13 +740,13 @@ open disappears. The four read-path call sites of the day-free lookups that this
   which neither of them could. The port JSDoc is the contract — the lookup answers "¿qué está abierto AHORA?" and is
   consulted **only** when `!soloLectura`, so a historical day keeps answering from its own list and no record is shown on
   two days. **Traces to:** `H:353-364`; design §6.4 item 3, §12 Q4.
-- [ ] 10.4 The two `useState` **seeds** at `App.tsx:143` and `App.tsx:147` **keep their expression** unchanged. They
+- [x] 10.4 The two `useState` **seeds** at `App.tsx:143` and `App.tsx:147` **keep their expression** unchanged. They
   are an optimisation the loaders immediately supersede (which already re-read `:247` / `:268` on mount), and
   changing them would require `RecoveryState` to grow four open-record fields — a contract change to a module this
   design otherwise leaves alone. State the one-paint difference in the code comment rather than hiding it. It is not
   observable through Testing Library, because `render()` flushes effects. **Traces to:** design §6.4 item 4, §10.4
   "Today's DOM unchanged" (the honest qualification).
-- [ ] 10.5 Add the cross-midnight case to `src/App.test.tsx` — the case design §6.4 exists for: seed a `dano`, a
+- [x] 10.5 Add the cross-midnight case to `src/App.test.tsx` — the case design §6.4 exists for: seed a `dano`, a
   `mantenimiento`, a `parada` and a `limpieza` on day *D* with `fin: null`, inject `fechaOperativaHoy = D + 1`,
   mount on *D + 1*, then assert (a) each open card is visible, (b) `estadoMaquina` still reads `parada`, (c)
   registering a second `limpieza` is refused by `comenzarActividad`'s guard, and (d) after navigating to *D* the
@@ -757,14 +757,14 @@ open disappears. The four read-path call sites of the day-free lookups that this
   on *D + 1* — and assert `estadoMaquina` still reads `parada` there, that the day-scoped listing for *D + 1* omits it,
   and that its `fechaOperativa` is still *D*. **Traces to:** `H:353-364`; `H:366-371`; `H:217-228`; design §10.4
   "Open records across midnight", §6.3, §6.4.
-- [ ] 10.6 Record **OQ-1** next to the derivation it justifies: a code comment on the `soloLectura ?` conditionals
+- [x] 10.6 Record **OQ-1** next to the derivation it justifies: a code comment on the `soloLectura ?` conditionals
   states that on a historical day the open state is derived from **that day's own list** with the existing pure
   functions (`danoAbierto`, `mantenimientoAbierto`, `paradaAbierta` — all already imported and already called this
   way at `App.tsx:143`, `:147`), because the machine-level lookups would answer "what is open *now*", a different
   day. The alternative reading — keep `get*Abierta` on every day — is what OQ-1 asks Gerencia to confirm. **The
   implementation is the same either way; only the recorded rationale depends on the answer.**
   **Traces to:** `H:126-152`; `H:411-416`; design §6.3, §11 (ninth risk row), §12 Q1.
-- [ ] 10.7 `handleRegistrarDano` (`App.tsx:597`, call at `:609`) stops handing `registrarDano` the day-scoped `danos`
+- [x] 10.7 `handleRegistrarDano` (`App.tsx:597`, call at `:609`) stops handing `registrarDano` the day-scoped `danos`
   state as its `danosExistentes`. The domain enforces *"ya hay un daño abierto para la máquina. Cierre el daño actual
   antes de registrar otro"* by filtering `fin === null` over that argument (`src/domain/danos.ts:208-215`), so after
   7.5 a `dano` opened on a previous day and still open no longer blocks a second one **on today**. Pass the union of
@@ -774,7 +774,7 @@ open disappears. The four read-path call sites of the day-free lookups that this
   `soloLectura` branch**: the 7.6 guard at `:598` returns before the argument is ever built, so on a historical day
   the expression is unreachable — which is exactly why this is a today-only fix. **Traces to:** design §6.4 item 1,
   DD8; tasks.md 7.9 failure 4 (*"un daño abierto preexistente de la máquina bloquea registrar otro"*).
-- [ ] 10.8 `handleRegistrarMantenimiento` (`App.tsx:732`, call at `:743`) gets the identical treatment:
+- [x] 10.8 `handleRegistrarMantenimiento` (`App.tsx:732`, call at `:743`) gets the identical treatment:
   `registrarMantenimiento` filters `fin === null` over its `existentes` argument
   (`src/domain/mantenimiento.ts:189-197`) and the day-free open record is already in state as
   `mantenimientoAbiertoDeMaquina` (`App.tsx:179-182`, set day-free at `:363` from the read at `:360`). CONTEXT.md
@@ -786,6 +786,19 @@ open disappears. The four read-path call sites of the day-free lookups that this
 > **10.7/10.8 need no new test.** Both are already covered by the two existing App cases named above, which fail today
 > and must pass once the union lands — they are the day-*A*-record-blocks-on-day-*B* case for these two domains. Adding
 > a duplicate case would be the "new cases" that 7.9 forbids.
+- [x] 10.9 `mantAbierto` (`App.tsx:1078`) stops deriving `DashboardHome`'s maintenance card from the day-scoped
+  `mantenimientos`. **Added by the orchestrator after the WU10 implementation**, on the same reasoning that produced
+  10.7/10.8: `mantenimientoAbierto(mantenimientos, "M1")` filters `fin === null` over a list 7.5 narrowed, so on today an
+  open `mantenimiento` started on *D* is missing from the card on *D + 1*. It is the **display** member of the class
+  10.1–10.3 and 10.7/10.8 handle, and it is the **only** remaining instance: `DashboardHome` takes `estadoMaquina`,
+  `paradaAbierta`, `mantenimientoAbierto`, `calidad` and `resumenTiempo` and has no damage card, so the `dano` side has
+  no equivalent. Left unfixed it is not merely an omission — it is a **self-contradiction inside one rendered day**,
+  because `MantenimientoSection`'s banner already answers from the day-free `mantenimientoAbiertoDeMaquina` and would
+  say "Mantenimiento activo" while the card above it said nothing. Derive it from `mantenimientoAbiertoDeMaquina`
+  (already in state, set day-free) under the same `soloLectura ? … :` shape 10.6 documents, so a historical day still
+  answers from its own list and no record is shown on two days. Extend 10.5's cross-midnight case with one assertion
+  that the `DashboardHome` maintenance card renders the open record on *D + 1* — that assertion is RED before this task
+  and GREEN after, which is what makes 10.9 non-vacuous. **Traces to:** design §6.4, DD8; tasks.md 7.9 class.
 
 **Finish when:** `npx vitest run src/App.test.tsx` passes — which requires all five of 7.9's failures to be green,
 since 7.9 is this work unit's own gate — no existing assertion moved, and OQ-4's limitation is written down in code
@@ -793,6 +806,39 @@ rather than papered over.
 **Rollback:** remove the two added `useState` values and the four conditional derivations. `estadoMaquina` returns
 to scanning the day-scoped list and the two seeds are untouched.
 **Boundary check:** zero `src/domain/**` diff — the `comenzarActividad` guard is *consumed*, never modified.
+
+> **10.x status: COMPLETE. The red window is closed.** `src/App.test.tsx` is **120 passed / 0 failed** (verified by
+> the orchestrator, not only by the implementer: exit 0, zero `FAIL` lines). All five of 7.9's failures are green, and
+> the 113 cases that were already passing still pass unmodified. `npx tsc --noEmit` is clean;
+> `git diff -- src/domain src-tauri src/store src/ui` is **empty** — the boundary check held. Full suite: **1115 passed
+> across 38 files**.
+>
+> **The "118" arithmetic in the finish-when clause was wrong and was not met as written.** The file held exactly 118
+> `it(` blocks, of which 5 were red; 10.5 mandates new cases, so 118-green was unsatisfiable. The honest number is
+> **120** = 118 + the two 10.5 cases. Recorded rather than papered over.
+>
+> **A spec snippet was wrong and was NOT transcribed (this is the important finding).** 10.3 specifies
+> `paradaAbiertaDeMaquina ?? paradaAbierta(paradas, "M1", null)`, but `paradaAbierta` filters
+> `p.ordenId === ordenId` with `ordenId` defaulting to `null` (`src/domain/paradas.ts:277-282`) — so that literal
+> matches **only paradas without an order** and would have silently dropped every order-bound open `parada`,
+> reintroducing the precise regression OQ-4 was closed to fix. The implementation uses an explicit
+> `find(fin === null && maquinaId === "M1")` instead, with the reason in a code comment. **Transcribing a spec snippet
+> without reading the function it calls is how this class of bug ships.**
+>
+> Other recorded deviations, none hidden:
+> - **10.1 implements over FOUR `TipoActividadPlanificada` values, not two** — design defect **D1**, as 10.1 anticipated.
+> - **Three new `useState` values, not the two the phase text predicted.** Recorded, because the count is a prediction,
+>   not a requirement.
+> - **10.7/10.8 needed no new test**, exactly as their note said: the two red cases were already their specification.
+> - **10.9 was added by the orchestrator** after the implementation surfaced the `DashboardHome` maintenance card as the
+>   last instance of the class (`App.tsx:1078`, now `soloLectura ? … : mantenimientoAbiertoDeMaquina ?? …`). Its
+>   assertion was observed **RED** first — the card was genuinely absent, `0` `dashboard-home__mantenimiento` nodes in
+>   the failure dump — which is what makes it non-vacuous. Case count stayed 120 because the assertion extends the
+>   existing 10.5 case rather than adding one.
+> - 10.4 held: the two seeds at `App.tsx:178`/`:181` keep their expressions, with the one-paint difference stated in a
+>   comment rather than hidden.
+> - **D2**: design §6.3's `soloLectura ? danoAbierto(…)` snippet is stale; the `dano`/`mantenimiento` seeds stay
+>   unconditional, which is what tasks.md D2 already prescribes.
 
 ---
 

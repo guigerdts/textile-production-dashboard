@@ -2971,3 +2971,260 @@ describe("App — phase 9: navegador de un día operativo (tarea 9.5)", () => {
     expectTexto(`Fecha operativa: ${DIA_SIN_ORDEN}`);
   }, UI_TIMEOUT);
 });
+
+// ---------------------------------------------------------------------------
+// Phase 10 (WU 10) — 10.5: registros abiertos que cruzan la medianoche
+// ---------------------------------------------------------------------------
+describe("App — phase 10 (WU10): registros abiertos cruzando la medianoche (10.5)", () => {
+  /** Día D (ayer): sin orden en el fixture → estado de día vacío. */
+  const D = "2026-09-14";
+  /** D + 1 = el "hoy" inyectado: OP-102 disponible (otra orden que la de D). */
+  const DP1 = "2026-09-15";
+
+  /** Parada abierta en D (sin orden) y todavía abierta en D+1. */
+  const PARADA_DE_D: ParadaAbierta = {
+    id: "p-cruce-medianoche",
+    maquinaId: "M1",
+    ordenId: null,
+    operatorName: "Ana",
+    causaId: "falta_color",
+    camposEspecificos: { color: "Rojo" },
+    fechaOperativa: D,
+    inicio: `${D}T09:00:00.000Z`,
+    fin: null,
+  };
+  /** Daño abierto en D, atribuido a D. */
+  const DANO_DE_D: Dano = {
+    id: "dan-cruce-medianoche",
+    maquinaId: "M1",
+    ordenId: null,
+    operatorName: "Ana",
+    tipo: "mecanico",
+    componente: "tablero de control",
+    fechaOperativa: D,
+    inicio: `${D}T09:10:00.000Z`,
+    fin: null,
+    causoParada: false,
+    paradaId: null,
+    posibleSegunda: false,
+  };
+  /** Mantenimiento abierto en D, atribuido a D. */
+  const MANT_DE_D: Mantenimiento = {
+    id: "mnt-cruce-medianoche",
+    maquinaId: "M1",
+    tipo: "preventivo",
+    operatorName: "Sofía",
+    motivo: "Revisión de horno",
+    fechaOperativa: D,
+    inicio: `${D}T09:20:00.000Z`,
+    fin: null,
+    danoId: null,
+  };
+  /** Limpieza abierta en D, atribuida a D: es la que tiene que seguir bloqueando. */
+  const LIMPIEZA_DE_D: ActividadPlanificada = {
+    id: "act-cruce-medianoche",
+    maquinaId: "M1",
+    tipo: "limpieza",
+    fechaOperativa: D,
+    inicio: `${D}T07:00:00.000Z`,
+    fin: null,
+    queSeLimpio: "mesa de estampado",
+    operatorName: "Sofía Ramírez",
+  };
+
+  interface Repos {
+    repository: InMemoryOrderRepository;
+    paradaRepository: InMemoryParadaRepository;
+    actividadRepository: InMemoryActividadPlanificadaRepository;
+    danoRepository: InMemoryDanoRepository;
+    mantenimientoRepository: InMemoryMantenimientoRepository;
+    inspeccionRepository: InMemoryInspeccionRepository;
+    jornadaRepository: InMemoryJornadaRepository;
+  }
+
+  /**
+   * Arnés mínimo de 10.5 (patrón del de la fase 9): el día vive en la raíz,
+   * `key` DESMONTA `App` al cambiar y los tres props del navegador viajan
+   * juntos. Sin `estadoInicial` a propósito: los registros tienen que llegar
+   * por los LOADER, que es lo que 10.1/10.3 cambiaron.
+   */
+  function Arnés({ repos, hoy }: { repos: Repos; hoy: string }) {
+    const [dia, setDia] = useState(hoy);
+    const [cargando, setCargando] = useState(false);
+    const [errorDia, setErrorDia] = useState<string | null>(null);
+
+    async function seleccionarDia(nuevo: string): Promise<void> {
+      if (nuevo === dia || cargando) return;
+      setCargando(true);
+      setErrorDia(null);
+      try {
+        setDia(nuevo);
+      } finally {
+        setCargando(false);
+      }
+    }
+
+    return (
+      <App
+        key={dia}
+        {...repos}
+        hoy={dia}
+        fechaOperativaHoy={hoy}
+        onSeleccionarDia={seleccionarDia}
+        cargandoDia={cargando}
+        errorCambioDia={errorDia}
+      />
+    );
+  }
+
+  async function montarCruce(
+    opciones: {
+      paradas?: Parada[];
+      danos?: Dano[];
+      mantenimientos?: Mantenimiento[];
+      actividades?: ActividadPlanificada[];
+      /** Materializa la orden X en D para que D y D+1 tengan órdenes distintas. */
+      conOrdenDeD?: boolean;
+    } = {},
+  ): Promise<{ repos: Repos }> {
+    const repos: Repos = {
+      repository: new InMemoryOrderRepository(),
+      paradaRepository: new InMemoryParadaRepository(opciones.paradas ?? []),
+      actividadRepository: new InMemoryActividadPlanificadaRepository(
+        opciones.actividades ?? [],
+      ),
+      danoRepository: new InMemoryDanoRepository(opciones.danos ?? []),
+      mantenimientoRepository: new InMemoryMantenimientoRepository(
+        opciones.mantenimientos ?? [],
+      ),
+      inspeccionRepository: new InMemoryInspeccionRepository([]),
+      jornadaRepository: new InMemoryJornadaRepository([]),
+    };
+    if (opciones.conOrdenDeD) {
+      const base = await repos.repository.getOrderByFechaOperativa(FECHA_CON_ORDEN);
+      if (!base) throw new Error("precondición: OP-101 no existe");
+      await repos.repository.materializeOrder({
+        ...base,
+        id: "ord-cruce",
+        numeroOrden: "OP-CRUCE",
+        fechaOperativa: D,
+      });
+    }
+    await mountApp(<Arnés repos={repos} hoy={DP1} />);
+    return { repos };
+  }
+
+  async function navegarA(usuario: ReturnType<typeof userEvent.setup>, dia: string) {
+    await usuario.click(screen.getByRole("button", { name: "Día operativo anterior" }));
+    await act(async () => {});
+    expectTexto(`Fecha operativa: ${dia}`);
+  }
+
+  it("los cuatro abiertos de D se ven en D+1 y D sigue siendo el día que los responde", async () => {
+    const { repos } = await montarCruce({
+      paradas: [PARADA_DE_D],
+      danos: [DANO_DE_D],
+      mantenimientos: [MANT_DE_D],
+      actividades: [LIMPIEZA_DE_D],
+    });
+    const user = userEvent.setup();
+
+    // (a) En D+1 (hoy) cada tarjeta de registro abierto es visible…
+    expect(screen.getByTestId("dano-abierto")).toBeTruthy();
+    expect(screen.getByTestId("mantenimiento-abierto")).toBeTruthy();
+    expect(screen.getByTestId("actividad-abierta-limpieza")).toBeTruthy();
+    // (a2) 10.9: la tarjeta de mantenimiento de DashboardHome responde en D+1.
+    // La lista del día de D+1 está vacía (se comprueba abajo), así que solo
+    // puede salir de la lectura day-free; si sale de la lista del día, vacía,
+    // la tarjeta no renderiza y el banner de MantenimientoSection — que sí
+    // responde por la lectura day-free — se la gana con una respuesta distinta.
+    expect(
+      within(screen.getByTestId("dashboard-home")).getByText(/Mantenimiento preventivo/),
+    ).toBeTruthy();
+    // (b) …y `estadoMaquina` sigue leyendo PARADA.
+    expectTexto(/PARADA/);
+
+    // (c) Registrar una segunda limpieza lo rechaza el guard de
+    // `comenzarActividad`, que filtra `fin === null` sobre SU argumento.
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: /tipo de actividad/i }),
+      screen.getByRole("option", { name: "Limpieza" }),
+    );
+    await user.type(screen.getByLabelText(/qué se limpió/i), "mesa");
+    await user.type(screen.getByLabelText(/operario de la actividad/i), "Laura");
+    await user.click(screen.getByRole("button", { name: /Registrar actividad/i }));
+    expect(screen.getByRole("alert").textContent).toContain(
+      "ya hay una actividad abierta de tipo",
+    );
+
+    // (d) Al navegar a D los mismos registros se siguen viendo allá…
+    await navegarA(user, D);
+    expect(screen.getByTestId("dano-abierto")).toBeTruthy();
+    expect(screen.getByTestId("mantenimiento-abierto")).toBeTruthy();
+    expect(screen.getByTestId("actividad-abierta-limpieza")).toBeTruthy();
+    expectTexto(/PARADA/);
+
+    // …porque la LISTA DEL DÍA de D es la que responde por ellos…
+    expect(
+      (await repos.paradaRepository.listarPorMaquinaYFecha("M1", D)).map((p) => p.id),
+    ).toContain(PARADA_DE_D.id);
+    expect(
+      (await repos.danoRepository.listarPorMaquinaYFecha("M1", D)).map((d) => d.id),
+    ).toContain(DANO_DE_D.id);
+    expect(
+      (await repos.mantenimientoRepository.listarPorMaquinaYFecha("M1", D)).map((m) => m.id),
+    ).toContain(MANT_DE_D.id);
+    expect(
+      (await repos.actividadRepository.listarPorMaquinaYFecha("M1", D)).map((a) => a.id),
+    ).toContain(LIMPIEZA_DE_D.id);
+
+    // …y la de D+1 NO tiene ni una fila propia: lo que se ve allá sale de la
+    // lectura day-free, que además sigue respondiendo «¿qué está abierto AHORA?».
+    expect(await repos.paradaRepository.listarPorMaquinaYFecha("M1", DP1)).toHaveLength(0);
+    expect(await repos.danoRepository.listarPorMaquinaYFecha("M1", DP1)).toHaveLength(0);
+    expect(await repos.mantenimientoRepository.listarPorMaquinaYFecha("M1", DP1)).toHaveLength(0);
+    expect(await repos.actividadRepository.listarPorMaquinaYFecha("M1", DP1)).toHaveLength(0);
+    expect((await repos.paradaRepository.getParadaAbiertaDeMaquina("M1"))?.id).toBe(
+      PARADA_DE_D.id,
+    );
+    expect((await repos.danoRepository.getDanoAbierto("M1"))?.id).toBe(DANO_DE_D.id);
+    expect((await repos.mantenimientoRepository.getMantenimientoAbierto("M1"))?.id).toBe(
+      MANT_DE_D.id,
+    );
+    expect((await repos.actividadRepository.getActividadAbierta("M1", "limpieza"))?.id).toBe(
+      LIMPIEZA_DE_D.id,
+    );
+  }, UI_TIMEOUT);
+
+  it("variante OQ-4: la parada abierta bajo la orden X sigue leyendo PARADA cuando la orden pasa a Y", async () => {
+    // La parada se abrió en D bajo la orden X; en D+1 la orden es Y (OP-102).
+    const paradaDeOtraOrden: ParadaAbierta = {
+      ...PARADA_DE_D,
+      id: "p-cruce-otra-orden",
+      ordenId: "ord-cruce",
+    };
+    const { repos } = await montarCruce({
+      paradas: [paradaDeOtraOrden],
+      conOrdenDeD: true,
+    });
+    const user = userEvent.setup();
+
+    // En D+1 la orden vigente es Y: la lectura POR ORDEN no alcanza esa parada…
+    expect(await repos.paradaRepository.getParadaAbierta("M1", "ord-102")).toBeNull();
+    // …pero `estadoMaquina` sí lee PARADA, porque la consulta es de máquina
+    // (OQ-4 cerrada, alternativa B: `getParadaAbiertaDeMaquina`).
+    expectTexto(/PARADA/);
+
+    // La lista del día de D+1 la omite: su fechaOperativa sigue siendo D.
+    expect(await repos.paradaRepository.listarPorMaquinaYFecha("M1", DP1)).toHaveLength(0);
+    expect((await repos.paradaRepository.getParadaAbiertaDeMaquina("M1"))?.fechaOperativa).toBe(D);
+    expect(
+      (await repos.paradaRepository.listarPorMaquinaYFecha("M1", D)).map((p) => p.id),
+    ).toContain(paradaDeOtraOrden.id);
+
+    // Y en D (donde esa orden todavía es la vigente) también se ve PARADA.
+    await navegarA(user, D);
+    expectTexto(/PARADA/);
+    expect(screen.queryByText(/OCIOSA/)).toBeNull();
+  }, UI_TIMEOUT);
+});

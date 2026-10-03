@@ -11,6 +11,7 @@ import type {
   MantenimientoAbierto,
   Orden,
   Parada,
+  ParadaAbierta,
   ResumenTiempoTurno,
   TipoActividadPlanificada,
 } from "./domain/types";
@@ -44,7 +45,7 @@ import {
   validarLecturaConParadas,
 } from "./domain/paradas";
 import type { RegistrarParadaInput } from "./domain/paradas";
-import { comenzarActividad, finalizarActividad } from "./domain/actividades";
+import { comenzarActividad, finalizarActividad, getTiposActividad } from "./domain/actividades";
 import type { RegistrarActividadInput } from "./domain/actividades";
 import { cerrarDano, danoAbierto, registrarDano } from "./domain/danos";
 import type { RegistrarDanoInput } from "./domain/danos";
@@ -69,6 +70,20 @@ import { OrderFinished } from "./ui/OrderFinished";
 import { OrderInProduction, type ResultadoRegistroLectura } from "./ui/OrderInProduction";
 import { SelectorDiaOperativa } from "./ui/SelectorDiaOperativa";
 import "./App.css";
+
+/**
+ * Unión de dos listas de registros ABIERTOS sin duplicar por `id` (tarea 10.1).
+ *
+ * En HOY manda la lectura day-free (`getActividadAbierta` por tipo) y los
+ * abiertos del día propio se suman detrás para que nunca se pierdan — los dos
+ * lados pueden devolver registros distintos cuando hay más de uno abierto del
+ * mismo tipo (patológico, pero el dominio no lo impide en el almacén). En un
+ * día histórico solo entra la lista del día: ver OQ-1 en el condicional.
+ */
+function unirAbiertosPorId<T extends { id: string }>(principal: T[], delDia: T[]): T[] {
+  const yaVistos = new Set(principal.map((registro) => registro.id));
+  return [...principal, ...delDia.filter((registro) => !yaVistos.has(registro.id))];
+}
 
 interface AppProps {
   repository: IOrderRepository;
@@ -185,6 +200,30 @@ function App({
   const [danosDeOrden, setDanosDeOrden] = useState<Dano[]>(() =>
     (estadoInicial?.danos ?? []).filter((d) => d.ordenId === estadoInicial?.orden?.id),
   );
+  // Phase 10 (WU10 — 10.1/10.2/10.3): las tres lecturas day-free que las listas
+  // del día ya no responden. Igual que las cinco listas de arriba se siembran
+  // desde el estado recuperado (primer paint sin parpadeo) y el loader de
+  // montaje las relee de los puertos. Solo los registros ABIERTOS sirven de
+  // semilla: la abiertud es independiente del día, la atribución no (OQ-1).
+  const [actividadesAbiertasDeMaquina, setActividadesAbiertasDeMaquina] = useState<
+    ActividadAbierta[]
+  >(() =>
+    (estadoInicial?.actividades ?? []).filter(
+      (a): a is ActividadAbierta => a.fin === null,
+    ),
+  );
+  const [paradaAbiertaDeOrden, setParadaAbiertaDeOrden] = useState<ParadaAbierta | null>(
+    () =>
+      estadoInicial?.orden
+        ? paradaAbierta(estadoInicial.paradas, "M1", estadoInicial.orden.id)
+        : null,
+  );
+  const [paradaAbiertaDeMaquina, setParadaAbiertaDeMaquina] = useState<ParadaAbierta | null>(
+    () =>
+      (estadoInicial?.paradas ?? []).find(
+        (p): p is ParadaAbierta => p.fin === null && p.maquinaId === "M1",
+      ) ?? null,
+  );
 
   // Referencia estable para los defaults: sin esto, los useEffect de paradas/actividades
   // re-dispararían en cada render (nueva instancia cada vez) -> loop infinito.
@@ -237,22 +276,54 @@ function App({
   }, [repository, lecturaRepository, hoy]);
 
   useEffect(() => {
+    // Phase 10 (WU10 — 10.2/10.3): junto con la lista del día se leen las DOS
+    // lecturas day-free de paradas (DD8: responden «¿qué está abierto AHORA?»,
+    // sin día y sin orden). La lista sigue siendo day-scoped: una sola función
+    // no puede responder las dos preguntas. `orden?.id` entra en las deps
+    // porque la lectura ligada a la orden depende de la orden vigente — mismo
+    // patrón que `cargarDanos`.
     let cancelled = false;
     async function cargarParadas() {
-      const paradasCargadas = await paradaRepository.listarPorMaquinaYFecha("M1", hoy);
-      if (!cancelled) setParadas(paradasCargadas);
+      const [delDia, deMaquina, deOrden] = await Promise.all([
+        paradaRepository.listarPorMaquinaYFecha("M1", hoy),
+        paradaRepository.getParadaAbiertaDeMaquina("M1"),
+        orden ? paradaRepository.getParadaAbierta("M1", orden.id) : Promise.resolve(null),
+      ]);
+      if (cancelled) return;
+      setParadas(delDia);
+      setParadaAbiertaDeMaquina(deMaquina);
+      setParadaAbiertaDeOrden(deOrden);
     }
     cargarParadas();
     return () => {
       cancelled = true;
     };
-  }, [paradaRepository, hoy]);
+  }, [paradaRepository, orden?.id, hoy]);
 
   useEffect(() => {
+    // Phase 10 (WU10 — 10.1): la lista del día NO alcanza para «¿qué está
+    // abierto?» — un registro de ayer sigue abierto hoy y su fechaOperativa lo
+    // deja fuera de `listarPorMaquinaYFecha`. Además de la lista se lee la
+    // abiertud day-free, UNA consulta por tipo (el puerto expone
+    // `getActividadAbierta(maquinaId, tipo)`), para los CUATRO valores de
+    // `TipoActividadPlanificada` — el diseño decía «los dos», pero el tipo
+    // tiene cuatro (defecto D1 de 10.1): `cambio_diseno`, `limpieza`,
+    // `almuerzo` y `pausa`. Como cada registro tiene un solo tipo, las cuatro
+    // consultas no pueden pisarse.
     let cancelled = false;
     async function cargarActividades() {
-      const actividadesCargadas = await actividadRepository.listarPorMaquinaYFecha("M1", hoy);
-      if (!cancelled) setActividades(actividadesCargadas);
+      const [delDia, ...abiertasPorTipo] = await Promise.all([
+        actividadRepository.listarPorMaquinaYFecha("M1", hoy),
+        ...getTiposActividad().map((tipo) =>
+          actividadRepository.getActividadAbierta("M1", tipo.id),
+        ),
+      ]);
+      if (cancelled) return;
+      const abiertas = abiertasPorTipo
+        .filter((a): a is ActividadAbierta => a !== null)
+        .sort((a, b) => a.inicio.localeCompare(b.inicio));
+      setActividades(delDia);
+      setActividadesAbiertasDeMaquina(abiertas);
     }
     cargarActividades();
     return () => {
@@ -338,11 +409,33 @@ function App({
    * el daño abierto) queda viejo mientras su lista ya está fresca.
    */
   async function recargarParadas(): Promise<void> {
-    setParadas(await paradaRepository.listarPorMaquinaYFecha("M1", hoy));
+    // Phase 10 (WU10 — 10.2/10.3): mismo trío que `cargarParadas`; tras cada
+    // escritura la lista del día y las dos lecturas day-free se refrescan juntos.
+    const [delDia, deMaquina, deOrden] = await Promise.all([
+      paradaRepository.listarPorMaquinaYFecha("M1", hoy),
+      paradaRepository.getParadaAbiertaDeMaquina("M1"),
+      orden ? paradaRepository.getParadaAbierta("M1", orden.id) : Promise.resolve(null),
+    ]);
+    setParadas(delDia);
+    setParadaAbiertaDeMaquina(deMaquina);
+    setParadaAbiertaDeOrden(deOrden);
   }
 
   async function recargarActividades(): Promise<void> {
-    setActividades(await actividadRepository.listarPorMaquinaYFecha("M1", hoy));
+    // Phase 10 (WU10 — 10.1): la lista del día y la abiertud day-free se
+    // re-leen juntas, igual que en el loader de montaje.
+    const [delDia, ...abiertasPorTipo] = await Promise.all([
+      actividadRepository.listarPorMaquinaYFecha("M1", hoy),
+      ...getTiposActividad().map((tipo) =>
+        actividadRepository.getActividadAbierta("M1", tipo.id),
+      ),
+    ]);
+    setActividades(delDia);
+    setActividadesAbiertasDeMaquina(
+      abiertasPorTipo
+        .filter((a): a is ActividadAbierta => a !== null)
+        .sort((a, b) => a.inicio.localeCompare(b.inicio)),
+    );
   }
 
   async function recargarDanos(): Promise<void> {
@@ -539,7 +632,11 @@ function App({
     input: RegistrarActividadInput,
   ): Promise<string[]> {
     if (soloLectura) return ["no se puede registrar en un día que no es hoy"];
-    const resultado = comenzarActividad(actividades, input);
+    // Tarea 10.1: el guard de `comenzarActividad` filtra `fin === null` sobre
+    // SU argumento, así que hoy tiene que recibir la abiertud de la máquina
+    // (day-free, ya en estado) unida a los abiertos del día — no la lista del
+    // día, que se queda corta cuando la actividad abierta empezó ayer.
+    const resultado = comenzarActividad(actividadesAbiertas, input);
     if (resultado.errores.length > 0) {
       return resultado.errores;
     }
@@ -608,7 +705,17 @@ function App({
     const vinculada = input.paradaId
       ? await paradaRepository.obtenerPorId(input.paradaId)
       : undefined;
-    const resultado = registrarDano(danos, input, (id) =>
+    // Tarea 10.7: `registrarDano` filtra `fin === null` sobre SU argumento, y
+    // `danos` es la lista del día — un daño abierto en un día anterior dejaría
+    // de bloquear un segundo daño HOY. Se le pasa la unión con el daño abierto
+    // day-free que ya está en estado (sin lectura nueva); la entrada repetida es
+    // inocua porque el guard solo hace `.find()`. Sin rama `soloLectura`: el
+    // guard de la tarea 7.6 de más arriba retorna antes de construir el argumento.
+    const danosExistentes = [
+      ...danos,
+      ...(danoAbiertoDeMaquina ? [danoAbiertoDeMaquina] : []),
+    ];
+    const resultado = registrarDano(danosExistentes, input, (id) =>
       id === vinculada?.id ? vinculada : paradas.find((p) => p.id === id),
     );
     if (resultado.errores.length > 0) {
@@ -742,7 +849,17 @@ function App({
     const vinculado = input.danoId
       ? await danoRepository.obtenerPorId(input.danoId)
       : undefined;
-    const resultado = registrarMantenimiento(mantenimientos, input, (id) =>
+    // Tarea 10.8: espejo exacto de 10.7 — `registrarMantenimiento` filtra
+    // `fin === null` sobre `existentes`, así que la unión con el mantenimiento
+    // abierto day-free (ya en estado) es lo que sostiene «un solo
+    // mantenimiento abierto por máquina» (CONTEXT.md) cuando el abierto viene
+    // de un día anterior. Sin rama `soloLectura`: el guard de 7.6 retorna
+    // antes.
+    const existentes = [
+      ...mantenimientos,
+      ...(mantenimientoAbiertoDeMaquina ? [mantenimientoAbiertoDeMaquina] : []),
+    ];
+    const resultado = registrarMantenimiento(existentes, input, (id) =>
       id === vinculado?.id ? vinculado : danos.find((d) => d.id === id),
     );
     if (resultado.errores.length > 0) {
@@ -804,12 +921,35 @@ function App({
 
   /** Paradas de la orden actual + parada abierta derivadas del estado (dominio puro). */
   const paradasDeOrden = paradas.filter((p) => p.ordenId === orden?.id);
-  const paradaActivaDeOrden = orden ? paradaAbierta(paradas, "M1", orden.id) : null;
+  /**
+   * OQ-1 (tarea 10.6) — por qué el `soloLectura ?` de acá abajo manda en un día
+   * histórico sobre LA LISTA DEL DÍA y no sobre `getParadaAbierta`: la lectura
+   * day-free responde «¿qué está abierto AHORA?», es decir, un día DISTINTO del
+   * que se está mirando, y una tarjeta de parada activa de hoy aparecería
+   * atribuida al día pasado — dos días para un mismo registro. La lectura
+   * alternativa (mantener `get*Abierta` en todos los días) es exactamente lo
+   * que OQ-1 le pide confirmar a Gerencia; la implementación es la misma en
+   * ambos casos, solo cambia la razón que queda registrada.
+   */
+  const paradaActivaDeOrden = orden
+    ? soloLectura
+      ? paradaAbierta(paradas, "M1", orden.id)
+      : // En HOY manda la lectura day-free ya en estado (uno o dos hoy, nunca
+        // dos fuentes distintas para la tarjeta y el guard de registrar parada);
+        // el fallback es la semilla previa a que el loader resuelva.
+        (paradaAbiertaDeOrden ?? paradaAbierta(paradas, "M1", orden.id))
+    : null;
 
   /** Actividades abiertas de la máquina: limpieza y/o cambio de diseño pueden coexistir. */
-  const actividadesAbiertas = actividades.filter(
+  const abiertasDelDia = actividades.filter(
     (a): a is ActividadAbierta => a.fin === null,
   );
+  const actividadesAbiertas = soloLectura
+    ? abiertasDelDia
+    : // HOY: la abiertud day-free (cuatro tipos) manda; los abiertos del día
+      // propio se suman detrás para que nunca se pierdan (10.1). Ambos lados
+      // alimentan la tarjeta Y el argumento de `comenzarActividad`.
+      unirAbiertosPorId(actividadesAbiertasDeMaquina, abiertasDelDia);
 
   const propsActividades = {
     hoy,
@@ -893,10 +1033,28 @@ function App({
   // Ticket 09 — DashboardHome: props derivadas de estado existente
   // ---------------------------------------------------------------------------
 
-  /** Parada abierta de la máquina (con o sin orden). */
-  const paradaAbiertaMaquina = paradas.find(
-    (p) => p.fin === null && p.maquinaId === "M1",
-  );
+  /**
+   * Parada abierta de la máquina (con o sin orden) — lectura 10.3.
+   *
+   * OQ-1 (tarea 10.6): en un día histórico manda LA LISTA DEL DÍA, no la
+   * lectura day-free, porque `getParadaAbiertaDeMaquina` responde «¿qué está
+   * abierto AHORA?» — otro día — y la parada de hoy se atribuiría al día
+   * pasado. Ver el comentario completo en `paradaActivaDeOrden`.
+   *
+   * Desviación registrada sobre la expresión literal de 10.3
+   * (`paradaAbiertaDeMaquina ?? paradaAbierta(paradas, "M1", null)`): el lado
+   * del día usa el `find` preexistente (con o sin orden) y no
+   * `paradaAbierta(…, null)`, cuyo predicado exige `ordenId === null` y se
+   * salta una parada abierta de la orden — la tarjeta diría ANDANDO/OCIOSA
+   * mientras `paradaActivaDeOrden` (mismo array) dice «Parada activa». El
+   * `find` es un superconjunto estricto de esa expresión: todo lo que ella
+   * encuentra, esto lo encuentra también, y es exactamente la expresión que
+   * hoy ya corre en esta rama.
+   */
+  const paradaAbiertaMaquina = soloLectura
+    ? paradas.find((p) => p.fin === null && p.maquinaId === "M1")
+    : (paradaAbiertaDeMaquina ??
+      paradas.find((p) => p.fin === null && p.maquinaId === "M1"));
 
   /** Estado derivado de la máquina: ANDANDO, PARADA u OCIOSA. */
   const estadoMaquina: "andando" | "parada" | "ociosa" = (() => {
@@ -916,8 +1074,26 @@ function App({
       }
     : null;
 
-  /** Props de mantenimiento abierto para DashboardHome. */
-  const mantAbierto = mantenimientoAbierto(mantenimientos, "M1");
+  /**
+   * Props de mantenimiento abierto para DashboardHome.
+   *
+   * OQ-1 (tarea 10.6): mismo `soloLectura ? … :` que `paradaAbiertaMaquina`.
+   * En un día histórico manda LA LISTA DEL DÍA (`mantenimientos` ya la redujo
+   * 7.5 al día consultada), porque `mantenimientoAbiertoDeMaquina` responde
+   * «¿qué está abierto AHORA?» — otro día — y el mantenimiento de hoy se
+   * atribuiría al día pasado. En HOY manda la lectura day-free ya en estado;
+   * el `??` es la semilla previa a que el loader de montaje resuelva.
+   *
+   * Tarea 10.9: derivar esto solo de la lista del día era la última instancia
+   * de la clase 10.1–10.3 / 10.7–10.8. Con la lista de D+1 vacía la tarjeta no
+   * renderizaba mientras el banner de `MantenimientoSection` — que responde
+   * por `mantenimientoAbiertoDeMaquina` — decía «Mantenimiento activo»: dos
+   * respuestas contradictorias sobre la misma máquina dentro de un mismo día.
+   */
+  const mantAbierto = soloLectura
+    ? mantenimientoAbierto(mantenimientos, "M1")
+    : (mantenimientoAbiertoDeMaquina ??
+      mantenimientoAbierto(mantenimientos, "M1"));
   const mantenimientoAbiertoProps = mantAbierto
     ? {
         tipo: mantAbierto.tipo,
