@@ -975,7 +975,20 @@ function App({
     danosDeMaquina: danos,
     // Phase 14.2: el abierto de la máquina vive en estado (seed + loaders + recargar),
     // no se deriva en el render body; el render nunca consulta el puerto.
-    danoAbiertoDeMaquina,
+    //
+    // OQ-1 / tarea 10.6 (gate de la revisión final): el banner tiene que
+    // responder POR EL DÍA CONSULTADO. `danoAbiertoDeMaquina` sale de
+    // `getDanoAbierto`, una consulta SIN predicado de día que responde «¿qué
+    // está abierto AHORA?» — es decir, por HOY —, así que en un día histórico el
+    // banner mostraría un daño ajeno a ese día, con `duracionDaño` corriendo
+    // desde `Date.now()`. Por eso la lectura day-free solo alimenta el banner
+    // cuando se consulta el día operativo real; en un día pasado manda la lista
+    // del día (`danos` ya quedó reducida a ese día por
+    // `listarPorMaquinaYFecha`). Mismo `soloLectura ? … :` que `mantAbierto` y
+    // `paradaAbiertaMaquina` (tarea 10.9): se gatea SOLO el valor que viaja en
+    // la prop, sin tocar el estado (siguen leyéndolo `registrarDano` y los
+    // loaders) ni las vistas.
+    danoAbiertoDeMaquina: soloLectura ? danoAbierto(danos, "M1") : danoAbiertoDeMaquina,
     paradasVinculables: paradas.filter((p) => p.ordenId === (orden?.id ?? null)),
     // Gate #1 (`soloLectura`) se apila con el gate #2 (`permitirRegistrar`): la sección
     // solo muestra sus controles si el día NO es pasado Y la orden no está finalizada.
@@ -1002,7 +1015,22 @@ function App({
     mantenimientosDeMaquina: mantenimientos,
     // Phase 14.2: el abierto de la máquina vive en estado (seed + loaders + recargar);
     // el render body no consulta el puerto. DashboardHome deriva el suyo del estado.
-    mantenimientoAbiertoDeMaquina,
+    //
+    // OQ-1 / tarea 10.6 (gate de la revisión final): mismo `soloLectura ? … :`
+    // que en `danosProps` y que `mantAbierto` de más abajo — de hecho, el MISMO
+    // valor que la tarjeta de `DashboardHome`, así que las dos respuestas no
+    // pueden divergir nunca. `mantenimientoAbiertoDeMaquina` sale de
+    // `getMantenimientoAbierto`, la consulta day-free que responde «¿qué está
+    // abierto AHORA?» por HOY, no por el día consultado: sin este gate una misma
+    // pantalla se contradecía — la tarjeta (gateada en 10.9) callaba mientras la
+    // sección decía «Mantenimiento activo» por un registro de otro día, con
+    // `duracionMantenimiento` corriendo desde `Date.now()`. En un día histórico
+    // manda la lista del día (`mantenimientos`, ya reducida por
+    // `listarPorMaquinaYFecha`); el estado day-free NO se toca: siguen
+    // leyéndolo `mantAbierto`, `registrarMantenimiento` y los loaders.
+    mantenimientoAbiertoDeMaquina: soloLectura
+      ? mantenimientoAbierto(mantenimientos, "M1")
+      : mantenimientoAbiertoDeMaquina,
     danosDeMaquina: danos,
     permitirRegistrar: !soloLectura && orden?.estado !== "finished",
     fechaOperativa: hoy,

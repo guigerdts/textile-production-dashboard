@@ -3860,3 +3860,143 @@ describe("App — phase 11 (WU11): ocho call sites day-scoped y el guard `cancel
     expectTexto(`Fecha operativa: ${DIA_NUEVO}`);
   }, UI_TIMEOUT);
 });
+
+// ---------------------------------------------------------------------------
+// Revisión final de historical-day-navigation — gate de los BANNERS de registro
+// abierto sobre un día histórico. El gate vive en App (punto de composición);
+// DanoSection y MantenimientoSection NO cambian.
+// ---------------------------------------------------------------------------
+describe("App — los banners de registro abierto responden por el día consultado", () => {
+  /** HOY inyectado (`fechaOperativaHoy`): los dos registros abiertos viven en este día. */
+  const HOY = "2026-09-15";
+  /** Día histórico CON orden propia (OP-101) y SIN registros abiertos propios. */
+  const DIA_PASADO = "2026-09-11";
+  /** Negación literal de los guards de escritura sobre un día que no es hoy (7.6). */
+  const RECHAZO = ["no se puede registrar en un día que no es hoy"];
+
+  interface Repos {
+    repository: InMemoryOrderRepository;
+    paradaRepository: InMemoryParadaRepository;
+    actividadRepository: InMemoryActividadPlanificadaRepository;
+    danoRepository: InMemoryDanoRepository;
+    mantenimientoRepository: InMemoryMantenimientoRepository;
+    inspeccionRepository: InMemoryInspeccionRepository;
+    jornadaRepository: InMemoryJornadaRepository;
+  }
+
+  /**
+   * Arnés mínimo (patrón de la fase 10): el día vive en la raíz, `key` DESMONTA
+   * `App` al cambiar y los tres props del navegador viajan juntos. Sin
+   * `estadoInicial` a propósito: los dos abiertos tienen que llegar por los
+   * LOADER, que es lo que `cargarDanos` / `cargarMantenimientos` re-leen al
+   * cambiar de día.
+   */
+  function Arnés({ repos, hoy }: { repos: Repos; hoy: string }) {
+    const [dia, setDia] = useState(hoy);
+    const [cargando, setCargando] = useState(false);
+    const [errorDia, setErrorDia] = useState<string | null>(null);
+
+    async function seleccionarDia(nuevo: string): Promise<void> {
+      if (nuevo === dia || cargando) return;
+      setCargando(true);
+      setErrorDia(null);
+      try {
+        setDia(nuevo);
+      } finally {
+        setCargando(false);
+      }
+    }
+
+    return (
+      <App
+        key={dia}
+        {...repos}
+        hoy={dia}
+        fechaOperativaHoy={hoy}
+        onSeleccionarDia={seleccionarDia}
+        cargandoDia={cargando}
+        errorCambioDia={errorDia}
+      />
+    );
+  }
+
+  /**
+   * Un daño ABIERTO y un mantenimiento ABIERTO, ambos con `fechaOperativa` = HOY.
+   * `DANO_3_ABIERTO` y `MANT_4_ABIERTO` ya los traen así; el día histórico no
+   * siembra absolutamente nada, así que sus listas propias quedan vacías.
+   */
+  async function montarConAbiertosDeHoy(): Promise<Repos> {
+    const repos: Repos = {
+      repository: new InMemoryOrderRepository(),
+      paradaRepository: new InMemoryParadaRepository([]),
+      actividadRepository: new InMemoryActividadPlanificadaRepository([]),
+      danoRepository: new InMemoryDanoRepository([DANO_3_ABIERTO]),
+      mantenimientoRepository: new InMemoryMantenimientoRepository([MANT_4_ABIERTO]),
+      inspeccionRepository: new InMemoryInspeccionRepository([]),
+      jornadaRepository: new InMemoryJornadaRepository([]),
+    };
+    await mountApp(<Arnés repos={repos} hoy={HOY} />);
+    return repos;
+  }
+
+  /** Cambia de día por el campo de fecha real (el mismo seam que `Raiz`). */
+  async function navegarA(dia: string) {
+    fireEvent.change(screen.getByLabelText("Fecha operativa"), { target: { value: dia } });
+    await act(async () => {});
+    expectTexto(`Fecha operativa: ${dia}`);
+  }
+
+  function tarjetaMantenimientoDeHoy() {
+    return within(screen.getByTestId("dashboard-home")).queryByText(/Mantenimiento reactivo/);
+  }
+
+  it("los abiertos de HOY no se atribuyen al día histórico y reaparecen al volver a HOY", async () => {
+    await montarConAbiertosDeHoy();
+
+    // (a) HOY: los dos banners responden por los abiertos de HOY, y la tarjeta
+    // de DashboardHome también (10.9, control positivo).
+    expect(screen.getByTestId("dano-abierto")).toBeTruthy();
+    expect(screen.getByTestId("mantenimiento-abierto")).toBeTruthy();
+    expect(tarjetaMantenimientoDeHoy()).toBeTruthy();
+
+    // (b) Día histórico: sus SECCIONES están renderizadas (con SU orden)…
+    await navegarA(DIA_PASADO);
+    expect(screen.getByTestId("danos-ord-101")).toBeTruthy();
+    expect(screen.getByTestId("mantenimiento-seccion")).toBeTruthy();
+    // …pero ningún banner de registro abierto se atribuye a este día: el día
+    // histórico no tiene daños ni mantenimientos abiertos propios, y el estado
+    // abierto day-free (responde «¿qué está abierto AHORA?») solo puede alimentar
+    // el banner cuando se consulta el día operativo real.
+    expect(screen.queryByTestId("dano-abierto")).toBeNull();
+    expect(screen.queryByTestId("mantenimiento-abierto")).toBeNull();
+    // La tarjeta de DashboardHome, que YA respondía por la lista del día
+    // (10.9), se queda muda: el día está vacío y las dos respuestas coinciden.
+    expect(tarjetaMantenimientoDeHoy()).toBeNull();
+
+    // (c) El guard de escritura sobre un día que no es hoy sigue intacto: la
+    // llamada directa al handler capturado devuelve la negación literal.
+    expect(propsVistas.ordenDisponible).not.toBeNull();
+    const disponibles = propsVistas.ordenDisponible as Parameters<typeof OrderAvailable>[0];
+    expect(
+      await disponibles.onRegistrarDano({
+        maquinaId: "M1",
+        ordenId: "ord-101",
+        operatorName: "Laura",
+        tipo: "mecanico",
+        componente: "eje trasero",
+        inicio: `${DIA_PASADO}T10:00:00.000Z`,
+        fechaOperativa: DIA_PASADO,
+        causoParada: false,
+        paradaId: null,
+        posibleSegunda: false,
+      }),
+    ).toEqual(RECHAZO);
+
+    // (d) Vuelta a HOY: los loaders re-leen al cambiar de día y los dos banners
+    // reaparecen — el gate no es pegajoso.
+    await navegarA(HOY);
+    expect(screen.getByTestId("dano-abierto")).toBeTruthy();
+    expect(screen.getByTestId("mantenimiento-abierto")).toBeTruthy();
+    expect(tarjetaMantenimientoDeHoy()).toBeTruthy();
+  }, UI_TIMEOUT);
+});
