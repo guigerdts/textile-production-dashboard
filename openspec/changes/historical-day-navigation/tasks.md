@@ -637,32 +637,32 @@ keeps its current meaning on the three `…SectionProps`, so the pre-change beha
 
 **Depends on:** WU7 (the navigator renders inside `App`'s header and calls back through `App`).
 
-- [ ] 9.1 Create `src/ui/SelectorDiaOperativa.tsx` with a native `<nav aria-label="Día operativo">` containing: a
+- [x] 9.1 Create `src/ui/SelectorDiaOperativa.tsx` with a native `<nav aria-label="Día operativo">` containing: a
   `<button type="button">` with `aria-label="Día operativo anterior"` and a `←` glyph in an `aria-hidden` span; a
   labelled `<input type="date">` (`value={fechaOperativa}`, `max={hoy}`); and a
   `<button type="button">` with `aria-label="Día operativo siguiente"` and a `→` glyph, `disabled={disabled || esHoy}`.
   Props: `fechaOperativa`, `hoy` (the **injected** read-only reference — the `App` prop from task 7.2, not a fresh
   clock read), `disabled`, `onSeleccionar`. **Traces to:** `H:326-344` ("The selection resolves to a single date …
   no second day is included"; "No range or multi-day control exists"); DD9; design §7.
-- [ ] 9.2 Add `desplazarDia(fecha, delta)` to `src/store/clock.ts`, next to `fechaOperativaDe` (`:32-34`) and the
+- [x] 9.2 Add `desplazarDia(fecha, delta)` to `src/store/clock.ts`, next to `fechaOperativaDe` (`:32-34`) and the
   `en-CA` constant (`:24`), so the convention lives in one module: `Date.setDate(getDate() + n)` on a `YYYY-MM-DD`
   string parsed as **local midnight**, formatted back with the same `en-CA` shape. **No UTC arithmetic, no
   `toISOString()`** — the project already rejected UTC for this field (CHANGE 1, DD9). `max={hoy}` plus "next"
   disabled at today makes "exactly one day, never a range" structural: `<input type="date">` has no
   start-and-end affordance. **Traces to:** `H:326-344`; `H:126-128`; design §7; DD9.
-- [ ] 9.3 Add the navigator's CSS (`.selector-dia`, `.selector-dia__campo`, `.selector-dia__error`) to `src/App.css`,
+- [x] 9.3 Add the navigator's CSS (`.selector-dia`, `.selector-dia__campo`, `.selector-dia__error`) to `src/App.css`,
   which currently has **zero** `.selector-dia*` rules (754 lines). Keep it to layout only — no behavioural style.
   **Traces to:** design §7, §9.
-- [ ] 9.4 Wire the navigator into `App`'s header (`App.tsx:884-887`) immediately after the existing
+- [x] 9.4 Wire the navigator into `App`'s header (`App.tsx:884-887`) immediately after the existing
   `Fecha operativa: {hoy}` span (`:886`), inside the `{onSeleccionarDia && (…)}` block from task 7.7, with the
   `role="alert"` error paragraph directly after the `<nav>` and **inside the same block** — so neither can appear
   on a direct `App` mount. `cargandoDia` disables both arrows and the input for the whole in-flight window, so a
   second click cannot queue a second `seleccionarDia`. **Traces to:** `H:86-90`; `H:92-98`; design §7.
-- [ ] 9.5 Add the navigation cases to `src/App.test.tsx`: the default selection is today; `←`, `→` and the date
+- [x] 9.5 Add the navigation cases to `src/App.test.tsx`: the default selection is today; `←`, `→` and the date
   input each load the right day; `→` is disabled at today and `max` is today; a change remounts and shows no
   previous-day row; no control accepts a start and an end date. **Traces to:** `H:71-77`; `H:86-98`;
   `H:332-344`; `H:346-351`; design §10.4 "Navigation and read-only".
-- [ ] 9.6 State **OQ-2** in the component's JSDoc rather than answering it in code: the upper bound is today and the
+- [x] 9.6 State **OQ-2** in the component's JSDoc rather than answering it in code: the upper bound is today and the
   lower bound is unbounded past. `specs/historical-day-navigation/spec.md` requires no lower bound, so no minimum-date logic is invented here. If a
   lower bound is later wanted, it belongs to a change that records it as a domain rule. **Traces to:** design §12 Q2.
 
@@ -670,6 +670,24 @@ keeps its current meaning on the three `…SectionProps`, so the pre-change beha
 elements need no custom focus/keyboard/formatting test of their own.
 **Rollback:** delete `src/ui/SelectorDiaOperativa.tsx`, remove `desplazarDia` from `src/store/clock.ts`, remove the
 `{onSeleccionarDia && (…)}` block from `App.tsx:886-887` and the `.selector-dia*` rules from `src/App.css`.
+
+> **9.x status: implemented; the first "Finish when" clause is unmet for 7.9's standing reason.**
+> `npx tsc --noEmit` is clean. `src/App.test.tsx` is **118 cases: 113 passed / 5 failed** — the same five, byte-for-byte
+> identical `FAIL` lines (verified by diff, not by eye). `src/store/clock.test.ts` **12/12**;
+> `persistence-integration` + `lecturaWiring` **16/16**; `git diff -- src/domain src-tauri` is empty. The three native
+> elements needed no custom focus/keyboard/formatting test, as the clause anticipated — they are `<nav>`, two
+> `<button type="button">` and `<input type="date">`, so the browser supplies the semantics.
+> The last clause **is** met. Recorded deviations, none hidden:
+> (a) 9.6's JSDoc is **Spanish**, not the English the spec quotes, matching the file's language;
+> (b) the 9.5 cases drive a **local harness mirroring `Raiz`'s composition** rather than importing `Raiz`, because
+> `Raiz`'s `seleccionarDia` needs `recoverPersistedState` over all eight ports — **this is not a coverage shortcut**:
+> WU12 is the phase that exercises the day change through the real recovery seam, so 9.5 covering `App`'s navigator
+> contract and WU12 covering the seam is the intended split, not a gap;
+> (c) 9.5 gained a seventh concern beyond the spec's list — `cargandoDia` disabling both arrows and the input for the
+> whole in-flight window, which 9.4 states as a hard constraint but 9.5's case list did not name;
+> (d) 6 `desplazarDia` cases were added to the **pre-existing** `src/store/clock.test.ts` (orchestrator-authorised, not
+> in the spec) covering delta 0, both month boundaries, a year boundary, a leap day and a DST transition — DD9 forbids
+> UTC for this field and this is the arithmetic that would silently regress.
 
 ---
 

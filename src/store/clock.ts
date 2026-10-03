@@ -37,3 +37,23 @@ export function fechaOperativaDe(reloj: Reloj = relojDelSistema): string {
 export function fechaOperativaHoyLocal(): string {
   return fechaOperativaDe(relojDelSistema);
 }
+
+/**
+ * Desplaza una fecha operativa (YYYY-MM-DD) en `delta` días — tarea 9.2 (DD9).
+ *
+ * Es ARITMÉTICA DE CALENDARIO LOCAL, la misma convención del módulo: la cadena
+ * se convierte a medianoche LOCAL y se reformatea con el mismo `en-CA`.
+ *
+ * NUNCA `toISOString()` ni aritmética UTC. Ojo con la trampa: `new Date("YYYY-MM-DD")`
+ * (formato de solo fecha) interpreta la medianoche en UTC, y en una planta al
+ * oeste de UTC eso devuelve el día ANTERIOR al pedir `+1` cruzando medianoche —
+ * exactamente el bug que esta cabecera documenta para el día operativo. Por eso
+ * los componentes se leen a mano y se pasa `new Date(año, mes, día)`, que SIEMPRE
+ * es medianoche local.
+ */
+export function desplazarDia(fechaOperativa: string, delta: number): string {
+  const [anio, mes, dia] = fechaOperativa.split("-").map(Number);
+  const fecha = new Date(anio, mes - 1, dia);
+  fecha.setDate(fecha.getDate() + delta);
+  return fecha.toLocaleDateString(LOCALE_ISO);
+}

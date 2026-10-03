@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { fechaOperativaDe, relojDelSistema } from "./clock";
+import { desplazarDia, fechaOperativaDe, relojDelSistema } from "./clock";
 
 /**
  * Fija el reloj: un instante UTC concreto se convierte a un instante local
@@ -68,5 +68,54 @@ describe("fechaOperativaDe", () => {
     const t1 = relojDelSistema().getTime();
     const t2 = relojDelSistema().getTime();
     expect(t2).toBeGreaterThanOrEqual(t1);
+  });
+});
+
+/**
+ * Tarea 9.2 (DD9): la única aritmética de días del navegador. Es ARITMÉTICA DE
+ * CALENDARIO LOCAL — se parsea la `YYYY-MM-DD` como medianoche LOCAL y se
+ * formatea con el mismo `en-CA`; usar `toISOString()`/UTC la desplazaría un día
+ * en cualquier runner al oeste de UTC. Por eso los valores esperados son
+ * literales de calendario y no se derivan del reloj.
+ */
+describe("desplazarDia", () => {
+  it("delta 0 devuelve el mismo día", () => {
+    expect(desplazarDia("2026-09-11", 0)).toBe("2026-09-11");
+  });
+
+  it("avanza cruzando el límite de mes", () => {
+    expect(desplazarDia("2026-09-30", 1)).toBe("2026-10-01");
+    expect(desplazarDia("2026-12-31", 1)).toBe("2027-01-01");
+  });
+
+  it("retrocede cruzando el límite de mes", () => {
+    expect(desplazarDia("2026-10-01", -1)).toBe("2026-09-30");
+    expect(desplazarDia("2026-03-01", -1)).toBe("2026-02-28");
+  });
+
+  it("avanza cruzando el límite de año", () => {
+    expect(desplazarDia("2026-12-31", 1)).toBe("2027-01-01");
+    expect(desplazarDia("2026-01-01", -1)).toBe("2025-12-31");
+  });
+
+  it("cuenta el día bisiesto sin colapsar febrero", () => {
+    // 2028 es bisiesto: 28 → 29 → 01 de marzo.
+    expect(desplazarDia("2028-02-28", 1)).toBe("2028-02-29");
+    expect(desplazarDia("2028-02-29", 1)).toBe("2028-03-01");
+    expect(desplazarDia("2028-03-01", -1)).toBe("2028-02-29");
+    // 2027 NO lo es: 28 → 01 de marzo.
+    expect(desplazarDia("2027-02-28", 1)).toBe("2027-03-01");
+  });
+
+  it("no deriva al cruzar una transición de horario de verano", () => {
+    // 2026-03-29 (Europa) y 2026-11-01 (América del Norte) son días de cambio
+    // de horario: la medianoche local existe y el día de calendario resultante
+    // es el esperado en CUALQUIER zona del runner (una implementación que
+    // calculara el día con la hora local de un instante desplazaría el resultado
+    // al cruzar el salto).
+    expect(desplazarDia("2026-03-28", 1)).toBe("2026-03-29");
+    expect(desplazarDia("2026-03-30", -1)).toBe("2026-03-29");
+    expect(desplazarDia("2026-10-31", 1)).toBe("2026-11-01");
+    expect(desplazarDia("2026-11-02", -1)).toBe("2026-11-01");
   });
 });

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactElement } from "react";
+import { useState } from "react";
 import userEvent from "@testing-library/user-event";
 import App from "./App";
 import { InMemoryOrderRepository } from "./store/inMemoryRepository";
@@ -2727,5 +2728,246 @@ describe("App — phase 8: el día seleccionado que no es hoy es de solo lectura
     expect((await repository.getOrderByFechaOperativa(DIA))!.estado).toBe(
       "in_production",
     );
+  }, UI_TIMEOUT);
+});
+
+describe("App — phase 9: navegador de un día operativo (tarea 9.5)", () => {
+  /**
+   * "Hoy" INYECTADO (prop `fechaOperativaHoy`), distinto del día real del reloj
+   * del runner: la selección por defecto del navegador tiene que salir de esta
+   * prop, no de una lectura de reloj, y `max` tiene que apuntar a este valor.
+   * Es además un día CON orden (OP-102), así que sirve de marcador positivo.
+   */
+  const HOY = "2026-09-15";
+  /** Día distinto de hoy con OTRA orden (OP-101): meta del campo de fecha. */
+  const DIA_OTRA_ORDEN = "2026-09-11";
+  /** Día sin orden, un día antes de `HOY`: meta de la flecha ←. */
+  const DIA_SIN_ORDEN = "2026-09-14";
+
+  function estadoVacio(dia: string): RecoveryState {
+    return {
+      jornada: jornadaDefault(dia),
+      orden: undefined,
+      lecturas: [],
+      paradas: [],
+      actividades: [],
+      danos: [],
+      mantenimientos: [],
+      inspecciones: [],
+    };
+  }
+
+  /**
+   * Arnés de la tarea 9.5: reproduce la composición de `Raiz` (DD5) sin
+   * importarlo — el día vive en la raíz, `key` DESMONTA `App` al cambiar, y los
+   * tres props del navegador viajan juntos. `Raiz` no sirve acá porque su
+   * `seleccionarDia` llama a `recoverPersistedState` sobre los ocho puertos; el
+   * arnés resuelve el cambio con las MISMAS instancias de repositorio que ya
+   * tenía, que es lo único que la especificación exige (H:105-110).
+   */
+  function Arnés({
+    repos,
+    hoy,
+    estados,
+    antesDeCambiar,
+  }: {
+    repos: {
+      repository: InMemoryOrderRepository;
+      paradaRepository: InMemoryParadaRepository;
+      actividadRepository: InMemoryActividadPlanificadaRepository;
+      danoRepository: InMemoryDanoRepository;
+      mantenimientoRepository: InMemoryMantenimientoRepository;
+      inspeccionRepository: InMemoryInspeccionRepository;
+      jornadaRepository: InMemoryJornadaRepository;
+    };
+    hoy: string;
+    estados: Record<string, RecoveryState | undefined>;
+    antesDeCambiar?: (dia: string) => Promise<void>;
+  }) {
+    // Selección por defecto = el "hoy" inyectado (H:71-77), igual que `Raiz`.
+    const [vista, setVista] = useState<{ dia: string; estado?: RecoveryState }>(() => ({
+      dia: hoy,
+      estado: estados[hoy],
+    }));
+    const [cargando, setCargando] = useState(false);
+    const [errorDia, setErrorDia] = useState<string | null>(null);
+
+    async function seleccionarDia(dia: string): Promise<void> {
+      // Idempotente y sin apilar (misma regla que `Raiz`, H:112-117).
+      if (dia === vista.dia || cargando) return;
+      setCargando(true);
+      setErrorDia(null);
+      try {
+        if (antesDeCambiar) await antesDeCambiar(dia);
+        // Atómico: el día y su semilla cambian juntos y solo tras resolverse.
+        setVista({ dia, estado: estados[dia] });
+      } catch (error) {
+        setErrorDia(error instanceof Error ? error.message : String(error));
+      } finally {
+        setCargando(false);
+      }
+    }
+
+    return (
+      <App
+        key={vista.dia}
+        {...repos}
+        estadoInicial={vista.estado}
+        hoy={vista.dia}
+        fechaOperativaHoy={hoy}
+        onSeleccionarDia={seleccionarDia}
+        cargandoDia={cargando}
+        errorCambioDia={errorDia}
+      />
+    );
+  }
+
+  async function montarNavegador(
+    opciones: { antesDeCambiar?: (dia: string) => Promise<void> } = {},
+  ) {
+    const repository = new InMemoryOrderRepository();
+    const ordenDeHoy = await repository.getOrderByFechaOperativa(HOY);
+    if (!ordenDeHoy) throw new Error("precondición: la orden del fixture de HOY no existe");
+    const repos = {
+      repository,
+      paradaRepository: new InMemoryParadaRepository([]),
+      actividadRepository: new InMemoryActividadPlanificadaRepository([]),
+      danoRepository: new InMemoryDanoRepository([]),
+      mantenimientoRepository: new InMemoryMantenimientoRepository([]),
+      inspeccionRepository: new InMemoryInspeccionRepository([]),
+      jornadaRepository: new InMemoryJornadaRepository([]),
+    };
+    const estados: Record<string, RecoveryState | undefined> = {
+      // La semilla del día inicial trae SU orden: sin remount, esa fila
+      // sobreviviría al cambio de día hasta que los loaders resuelvan (DD5).
+      [HOY]: { ...estadoVacio(HOY), orden: ordenDeHoy },
+      [DIA_SIN_ORDEN]: estadoVacio(DIA_SIN_ORDEN),
+      [DIA_OTRA_ORDEN]: estadoVacio(DIA_OTRA_ORDEN),
+    };
+    await mountApp(
+      <Arnés repos={repos} hoy={HOY} estados={estados} antesDeCambiar={opciones.antesDeCambiar} />,
+    );
+    return { repos };
+  }
+
+  function campoFecha(): HTMLInputElement {
+    return screen.getByLabelText("Fecha operativa") as HTMLInputElement;
+  }
+
+  function flecha(nombre: "Día operativo anterior" | "Día operativo siguiente") {
+    return screen.getByRole("button", { name: nombre }) as HTMLButtonElement;
+  }
+
+  it("la selección por defecto es el hoy inyectado", async () => {
+    await montarNavegador();
+
+    expect(campoFecha().value).toBe(HOY);
+    expectTexto(`Fecha operativa: ${HOY}`);
+    // El marcador positivo del día: la orden de ese día está cargada.
+    expectTexto("OP-102");
+  }, UI_TIMEOUT);
+
+  it("←, → y el campo de fecha cargan cada uno el día correcto", async () => {
+    await montarNavegador();
+    const user = userEvent.setup();
+
+    // ← un día atrás: día sin orden → estado de día vacío, sin filas de hoy.
+    await user.click(flecha("Día operativo anterior"));
+    await act(async () => {});
+    expectTexto(`Fecha operativa: ${DIA_SIN_ORDEN}`);
+    expectTexto("No hay orden asignada para hoy.");
+    expect(screen.queryAllByText(/OP-102/)).toHaveLength(0);
+
+    // → vuelve a hoy: la orden de hoy reaparece.
+    await user.click(flecha("Día operativo siguiente"));
+    await act(async () => {});
+    expectTexto(`Fecha operativa: ${HOY}`);
+    expectTexto("OP-102");
+
+    // El campo de fecha carga el día elegido: otra orden, otro día.
+    fireEvent.change(campoFecha(), { target: { value: DIA_OTRA_ORDEN } });
+    await act(async () => {});
+    expectTexto(`Fecha operativa: ${DIA_OTRA_ORDEN}`);
+    expectTexto("OP-101");
+    expect(screen.queryAllByText(/OP-102/)).toHaveLength(0);
+  }, UI_TIMEOUT);
+
+  it("→ está deshabilitado en hoy y el campo de fecha tiene max = hoy", async () => {
+    await montarNavegador();
+
+    expect(flecha("Día operativo siguiente").disabled).toBe(true);
+    expect(flecha("Día operativo anterior").disabled).toBe(false);
+    expect(campoFecha().disabled).toBe(false);
+    // `max` es la prop INYECTADA de la tarea 7.2, no una lectura del reloj.
+    expect(campoFecha().getAttribute("max")).toBe(HOY);
+
+    // Un día atrás → ← deja de ser el único camino: → se habilita.
+    const user = userEvent.setup();
+    await user.click(flecha("Día operativo anterior"));
+    await act(async () => {});
+    expect(flecha("Día operativo siguiente").disabled).toBe(false);
+    expect(campoFecha().getAttribute("max")).toBe(HOY);
+  }, UI_TIMEOUT);
+
+  it("cambiar de día desmonta la App y no queda ninguna fila del día anterior", async () => {
+    await montarNavegador();
+    expectTexto("OP-102");
+    const shellAntes = screen.getByRole("main");
+
+    const user = userEvent.setup();
+    await user.click(flecha("Día operativo anterior"));
+    await act(async () => {});
+
+    // El `key` de la raíz DESMONTA App (DD5): el nodo del shell es otro.
+    expect(screen.getByRole("main")).not.toBe(shellAntes);
+    // …y ninguna fila del día anterior sobrevive al cambio.
+    expect(screen.queryAllByText(/OP-102/)).toHaveLength(0);
+    expect(screen.queryAllByText(/OP-101/)).toHaveLength(0);
+    expectTexto("No hay orden asignada para hoy.");
+    expectTexto(`Fecha operativa: ${DIA_SIN_ORDEN}`);
+  }, UI_TIMEOUT);
+
+  it("ningún control acepta una fecha de inicio y una de fin", async () => {
+    await montarNavegador();
+
+    const nav = screen.getByRole("navigation", { name: "Día operativo" });
+    // Un SOLO campo de fecha: sin pareja de inicio/fin (H:332-344, DD9).
+    expect(nav.querySelectorAll('input[type="date"]')).toHaveLength(1);
+    expect(document.querySelectorAll('input[type="date"]')).toHaveLength(1);
+    // Sin límite inferior: OQ-2 queda declarada en el JSDoc, no inventada como
+    // regla (tarea 9.6).
+    expect(campoFecha().getAttribute("min")).toBeNull();
+    // Y sólo dos flechas de ±1 día: el día es un escalar, nunca un rango.
+    expect(nav.querySelectorAll("button")).toHaveLength(2);
+  }, UI_TIMEOUT);
+
+  it("un cambio de día en vuelo deshabilita flechas y campo hasta que resuelve", async () => {
+    // Puerta controlada por el test: mantiene la ventana "en vuelo" abierta
+    // para observar el `disabled` de la tarea 9.4.
+    let liberar = () => {};
+    const puerta = new Promise<void>((resolver) => {
+      liberar = resolver;
+    });
+    await montarNavegador({ antesDeCambiar: () => puerta });
+    const user = userEvent.setup();
+
+    await user.click(flecha("Día operativo anterior"));
+
+    // Ventana en vuelo: ningún control acepta un segundo cambio de día.
+    expect(flecha("Día operativo anterior").disabled).toBe(true);
+    expect(flecha("Día operativo siguiente").disabled).toBe(true);
+    expect(campoFecha().disabled).toBe(true);
+    // …y el día en pantalla sigue siendo el anterior al cambio resuelto.
+    expectTexto(`Fecha operativa: ${HOY}`);
+
+    await act(async () => {
+      liberar();
+      await puerta;
+    });
+
+    // Resuelto: los tres controles vuelven a operar y el día ya cambió.
+    expect(flecha("Día operativo anterior").disabled).toBe(false);
+    expect(campoFecha().disabled).toBe(false);
+    expectTexto(`Fecha operativa: ${DIA_SIN_ORDEN}`);
   }, UI_TIMEOUT);
 });

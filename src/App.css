@@ -39,6 +39,29 @@ body {
   font-size: 0.9rem;
 }
 
+/* Tarea 9.3 — navegador de días: SOLO maquetación, ninguna regla conductual
+   (el `disabled` de flechas y campo es atributo nativo, no estilo). */
+.selector-dia {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.selector-dia__campo {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  color: #6b7280;
+  font-size: 0.9rem;
+}
+
+.selector-dia__error {
+  flex-basis: 100%;
+  margin: 0;
+  color: #b91c1c;
+  font-size: 0.9rem;
+}
+
 .order-card {
   background: #ffffff;
   border: 1px solid #e5e7eb;

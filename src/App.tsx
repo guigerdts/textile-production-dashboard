@@ -67,6 +67,7 @@ import { DashboardHome } from "./ui/DashboardHome";
 import { OrderAvailable } from "./ui/OrderAvailable";
 import { OrderFinished } from "./ui/OrderFinished";
 import { OrderInProduction, type ResultadoRegistroLectura } from "./ui/OrderInProduction";
+import { SelectorDiaOperativa } from "./ui/SelectorDiaOperativa";
 import "./App.css";
 
 interface AppProps {
@@ -110,10 +111,10 @@ interface AppProps {
   /** Seam del navegador de días: `Raiz` SIEMPRE lo define, un montaje directo de `App` no. */
   onSeleccionarDia?: (fechaOperativa: string) => void;
   /**
-   * Un cambio de día está en vuelo: el navegador lo usa como `disabled` de flechas e
-   * input (tarea 9.4), único consumidor — por eso todavía no se destructura acá con su
-   * default `false`: un binding sin lectura rompe `noUnusedParameters` en
-   * `tsc --noEmit`. 9.4 lo destructura como `cargandoDia = false` junto a ese consumidor.
+   * Un cambio de día está en vuelo: el navegador (tarea 9.4) lo pasa como
+   * `disabled` de las dos flechas y del `input`, para que durante la ventana en
+   * vuelo no se pueda encolar un segundo `seleccionarDia`. Se destructura con
+   * default `false` porque es el único consumidor.
    */
   cargandoDia?: boolean;
   /** Error del último cambio de día fallido; se renderiza como `role="alert"` (tarea 7.7). Default `null`. */
@@ -139,6 +140,7 @@ function App({
   // parámetros: un ReferenceError en CADA montaje de App. No "simplificar" esto.
   fechaOperativaHoy: hoyReal = fechaOperativaHoy(),
   onSeleccionarDia,
+  cargandoDia = false,
   errorCambioDia = null,
 }: AppProps) {
   // ÚNICA derivación de soloLectura en todo el cambio (design §5.3/§5.4.2): ningún
@@ -946,9 +948,19 @@ function App({
         {/* Bloque ÚNICO del día (tarea 7.7): `Raiz` siempre define `onSeleccionarDia`,
             un montaje directo de `App` no, así que su DOM no cambia. El navegador
             (`SelectorDiaOperativa`, tarea 9.4) entra en este MISMO bloque, antes del
-            alerta; el alerta `role="alert"` es el render diferido de la tarea 6.3. */}
+            alerta; el alerta `role="alert"` es el render diferido de la tarea 6.3.
+            `hoy` (día seleccionado) va como `fechaOperativa` y `hoyReal` (la prop
+            INYECTADA de la tarea 7.2) como tope `hoy` del navegador: el navegador
+            nunca lee el reloj. `cargandoDia` deja los tres controles inoperativos
+            durante todo el cambio, así no se encola un segundo `seleccionarDia`. */}
         {onSeleccionarDia && (
           <>
+            <SelectorDiaOperativa
+              fechaOperativa={hoy}
+              hoy={hoyReal}
+              disabled={cargandoDia}
+              onSeleccionar={onSeleccionarDia}
+            />
             {errorCambioDia && (
               <p className="selector-dia__error" role="alert">
                 No se pudo cargar ese día: {errorCambioDia}
