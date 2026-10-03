@@ -967,12 +967,38 @@ to scanning the day-scoped list and the two seeds are untouched.
 
 ## Final gate (all phases, after WU 12)
 
-- [ ] G.1 `npm run test` — the full root suite, including the new `src/__tests__/noDomainDiff.test.ts`.
-- [ ] G.2 `npx tsc --noEmit` in `.`.
+- [x] G.1 `npm run test` — the full root suite, including the new `src/__tests__/noDomainDiff.test.ts`.
+- [x] G.2 `npx tsc --noEmit` in `.`.
 - [ ] G.3 `cargo check` in `src-tauri`.
-- [ ] G.4 `git diff 851172c -- src/domain src-tauri/migrations` is **empty** (B1 + B2). Verified green at `c1bf533`
+
+> **G.3 is UNMET, and it is NOT a code failure — it is this machine's Rust toolchain.** `cargo check` exits 101 while
+> compiling the *build scripts* of `libc` and `quote`, not this crate's code: the installed toolchain targets
+> `aarch64-linux-android` and the linker cannot resolve `-lunwind` or `-llog` (Android/Bionic libraries), which are not
+> present on this host. No Android sysroot is installed.
+>
+> This gate **cannot** be caused by this change, and that is provable rather than asserted: `git diff 851172c --
+> src-tauri` is **empty** — the entire change touches **zero Rust files** and zero migrations. Nothing in this change is
+> even compiled by `cargo check`.
+>
+> **Left unticked on purpose.** Ticking it would make the plan claim Rust verification that does not exist. The honest
+> state is: the TypeScript side is fully verified (G.1 1128/1128, G.2 clean), the Rust side is **unchanged from its
+> baseline** and therefore **unverified in this environment**. Re-running it needs a host Rust toolchain, or an Android
+> NDK sysroot for the configured target.
+>
+> G.1 ✅ `npm run test` — **38 files, 1128 passed, 0 failed**, exit 0. Reaches 1128 exactly: 1115 at the end of Phase 10,
+> + 8 from Phase 11, + 5 from Phase 12.
+> G.2 ✅ `npx tsc --noEmit` — clean, exit 0.
+> G.4 ✅ `git diff 851172c -- src/domain src-tauri/migrations` — **empty**. The B1/B2 boundary never moved; the domain
+> and the migrations are byte-identical to the baseline.
+> G.5 ✅ both HONESTY NOTE blocks are intact and still declare their scope: `recovery.test.ts` still says its cases
+> "do NOT execute the real SQLite repositories… which is PENDING", `startup.test.ts` still says real Tauri/SQLite startup
+> "remains PENDING runtime validation", and `dayScopedListing.parity.test.ts:22` still carries R5/R6 as PENDING. The
+> diffs in those two files are *factual corrections* — recovery genuinely is day-scoped now, and `main.tsx` genuinely
+> mounts `Raiz` instead of `App` — plus a **new** disclosure in `startup.test.ts` explaining that `App` is mocked and is
+> therefore not the subject of that suite. Honesty went up, not down.
+- [x] G.4 `git diff 851172c -- src/domain src-tauri/migrations` is **empty** (B1 + B2). Verified green at `c1bf533`
   before this change started, so it needs no baseline exception.
-- [ ] G.5 No suite claims runtime verification it does not have: the honesty notes at
+- [x] G.5 No suite claims runtime verification it does not have: the honesty notes at
   `src/store/sqlite/__tests__/recovery.test.ts:26-30` and `src/store/sqlite/__tests__/startup.test.ts:20-23` are
   unedited, and the WU 4 suite carries its own two blocks naming what it does not cover (R5/R6 stays PENDING).
   **Traces to:** `H:464-470`; `W:232-238`.
