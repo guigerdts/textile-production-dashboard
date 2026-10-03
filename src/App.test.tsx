@@ -34,6 +34,7 @@ import type { ActividadPlanificada, InspeccionTela, Mantenimiento, Orden } from 
 import type { Parada, ParadaAbierta } from "./domain/types";
 import type { Dano } from "./domain/types";
 import type { RecoveryState } from "./store/sqlite/recovery";
+import type { JornadaPersistida } from "./store/jornadaRepository";
 import { InMemoryMantenimientoRepository } from "./store/inMemoryMantenimientoRepository";
 import {
   MANT_1_REACTIVO_CON_DANO_CERRADO,
@@ -3226,5 +3227,636 @@ describe("App — phase 10 (WU10): registros abiertos cruzando la medianoche (10
     await navegarA(user, D);
     expectTexto(/PARADA/);
     expect(screen.queryByText(/OCIOSA/)).toBeNull();
+  }, UI_TIMEOUT);
+});
+// ---------------------------------------------------------------------------
+// Phase 11 (WU 11) — 11.1, 11.2 y 11.3: CASOS NUEVOS sobre el cambio ya
+// implementado. Fase TEST-ONLY: no se toca un solo archivo de producción (el
+// rollback del plan es literal: "test-only — delete the added cases").
+// ---------------------------------------------------------------------------
+
+/** Semilla de un día sin nada (mismo patrón que `estadoVacio` de la fase 9). */
+function estadoDeDiaVacio(dia: string): RecoveryState {
+  return {
+    jornada: jornadaDefault(dia),
+    orden: undefined,
+    lecturas: [],
+    paradas: [],
+    actividades: [],
+    danos: [],
+    mantenimientos: [],
+    inspecciones: [],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Phase 11 — 11.1: los cuatro escenarios de "día sin orden" de la spec.
+// ---------------------------------------------------------------------------
+describe("App — phase 11 (WU11): los cuatro escenarios de día vacío (11.1)", () => {
+  /** HOY: día CON orden (OP-102) — el arranque del navegador. */
+  const HOY = "2026-09-15";
+  /** D: sin orden. Es a donde lleva la flecha ←. */
+  const D = "2026-09-14";
+  /** OTRO día: un registro atribuido acá NO debe aparecer en D. */
+  const OTRO = "2026-09-13";
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  interface Repos {
+    repository: InMemoryOrderRepository;
+    paradaRepository: InMemoryParadaRepository;
+    actividadRepository: InMemoryActividadPlanificadaRepository;
+    danoRepository: InMemoryDanoRepository;
+    mantenimientoRepository: InMemoryMantenimientoRepository;
+    inspeccionRepository: InMemoryInspeccionRepository;
+    jornadaRepository: InMemoryJornadaRepository;
+  }
+
+  /**
+   * Arnés de la fase 9 (DD5): el día vive en la raíz, `key` DESMONTA `App` al
+   * cambiar y la semilla del día viaja con él sobre las MISMAS instancias de
+   * repositorio. Sin `antesDeCambiar`: acá no se observa la ventana en vuelo.
+   */
+  function Arnés({
+    repos,
+    hoy,
+    estados,
+  }: {
+    repos: Repos;
+    hoy: string;
+    estados: Record<string, RecoveryState | undefined>;
+  }) {
+    const [vista, setVista] = useState<{ dia: string; estado?: RecoveryState }>(() => ({
+      dia: hoy,
+      estado: estados[hoy],
+    }));
+    async function seleccionarDia(dia: string): Promise<void> {
+      if (dia === vista.dia) return;
+      setVista({ dia, estado: estados[dia] });
+    }
+    return (
+      <App
+        key={vista.dia}
+        {...repos}
+        estadoInicial={vista.estado}
+        hoy={vista.dia}
+        fechaOperativaHoy={hoy}
+        onSeleccionarDia={seleccionarDia}
+      />
+    );
+  }
+
+  /** Las 13 escrituras de los 7 puertos: el RENDER no debe tocar ni una. */
+  function espionajeDeEscrituras(repos: Repos) {
+    return {
+      saveOrder: vi.spyOn(repos.repository, "saveOrder"),
+      materializeOrder: vi.spyOn(repos.repository, "materializeOrder"),
+      insertParada: vi.spyOn(repos.paradaRepository, "insertParada"),
+      updateParada: vi.spyOn(repos.paradaRepository, "updateParada"),
+      insertActividad: vi.spyOn(repos.actividadRepository, "insertActividad"),
+      updateActividad: vi.spyOn(repos.actividadRepository, "updateActividad"),
+      insertDano: vi.spyOn(repos.danoRepository, "insertDano"),
+      updateDano: vi.spyOn(repos.danoRepository, "updateDano"),
+      insertMantenimiento: vi.spyOn(repos.mantenimientoRepository, "insertMantenimiento"),
+      updateMantenimiento: vi.spyOn(repos.mantenimientoRepository, "updateMantenimiento"),
+      insertInspeccion: vi.spyOn(repos.inspeccionRepository, "insertInspeccion"),
+      updateInspeccion: vi.spyOn(repos.inspeccionRepository, "updateInspeccion"),
+      guardarJornada: vi.spyOn(repos.jornadaRepository, "guardarJornada"),
+    };
+  }
+
+  async function montar(
+    opciones: {
+      paradas?: Parada[];
+      actividades?: ActividadPlanificada[];
+      danos?: Dano[];
+      mantenimientos?: Mantenimiento[];
+      jornadas?: JornadaPersistida[];
+    } = {},
+  ) {
+    const repos: Repos = {
+      repository: new InMemoryOrderRepository(),
+      paradaRepository: new InMemoryParadaRepository(opciones.paradas ?? []),
+      actividadRepository: new InMemoryActividadPlanificadaRepository(opciones.actividades ?? []),
+      danoRepository: new InMemoryDanoRepository(opciones.danos ?? []),
+      mantenimientoRepository: new InMemoryMantenimientoRepository(
+        opciones.mantenimientos ?? [],
+      ),
+      inspeccionRepository: new InMemoryInspeccionRepository([]),
+      jornadaRepository: new InMemoryJornadaRepository(opciones.jornadas ?? []),
+    };
+    const escrituras = espionajeDeEscrituras(repos);
+    // Se instala ANTES del montaje para contar las lecturas de los dos días.
+    const obtenerJornada = vi.spyOn(repos.jornadaRepository, "obtenerParaFecha");
+    const ordenDeHoy = await repos.repository.getOrderByFechaOperativa(HOY);
+    if (!ordenDeHoy) throw new Error("precondición: OP-102 no existe");
+    const estados: Record<string, RecoveryState | undefined> = {
+      // La semilla del día inicial trae SU orden: sin remount, esa fila
+      // sobreviviría al cambio de día hasta que los loaders resuelvan (DD5).
+      [HOY]: { ...estadoDeDiaVacio(HOY), orden: ordenDeHoy },
+      [D]: estadoDeDiaVacio(D),
+      [OTRO]: estadoDeDiaVacio(OTRO),
+    };
+    await mountApp(<Arnés repos={repos} hoy={HOY} estados={estados} />);
+    return { repos, escrituras, obtenerJornada };
+  }
+
+  /**
+   * `fireEvent` dentro de `act`, NO `userEvent`: con reloj falso (escenario 3)
+   * `userEvent.setup()` se cuelga esperando timers reales.
+   */
+  async function navegarAtras() {
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Día operativo anterior" }));
+    });
+    expectTexto(`Fecha operativa: ${D}`);
+  }
+
+  function bloqueDiaVacio(): Element {
+    const bloque = document.querySelector("section.empty-day");
+    if (!bloque) throw new Error("no se renderizó el estado de día vacío (section.empty-day)");
+    return bloque;
+  }
+
+  /**
+   * `outerHTML` del bloque sin ningún `<form>`. La única diferencia legítima
+   * entre un montaje directo "hoy" y un día histórico son los controles de
+   * escritura, que la tarea 7.x OCULTA en un día pasado (la req. siguiente de
+   * la spec lo exige); todo lo demás tiene que ser byte a byte igual.
+   */
+  function diaVacioSinFormularios(): string {
+    const copia = bloqueDiaVacio().cloneNode(true) as Element;
+    for (const form of Array.from(copia.querySelectorAll("form"))) form.remove();
+    return copia.outerHTML;
+  }
+
+  function cantidadDeFilas(testid: string): number {
+    return within(screen.getByTestId(testid)).queryAllByRole("listitem").length;
+  }
+
+  it("11.1.1 un día totalmente vacío renderiza el estado de día sin orden, sin error ni pantalla de fallo", async () => {
+    await montar();
+    // El punto de partida SÍ tiene orden: el estado de día vacío no es lo que
+    // se ve todavía, así que aparecer en D es un cambio real, no un default.
+    expect(document.querySelector("section.empty-day")).toBeNull();
+    expectTexto("OP-102");
+
+    await navegarAtras();
+
+    // El mismo estado de día vacío que la app renderiza HOY para un día sin
+    // orden (spec: "the same no-order state ... today"), byte a byte.
+    const actual = diaVacioSinFormularios();
+
+    // Sin error y sin pantalla de fallo: el dashboard sigue en pie.
+    expectTexto(`Fecha operativa: ${D}`);
+    expectTexto(/No hay orden asignada para hoy/);
+    expect(screen.getByTestId("dashboard-home")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByText(/No se pudo iniciar el dashboard/)).toBeNull();
+    expect(screen.queryByText(/Error de inicialización/)).toBeNull();
+    // Estado derivado de la nada, no fabricado: sin orden y sin parada → ociosa.
+    expectTexto(/— OCIOSA/);
+    expect(screen.queryByText(/OP-\d+/)).toBeNull();
+
+    // Referencia: montaje directo de `App` sobre un día sin orden (sin
+    // `key`/navegador), que es exactamente lo que la app hace hoy.
+    cleanup();
+    await mountApp(
+      <App
+        repository={new InMemoryOrderRepository()}
+        hoy={FECHA_SIN_ORDEN}
+        fechaOperativaHoy={FECHA_SIN_ORDEN}
+      />,
+    );
+    expect(diaVacioSinFormularios()).toBe(actual);
+  }, UI_TIMEOUT);
+
+  it("11.1.2 un día vacío no fabrica ningún registro y el almacén no recibe una sola escritura", async () => {
+    const { escrituras } = await montar();
+    await navegarAtras();
+
+    // Ningún registro se MUESTRA…
+    expect(screen.queryByText(/OP-\d+/)).toBeNull();
+    expect(document.body.textContent ?? "").not.toMatch(/lectura/i);
+    expect(screen.queryByTestId("parada-activa")).toBeNull();
+    expect(screen.queryByTestId("dano-abierto")).toBeNull();
+    expect(screen.queryByTestId("mantenimiento-abierto")).toBeNull();
+    expect(screen.queryAllByTestId(/^actividad-abierta-/)).toHaveLength(0);
+    expect(cantidadDeFilas("actividades")).toBe(0);
+    expect(cantidadDeFilas("danos-sin-orden")).toBe(0);
+    expect(cantidadDeFilas("mantenimiento-seccion")).toBe(0);
+    // …ni como estado de la máquina: sin parada y sin orden → OCIOSA.
+    expectTexto(/— OCIOSA/);
+    expect(screen.queryByText(/PARADA/)).toBeNull();
+    expect(screen.queryByText(/ANDANDO/)).toBeNull();
+
+    // Y el ALMACÉN queda intacto: el render no escribe por ninguna de las 13 vías.
+    for (const [nombre, escritura] of Object.entries(escrituras)) {
+      expect(escritura, `el render escribió vía ${nombre}`).not.toHaveBeenCalled();
+    }
+  }, UI_TIMEOUT);
+
+  /** Parada ABIERTA de D: en un día vacío la ve DashboardHome (no hay ParadasSection). */
+  const PARADA_DE_D: Parada = {
+    id: "p-dia-vacio",
+    maquinaId: "M1",
+    ordenId: null,
+    operatorName: "Ana",
+    causaId: "falta_tela",
+    camposEspecificos: {},
+    fechaOperativa: D,
+    inicio: `${D}T09:00:00.000Z`,
+    fin: null,
+  };
+  /**
+   * Parada CERRADA de OTRO día con `inicio`/`fin` DENTRO de la jornada de D: es
+   * el desacuerdo `fechaOperativa` vs `inicio` que la spec exige no reconciliar.
+   * Si el listado no scoping, suma 45 min a las incidencias de D (8 h → 8 h 45 min).
+   */
+  const PARADA_AJENA: Parada = {
+    id: "p-otro-dia",
+    maquinaId: "M1",
+    ordenId: null,
+    operatorName: "Ana",
+    causaId: "falta_color",
+    camposEspecificos: { color: "Rojo" },
+    fechaOperativa: OTRO,
+    inicio: `${D}T07:15:00.000Z`,
+    fin: `${D}T08:00:00.000Z`,
+  };
+
+  it("11.1.3 un día con eventos y sin orden muestra EmptyDay y esos eventos, sin una fila de otro día", async () => {
+    // Reloj fijado al fin de D: la parada abierta queda en 9 h de duración
+    // acumulada y el resumen recorta su intervalo a la ventana de la jornada.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(`${D}T18:00:00.000Z`));
+
+    await montar({
+      paradas: [PARADA_DE_D, PARADA_AJENA],
+      actividades: [
+        // Las DOS actividades de D (spec: "two activities ... attributed to D").
+        { ...A1_LIMPIEZA_CERRADA, id: "act-d-limpieza", fechaOperativa: D, inicio: `${D}T07:00:00.000Z`, fin: `${D}T08:00:00.000Z` },
+        { ...A2_CAMBIO_CERRADO, id: "act-d-cambio", fechaOperativa: D, inicio: `${D}T08:00:00.000Z`, fin: `${D}T08:30:00.000Z` },
+        // La ajena: si scoping falla aparece como tercera fila (y sube planificado).
+        { ...A1_LIMPIEZA_CERRADA, id: "act-otro-dia", queSeLimpio: "horno de secado", fechaOperativa: OTRO, inicio: `${D}T14:00:00.000Z`, fin: `${D}T15:00:00.000Z` },
+      ],
+      danos: [
+        // Cerrado a propósito: el abierto day-free SÍ se filtra en un día pasado (DD8).
+        { ...DANO_4_SIN_ORDEN_CERRADO, id: "dan-otro-dia", componente: "banda transportadora", fechaOperativa: OTRO, inicio: `${D}T10:00:00.000Z`, fin: `${D}T10:30:00.000Z` },
+      ],
+      mantenimientos: [
+        { ...MANT_1_REACTIVO_CON_DANO_CERRADO, id: "mnt-otro-dia", danoId: null, motivo: "Calibración del horno", fechaOperativa: OTRO, inicio: `${D}T11:00:00.000Z`, fin: `${D}T11:45:00.000Z` },
+      ],
+    });
+    await navegarAtras();
+
+    // El estado de día vacío…
+    expect(document.querySelector("section.empty-day")).toBeTruthy();
+    expectTexto(/No hay orden asignada para hoy/);
+    expect(screen.queryByRole("alert")).toBeNull();
+
+    // …y LAS DOS actividades + LA parada de D.
+    expect(cantidadDeFilas("actividades")).toBe(2);
+    expectTexto(/mesa de estampado/);
+    expectTexto(/Cambio de diseño/);
+    expect(screen.getByTestId("dashboard-home").textContent).toMatch(
+      /PARADA — Falta de materia prima \(tela\)/,
+    );
+    expectTexto(/⏸ PARADA/);
+
+    // Ningún registro de OTRO día aparece junto con ellos.
+    expect(cantidadDeFilas("danos-sin-orden")).toBe(0);
+    expect(cantidadDeFilas("mantenimiento-seccion")).toBe(0);
+    expect(screen.queryByText(/horno de secado/)).toBeNull();
+    expect(screen.queryByText(/banda transportadora/)).toBeNull();
+    expect(screen.queryByText(/Calibración del horno/)).toBeNull();
+
+    // Resumen derivado SOLO de los eventos de D: 10 h disponibles; 1 h 30 min
+    // planificados (las dos actividades de D); 8 h de incidencias (09:00 →
+    // 17:00 de la jornada); 30 min productivos. Cualquier fuga de OTRO día
+    // mueve un bucket: la parada ajena suma 45 min y la actividad ajena 1 h.
+    expect(screen.getByTestId("resumen-tiempo_disponible").textContent).toBe("10 h");
+    expect(screen.getByTestId("resumen-tiempo_planificado").textContent).toBe("1 h 30 min");
+    expect(screen.getByTestId("resumen-tiempo_incidencias").textContent).toBe("8 h");
+    expect(screen.getByTestId("resumen-tiempo_productivo").textContent).toBe("30 min");
+  }, UI_TIMEOUT);
+
+  it("11.1.4 se lee la jornada del día elegido (su default) y no se crea ninguna jornada", async () => {
+    const { escrituras, obtenerJornada } = await montar({
+      // HOY sí tiene jornada persistida (12 h) para que una lectura mal
+      // dirigida sea visible: D no tiene ninguna.
+      jornadas: [
+        {
+          fechaOperativa: HOY,
+          jornada: { inicio: `${HOY}T07:00:00.000Z`, fin: `${HOY}T19:00:00.000Z` },
+        },
+      ],
+    });
+    await navegarAtras();
+
+    // El loader pregunta por el DÍA SELECCIONADO, una vez por día…
+    expect(obtenerJornada).toHaveBeenNthCalledWith(1, HOY);
+    expect(obtenerJornada).toHaveBeenNthCalledWith(2, D);
+    expect(obtenerJornada).toHaveBeenCalledTimes(2);
+    // …y como D no tiene registro, manda la default del día: 07:00–17:00 / 10 h.
+    expectTexto(`Fecha operativa: ${D}`);
+    expectTexto(/Jornada: 07:00 → 17:00/);
+    expect(screen.getByTestId("resumen-tiempo_disponible").textContent).toBe("10 h");
+    expect(screen.queryByText(/Jornada: 07:00 → 19:00/)).toBeNull();
+
+    // Ninguna jornada se CREÓ como efecto secundario del render.
+    expect(escrituras.guardarJornada).not.toHaveBeenCalled();
+  }, UI_TIMEOUT);
+});
+
+// ---------------------------------------------------------------------------
+// Phase 11 — 11.2: el DOM de un montaje directo de `App` sigue siendo el
+// pre-cambio (tarea 7.7: "no existing App mount does, so their DOM is
+// byte-identical to today's (asserted in Phase 11)").
+// ---------------------------------------------------------------------------
+describe("App — phase 11 (WU11): el DOM de un montaje directo es el pre-cambio (11.2)", () => {
+  /**
+   * NO se usa `toMatchSnapshot()`: no existe un baseline guardado previo al
+   * cambio, así que un snapshot nuevo solo probaría lo que acabamos de escribir.
+   * La paridad se afirma con una afirmación ESTRUCTURAL falsable, derivada del
+   * código anterior al cambio (`git show 851172c:src/App.tsx:884-887`): el
+   * header tenía exactamente tres nodos —el `h1` y el `span` de fecha— y sin
+   * `onSeleccionarDia` no entra ni el navegador ni su `role="alert"`.
+   *
+   * Calificación honesta (design §6.4): con un registro ABIERTO heredado de un
+   * día anterior, los `useState` de `danoAbiertoDeMaquina` /
+   * `mantenimientoAbiertoDeMaquina` van un paint atrasados respecto de sus
+   * loaders. Es un dato que se deja en comentario: Testing Library no puede
+   * observar la cantidad de paints, así que ningún caso de esta fase lo afirma.
+   */
+  it("11.2 sin onSeleccionarDia el header no crece y no aparece ningún elemento nuevo", async () => {
+    // Los dos estados de orden posibles: con orden (OP-101) y sin orden.
+    for (const dia of [FECHA_CON_ORDEN, FECHA_SIN_ORDEN]) {
+      cleanup();
+      await mountApp(
+        <App
+          repository={new InMemoryOrderRepository()}
+          hoy={dia}
+          fechaOperativaHoy={dia}
+        />,
+      );
+
+      const header = document.querySelector("header.app__header");
+      expect(header, `header de ${dia}`).not.toBeNull();
+      if (!header) continue;
+
+      // 1. El set de hijos es EXACTAMENTE el pre-cambio: h1 + span, nada más.
+      expect(
+        Array.from(header.children).map(
+          (hijo) => `${hijo.tagName.toLowerCase()}.${hijo.className}`,
+        ),
+        `hijos del header de ${dia}`,
+      ).toEqual(["h1.app__titulo", "span.app__fecha"]);
+
+      // 2. El header byte a byte = el del código anterior al cambio.
+      expect(header.outerHTML, `header de ${dia}`).toBe(
+        `<header class="app__header"><h1 class="app__titulo">Dashboard de Estampado</h1>` +
+          `<span class="app__fecha">Fecha operativa: ${dia}</span></header>`,
+      );
+
+      // 3. Ningún elemento nuevo en toda la página: sin navegador de día, sin
+      //    alerta diferida, sin campo de fecha y sin las dos flechas.
+      expect(document.querySelector('nav[aria-label="Día operativo"]')).toBeNull();
+      expect(document.querySelector('input[type="date"]')).toBeNull();
+      expect(screen.queryByRole("alert")).toBeNull();
+      expect(screen.queryByRole("button", { name: "Día operativo anterior" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Día operativo siguiente" })).toBeNull();
+      expect(document.body.textContent ?? "").not.toContain("Día operativo");
+    }
+  }, UI_TIMEOUT);
+});
+
+// ---------------------------------------------------------------------------
+// Phase 11 — 11.3: el día llega a los OCHO call sites de lectura de eventos de
+// máquina, y `cancelled` evita que una respuesta vieja pise el día nuevo.
+// ---------------------------------------------------------------------------
+describe("App — phase 11 (WU11): ocho call sites day-scoped y el guard `cancelled` (11.3)", () => {
+  /** Día CON orden (OP-101) y hoy inyectado = ese mismo día: día NO histórico. */
+  const HOY = FECHA_CON_ORDEN;
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("11.3.1 el día seleccionado llega a los ocho call sites de lectura de eventos", async () => {
+    const repository = new InMemoryOrderRepository();
+    const repoParadas = new InMemoryParadaRepository([]);
+    const repoActividades = new InMemoryActividadPlanificadaRepository([]);
+    const repoDanos = new InMemoryDanoRepository([]);
+    const repoMantenimientos = new InMemoryMantenimientoRepository([]);
+    const orden = await repository.getOrderByFechaOperativa(HOY);
+    if (!orden) throw new Error("precondición: OP-101 no existe");
+
+    // Un espía por puerto de eventos de máquina: los cuatro `cargar*` de
+    // montaje y los cuatro `recargar*` que dispara cada registro son los
+    // OCHO call sites de `listarPorMaquinaYFecha`.
+    const espionaje = {
+      paradas: vi.spyOn(repoParadas, "listarPorMaquinaYFecha"),
+      actividades: vi.spyOn(repoActividades, "listarPorMaquinaYFecha"),
+      danos: vi.spyOn(repoDanos, "listarPorMaquinaYFecha"),
+      mantenimientos: vi.spyOn(repoMantenimientos, "listarPorMaquinaYFecha"),
+    };
+
+    const user = userEvent.setup();
+    await mountApp(
+      <App
+        repository={repository}
+        paradaRepository={repoParadas}
+        actividadRepository={repoActividades}
+        danoRepository={repoDanos}
+        mantenimientoRepository={repoMantenimientos}
+        // La orden ya está en la semilla: `orden?.id` no cambia al resolver
+        // `cargarOrden`, así que cada loader corre UNA sola vez y el conteo de
+        // abajo es exacto (sin semilla, paradas y daños re-dispararían).
+        estadoInicial={{ ...estadoDeDiaVacio(HOY), orden }}
+        hoy={HOY}
+        fechaOperativaHoy={HOY}
+      />,
+    );
+
+    // Los CUATRO loaders de montaje leen el día seleccionado, uno por puerto.
+    for (const [nombre, espia] of Object.entries(espionaje)) {
+      expect(espia, `loader de ${nombre}`).toHaveBeenCalledTimes(1);
+      expect(espia, `loader de ${nombre}`).toHaveBeenCalledWith("M1", HOY);
+    }
+
+    // Iniciar producción y registrar UN evento por dominio: cada handler llama
+    // a SU `recargar*`, que es el segundo call site de ese puerto.
+    await user.type(
+      screen.getByRole("textbox", { name: /operario \(obligatorio\)/i }),
+      "Laura",
+    );
+    await user.type(screen.getByRole("spinbutton", { name: /lectura inicial/i }), "100");
+    await user.click(screen.getByRole("button", { name: /Iniciar producción/i }));
+
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: /tipo de actividad/i }),
+      screen.getByRole("option", { name: "Limpieza" }),
+    );
+    await user.type(screen.getByLabelText(/qué se limpió/i), "mesa de estampado");
+    await user.click(screen.getByRole("button", { name: /Registrar actividad/i }));
+
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: /tipo de daño/i }),
+      screen.getByRole("option", { name: "Daño mecánico" }),
+    );
+    await user.type(screen.getByLabelText(/componente afectado/i), "eje trasero");
+    await user.click(screen.getByRole("button", { name: /Registrar daño/i }));
+
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: /tipo de mantenimiento/i }),
+      screen.getByRole("option", { name: "Mantenimiento reactivo" }),
+    );
+    await user.type(screen.getByLabelText(/motivo/i), "Fusible quemado");
+    await user.click(screen.getByRole("button", { name: /Registrar mantenimiento/i }));
+
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: /causa de la parada/i }),
+      screen.getByRole("option", { name: "Falta de materia prima (tela)" }),
+    );
+    await user.click(screen.getByRole("button", { name: /Registrar parada/i }));
+    await act(async () => {});
+
+    // OCHO llamadas en total: 4 loaders + 4 recargar, TODAS al mismo día.
+    for (const [nombre, espia] of Object.entries(espionaje)) {
+      expect(espia, `${nombre} después de registrar`).toHaveBeenCalledTimes(2);
+      for (const llamada of espia.mock.calls) {
+        expect(llamada, `${nombre}: argumentos de la llamada`).toEqual(["M1", HOY]);
+      }
+    }
+    const total = Object.values(espionaje).reduce(
+      (suma, espia) => suma + espia.mock.calls.length,
+      0,
+    );
+    expect(total).toBe(8);
+  }, UI_TIMEOUT);
+
+  it("11.3.2 desmontar con una lectura del día en vuelo no deja error ni rechazo sin capturar", async () => {
+    // React ELIMINÓ el aviso de «setState tras unmount» en la 18 y este repo
+    // corre sobre React 19: por eso este caso NO distingue con/guard por un
+    // mensaje. Lo que sí se puede observar acá es que la resolución tardía no
+    // revienta nada — la mitad DISTINGUIDORA del guard está en 11.3.3.
+    const fallos: unknown[] = [];
+    const onError = (evento: Event) => fallos.push(evento);
+    const onRejection = (evento: PromiseRejectionEvent) => fallos.push(evento.reason);
+    window.addEventListener("error", onError);
+    window.addEventListener("unhandledrejection", onRejection);
+    const erroresDeConsola = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    let liberar: (filas: Parada[]) => void = () => {};
+    const pendiente = new Promise<Parada[]>((resolver) => {
+      liberar = resolver;
+    });
+    const repoParadas = new InMemoryParadaRepository([]);
+    vi.spyOn(repoParadas, "listarPorMaquinaYFecha").mockReturnValue(pendiente);
+
+    const { unmount } = render(
+      <App
+        repository={new InMemoryOrderRepository()}
+        paradaRepository={repoParadas}
+        hoy={HOY}
+        fechaOperativaHoy={HOY}
+      />,
+    );
+    await act(async () => {});
+
+    // El desmontaje ocurre con la lectura todavía en vuelo…
+    unmount();
+
+    // …y la respuesta llega DESPUÉS: es lo que `cancelled` tiene que cortar.
+    await act(async () => {
+      liberar([
+        {
+          id: "p-post-unmount",
+          maquinaId: "M1",
+          ordenId: null,
+          operatorName: "Ana",
+          causaId: "falta_tela",
+          camposEspecificos: {},
+          fechaOperativa: HOY,
+          inicio: `${HOY}T09:00:00.000Z`,
+          fin: null,
+        },
+      ]);
+    });
+
+    expect(fallos).toHaveLength(0);
+    expect(erroresDeConsola).not.toHaveBeenCalled();
+    window.removeEventListener("error", onError);
+    window.removeEventListener("unhandledrejection", onRejection);
+  }, UI_TIMEOUT);
+
+  it("11.3.3 la respuesta vieja de un loader no pisa el día nuevo: `cancelled` corta el setState", async () => {
+    const DIA_VIEJO = "2026-09-13";
+    const DIA_NUEVO = "2026-09-14";
+    const HOY_INYECTADO = "2026-09-15";
+
+    const paradaVieja: Parada = {
+      id: "p-respuesta-vieja",
+      maquinaId: "M1",
+      ordenId: null,
+      operatorName: "Ana",
+      causaId: "falta_tela",
+      camposEspecificos: {},
+      fechaOperativa: DIA_VIEJO,
+      inicio: `${DIA_VIEJO}T09:00:00.000Z`,
+      fin: null,
+    };
+
+    // Solo el día VIEJO se queda en vuelo; los demás resuelven vacío.
+    const repoParadas = new InMemoryParadaRepository([]);
+    let liberarVieja: (filas: Parada[]) => void = () => {};
+    const respuestaVieja = new Promise<Parada[]>((resolver) => {
+      liberarVieja = resolver;
+    });
+    vi.spyOn(repoParadas, "listarPorMaquinaYFecha").mockImplementation(
+      (_maquina, fecha) => (fecha === DIA_VIEJO ? respuestaVieja : Promise.resolve([])),
+    );
+
+    const repository = new InMemoryOrderRepository();
+    const vista = (dia: string) => (
+      <App
+        repository={repository}
+        paradaRepository={repoParadas}
+        hoy={dia}
+        fechaOperativaHoy={HOY_INYECTADO}
+      />
+    );
+
+    const { rerender } = render(vista(DIA_VIEJO));
+    await act(async () => {});
+    expectTexto(`Fecha operativa: ${DIA_VIEJO}`);
+    // La lectura del día viejo sigue en vuelo: todavía no hay nada que ver.
+    expect(screen.queryByTestId("parada-activa")).toBeNull();
+
+    // Cambiar de día re-dispara el loader con el día NUEVO y cancela al viejo.
+    // (Raiz usa `key` y desmonta; acá NO se desmonta a propósito: el guard es
+    // del `useEffect`, así que tiene que valer también sin remount.)
+    rerender(vista(DIA_NUEVO));
+    await act(async () => {});
+    expectTexto(`Fecha operativa: ${DIA_NUEVO}`);
+    expect(screen.queryByTestId("parada-activa")).toBeNull();
+
+    // Ahora llega la respuesta VIEJA, con el efecto de su día ya reemplazado.
+    await act(async () => {
+      liberarVieja([paradaVieja]);
+    });
+
+    // Sin `cancelled` esta parada de DIA_VIEJO aparecería atribuida a DIA_NUEVO:
+    // la tarjeta de parada activa y el estado de la máquina dirían PARADA.
+    expect(screen.queryByTestId("parada-activa")).toBeNull();
+    expect(screen.queryByText(/Falta de materia prima/)).toBeNull();
+    expect(screen.queryByText(/⏸ PARADA/)).toBeNull();
+    // Y el estado sigue siendo el correcto para un día sin eventos: OCIOSA.
+    expectTexto(/— OCIOSA/);
+    expectTexto(`Fecha operativa: ${DIA_NUEVO}`);
   }, UI_TIMEOUT);
 });

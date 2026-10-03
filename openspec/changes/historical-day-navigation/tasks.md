@@ -846,7 +846,7 @@ to scanning the day-scoped list and the two seeds are untouched.
 
 **Depends on:** WU9 — the empty-day scenarios are driven through the navigator. Independent of WU8, WU10, **OQ-1** and **OQ-4**.
 
-- [ ] 11.1 Add the four empty-day scenarios from `specs/historical-day-navigation/spec.md:249-277`, each asserted **through the navigator**, not only
+- [x] 11.1 Add the four empty-day scenarios from `specs/historical-day-navigation/spec.md:249-277`, each asserted **through the navigator**, not only
   at startup: (1) a fully empty day renders the no-order state — navigate to a day with no `orden`, `EmptyDay`
   renders, no error, no failure screen; (2) an empty day fabricates nothing — no `orden`, `lectura`, `parada`,
   `actividad`, `Dano` or `mantenimiento` appears and the fake store's write methods have **zero** calls after the
@@ -854,7 +854,7 @@ to scanning the day-scoped list and the two seeds are untouched.
   those three rows are visible, with no row from another day; (4) the `jornada` of the selected day is used — *D*
   has no persisted `jornada`, the existing default reads, and `jornadaRepository` gained **no write call**.
   **Traces to:** `H:243-277`; `H:168-201`; design §10.4 "Empty days".
-- [ ] 11.2 Add the "today's DOM is byte-identical" assertion: for every direct
+- [x] 11.2 Add the "today's DOM is byte-identical" assertion: for every direct
   `<App hoy={…} fechaOperativaHoy={…}/>` mount the rendered output matches the pre-change rendering — no
   `SelectorDiaOperativa`, no alert, no extra element in the header, because `onSeleccionarDia` is `undefined`. This
   is what makes *"A selected day equal to today behaves exactly as today"* checkable rather than a claim. Carry the
@@ -862,12 +862,39 @@ to scanning the day-scoped list and the two seeds are untouched.
   two `useState` seeds at `App.tsx:143` / `:147` are one paint behind their loaders (task 10.4) — stated, not
   papered over, and not observable through Testing Library. **Traces to:** `H:353-364`; `H:366-371`;
   `H:380-385`; design §10.4.
-- [ ] 11.3 Add the day-scoped loader assertions: the selected day reaches every one of the eight machine-event call
+- [x] 11.3 Add the day-scoped loader assertions: the selected day reaches every one of the eight machine-event call
   sites, and the `cancelled`-flag pattern still prevents a `setState` after unmount.
   **Traces to:** `W:108-114`; `W:123-134`; `W:225-231`.
 
 **Finish when:** `npx vitest run src/App.test.tsx` passes with these cases green and no existing case modified.
 **Rollback:** test-only — delete the added cases. No behaviour changes.
+
+> **11.x status: COMPLETE. Test-only, as specified — no production file was touched.**
+> `src/App.test.tsx` is **128 passed / 0 failed** (verified independently by the orchestrator: exit 0, zero `FAIL`
+> lines, `tsc --noEmit` clean, `it(` count 128 == 128 cases). 8 cases added: four for 11.1, one for 11.2, three for
+> 11.3. `git diff -- src/App.tsx src/ui src/store src/domain src-tauri src/Raiz.tsx` is **empty**. The lone `-1` in the
+> diffstat is the pre-existing missing trailing newline on the last line, now POSIX-correct; no assertion moved.
+>
+> **11.2 was NOT satisfied with a snapshot.** A committed pre-change DOM baseline does not exist in this repo, and a
+> fresh `toMatchSnapshot()` would have passed trivially while proving nothing. Instead the expected header was derived
+> from the **pre-change source itself** — `git show 851172c:src/App.tsx:884-887` — giving the exact child set
+> `["h1.app__titulo", "span.app__fecha"]` plus its `outerHTML`. This is what makes *"a selected day equal to today
+> behaves exactly as today"* checkable rather than asserted. It also carries the design §10.4 qualification as a
+> comment: the two seeds stay one paint behind their loaders, which Testing Library cannot observe.
+>
+> **Falsifiability was proven, not claimed.** Two temporary mutations were made and reverted with `git checkout`:
+> removing `if (cancelled) return;` from `cargarParadas` turned 11.3.3 RED on `dashboard-home__parada`, and pointing
+> `cargarParadas`/`cargarActividades` at `fechaOperativaHoy` turned 11.1.3 RED (activities 0 ≠ 2). A green test that
+> has never been seen red is a claim, not evidence.
+>
+> **Two honest limits, recorded rather than hidden:**
+> - **11.3.2 is unobservable.** React 19 removed the setState-after-unmount warning entirely, so "unmount with a
+>   pending read throws nothing" cannot distinguish a guarded read from an unguarded one. It is kept as a
+>   regression tripwire with a comment saying exactly that; **11.3.3** — a stale response after `hoy` changes must not
+>   leak the old day's `parada` — is the half that genuinely exercises the `cancelled` guard.
+> - **"every direct `<App/>` mount" collides with "no existing case modified."** Retrofitting 11.2 into each existing
+>   direct-mount case would have violated the no-modification rule, so it is one dedicated case instead. The tension is
+>   recorded here rather than resolved by quietly rewriting existing cases.
 
 ---
 
