@@ -62,7 +62,8 @@ export interface InspeccionTelaSectionProps {
   inspecciones: InspeccionTela[];
   /** Operario precargado (el de la orden en producción); editable si no hay. */
   operatorNameInicial?: string;
-  /** false = OrderFinished: historial SOLO, sin registrar inspecciones ni resolver. */
+  /** false = OrderFinished: historial SOLO, sin registrar inspecciones ni resolver.
+   * Gate B: App lo compone con el gate A como `!soloLectura && orden?.estado !== "finished"`; los dos nombres nunca se fusionan (design §6.1). */
   permitirRegistrar: boolean;
   /** Devuelve errores de dominio vacíos = éxito. */
   onRegistrarInspeccion(input: RegistrarInspeccionInput): Promise<string[]>;

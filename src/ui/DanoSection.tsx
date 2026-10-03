@@ -15,13 +15,14 @@ export interface DanoSectionProps {
   ordenId: string | null;
   /** Operario precargado (el de la orden en producción); undefined/"" si no hay orden y se pide en el form. */
   operatorNameInicial?: string;
-  /** Todos los daños de la máquina: historial (cerrados) + abiertos. */
+  /** Daños de la máquina del DÍA SELECCIONADO: historial (cerrados) + abiertos. */
   danosDeMaquina: Dano[];
   /** Daño abierto de la máquina (uno solo por invariante) o null. */
   danoAbiertoDeMaquina: DanoAbierto | null;
   /** Paradas candidatas a vincular cuando causoParada (misma orden, incluido null). */
   paradasVinculables: Parada[];
-  /** false = OrderFinished: historial + abiertos pendientes, SIN registrar daño nuevo. */
+  /** false = OrderFinished: historial + abiertos pendientes, SIN registrar daño nuevo.
+   * Gate B: App lo compone con el gate A como `!soloLectura && orden?.estado !== "finished"`; los dos nombres nunca se fusionan (design §6.1). */
   permitirRegistrar: boolean;
   /** Devuelve errores de dominio vacíos = éxito. */
   onRegistrarDano(input: RegistrarDanoInput): Promise<string[]>;

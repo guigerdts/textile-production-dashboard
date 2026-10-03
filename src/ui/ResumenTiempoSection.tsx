@@ -12,6 +12,8 @@ export interface ResumenTiempoProps {
   jornada: JornadaTurno;
   /** Resumen del turno ya calculado por dominio (4 valores derivados). */
   resumenTiempo: ResumenTiempoTurno;
+  /** true cuando el día seleccionado NO es hoy: todo control de escritura queda oculto. */
+  soloLectura: boolean;
   /** Devuelve errores de dominio vacío = éxito. Recibe el fin editado como "HH:MM". */
   onCambiarFinJornada(fin: string): Promise<string[]>;
 }
@@ -46,6 +48,7 @@ function formatearDuracion(segundos: number): string {
 export function ResumenTiempoSection({
   jornada,
   resumenTiempo,
+  soloLectura,
   onCambiarFinJornada,
 }: ResumenTiempoProps) {
   const [finInput, setFinInput] = useState(() => horaParaInput(jornada.fin));
@@ -96,30 +99,32 @@ export function ResumenTiempoSection({
         </div>
       </dl>
 
-      <form
-        className="resumen-tiempo__form"
-        onSubmit={handleSubmit}
-        aria-label="Ajustar fin de jornada"
-      >
-        <label className="start-form__campo">
-          Fin de jornada (overtime incluido)
-          <input
-            type="time"
-            value={finInput}
-            onChange={(e) => setFinInput(e.currentTarget.value)}
-          />
-        </label>
-        <button type="submit" className="start-form__boton resumen-tiempo__boton">
-          Guardar fin de jornada
-        </button>
-        {errores.length > 0 && (
-          <ul className="start-form__errores" role="alert">
-            {errores.map((e) => (
-              <li key={e}>{e}</li>
-            ))}
-          </ul>
-        )}
-      </form>
+      {!soloLectura && (
+        <form
+          className="resumen-tiempo__form"
+          onSubmit={handleSubmit}
+          aria-label="Ajustar fin de jornada"
+        >
+          <label className="start-form__campo">
+            Fin de jornada (overtime incluido)
+            <input
+              type="time"
+              value={finInput}
+              onChange={(e) => setFinInput(e.currentTarget.value)}
+            />
+          </label>
+          <button type="submit" className="start-form__boton resumen-tiempo__boton">
+            Guardar fin de jornada
+          </button>
+          {errores.length > 0 && (
+            <ul className="start-form__errores" role="alert">
+              {errores.map((e) => (
+                <li key={e}>{e}</li>
+              ))}
+            </ul>
+          )}
+        </form>
+      )}
     </section>
   );
 }

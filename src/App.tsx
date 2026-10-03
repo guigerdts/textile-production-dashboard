@@ -814,6 +814,10 @@ function App({
     // CHANGE 1: día al que se atribuyen los eventos nuevos. Igual al consultado
     // mientras no exista navegación histórica (CHANGE 2).
     fechaOperativa: hoy,
+    // Gate #1 (design §6.1): contralor UI que OCULTA los controles de escritura de
+    // las secciones de actividad/resumen. No sustituye a `permitirRegistrar` (gate #2)
+    // ni a los guards de los handlers: son tres capas distintas.
+    soloLectura,
     operatorNameInicial: orden?.operatorName ?? "",
     actividades,
     actividadesAbiertas,
@@ -831,7 +835,9 @@ function App({
     // no se deriva en el render body; el render nunca consulta el puerto.
     danoAbiertoDeMaquina,
     paradasVinculables: paradas.filter((p) => p.ordenId === (orden?.id ?? null)),
-    permitirRegistrar: orden?.estado !== "finished",
+    // Gate #1 (`soloLectura`) se apila con el gate #2 (`permitirRegistrar`): la sección
+    // solo muestra sus controles si el día NO es pasado Y la orden no está finalizada.
+    permitirRegistrar: !soloLectura && orden?.estado !== "finished",
     fechaOperativa: hoy,
     onRegistrarDano: handleRegistrarDano,
     onCerrarDano: handleCerrarDano,
@@ -841,7 +847,7 @@ function App({
   const inspeccionProps = {
     inspecciones,
     operatorNameInicial: orden?.operatorName ?? "",
-    permitirRegistrar: orden?.estado !== "finished",
+    permitirRegistrar: !soloLectura && orden?.estado !== "finished",
     onRegistrarInspeccion: handleRegistrarInspeccion,
     onDevolverInspeccion: handleDevolverInspeccion,
     onAutorizarInspeccion: handleAutorizarInspeccion,
@@ -856,7 +862,7 @@ function App({
     // el render body no consulta el puerto. DashboardHome deriva el suyo del estado.
     mantenimientoAbiertoDeMaquina,
     danosDeMaquina: danos,
-    permitirRegistrar: orden?.estado !== "finished",
+    permitirRegistrar: !soloLectura && orden?.estado !== "finished",
     fechaOperativa: hoy,
     onRegistrarMantenimiento: handleRegistrarMantenimiento,
     onCerrarMantenimiento: handleCerrarMantenimiento,
@@ -865,6 +871,8 @@ function App({
   const propsResumenTiempo = {
     jornada,
     resumenTiempo,
+    // Llega vía el spread `{...propsResumenTiempo}` de las 4 vistas de orden.
+    soloLectura,
     onCambiarFinJornada: handleCambiarFinJornada,
   };
 

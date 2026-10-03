@@ -16,6 +16,8 @@ interface ParadasSectionProps {
    * Hoy la app lo inyecta con el día consultado; al navegar a un día
    * histórico será ese día (CHANGE 2), no el de hoy. */
   fechaOperativa: string;
+  /** true cuando el día seleccionado NO es hoy: todo control de escritura queda oculto. */
+  soloLectura: boolean;
   /** Operario que registra la parada (el de la orden en producción). */
   operatorName: string;
   /** Paradas de la orden actual (abiertas y cerradas). */
@@ -56,6 +58,7 @@ export function ParadasSection({
   paradasDeOrden,
   paradaActivaDeOrden,
   fechaOperativa,
+  soloLectura,
   onRegistrarParada,
   onCerrarParada,
 }: ParadasSectionProps) {
@@ -130,9 +133,11 @@ export function ParadasSection({
             (desde las {formatearHora(paradaActivaDeOrden.inicio)}
             {duracionActiva !== null ? ` — ${formatearDuracion(duracionActiva)}` : ""})
           </span>
-          <button type="button" className="paradas__cerrar" onClick={handleCerrar}>
-            Cerrar parada
-          </button>
+          {!soloLectura && (
+            <button type="button" className="paradas__cerrar" onClick={handleCerrar}>
+              Cerrar parada
+            </button>
+          )}
           {erroresCierre.length > 0 && (
             <ul className="start-form__errores" role="alert">
               {erroresCierre.map((e) => (
@@ -143,74 +148,76 @@ export function ParadasSection({
         </div>
       )}
 
-      <form className="paradas__form" onSubmit={handleSubmit} aria-label="Registrar parada">
-        <label className="start-form__campo">
-          Causa de la parada
-          <select
-            value={causaId}
-            onChange={(e) => {
-              const nuevo = e.currentTarget.value as CausaParadaId | "";
-              setCausaId(nuevo);
-              setCampos({});
-            }}
-            disabled={paradaActivaDeOrden !== null}
-          >
-            <option value="">Seleccionar causa…</option>
-            {getCausasParada().map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nombre}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        {causa?.camposRequeridos.map((campo) => (
-          <label className="start-form__campo" key={campo}>
-            {campo === "carrosAfectados"
-              ? "Carros afectados (separados por coma)"
-              : campo === "carro"
-                ? "Número de carro"
-                : campo === "color"
-                  ? "Color"
-                  : "Componente"}
-            <input
-              type={campo === "carro" ? "number" : "text"}
-              step={campo === "carro" ? 1 : undefined}
-              value={campos[campo] ?? ""}
+      {!soloLectura && (
+        <form className="paradas__form" onSubmit={handleSubmit} aria-label="Registrar parada">
+          <label className="start-form__campo">
+            Causa de la parada
+            <select
+              value={causaId}
               onChange={(e) => {
-                const valor = e.currentTarget.value;
-                setCampos((p) => ({ ...p, [campo]: valor }));
+                const nuevo = e.currentTarget.value as CausaParadaId | "";
+                setCausaId(nuevo);
+                setCampos({});
               }}
+              disabled={paradaActivaDeOrden !== null}
+            >
+              <option value="">Seleccionar causa…</option>
+              {getCausasParada().map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nombre}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {causa?.camposRequeridos.map((campo) => (
+            <label className="start-form__campo" key={campo}>
+              {campo === "carrosAfectados"
+                ? "Carros afectados (separados por coma)"
+                : campo === "carro"
+                  ? "Número de carro"
+                  : campo === "color"
+                    ? "Color"
+                    : "Componente"}
+              <input
+                type={campo === "carro" ? "number" : "text"}
+                step={campo === "carro" ? 1 : undefined}
+                value={campos[campo] ?? ""}
+                onChange={(e) => {
+                  const valor = e.currentTarget.value;
+                  setCampos((p) => ({ ...p, [campo]: valor }));
+                }}
+                disabled={paradaActivaDeOrden !== null}
+              />
+            </label>
+          ))}
+
+          <label className="start-form__campo">
+            Observaciones
+            <textarea
+              value={observaciones}
+              onChange={(e) => setObservaciones(e.currentTarget.value)}
+              placeholder="Observaciones (obligatorias si la causa es «Otro»)"
               disabled={paradaActivaDeOrden !== null}
             />
           </label>
-        ))}
 
-        <label className="start-form__campo">
-          Observaciones
-          <textarea
-            value={observaciones}
-            onChange={(e) => setObservaciones(e.currentTarget.value)}
-            placeholder="Observaciones (obligatorias si la causa es «Otro»)"
+          <button
+            type="submit"
+            className="start-form__boton paradas__boton"
             disabled={paradaActivaDeOrden !== null}
-          />
-        </label>
-
-        <button
-          type="submit"
-          className="start-form__boton paradas__boton"
-          disabled={paradaActivaDeOrden !== null}
-        >
-          Registrar parada
-        </button>
-        {errores.length > 0 && (
-          <ul className="start-form__errores" role="alert">
-            {errores.map((e) => (
-              <li key={e}>{e}</li>
-            ))}
-          </ul>
-        )}
-      </form>
+          >
+            Registrar parada
+          </button>
+          {errores.length > 0 && (
+            <ul className="start-form__errores" role="alert">
+              {errores.map((e) => (
+                <li key={e}>{e}</li>
+              ))}
+            </ul>
+          )}
+        </form>
+      )}
 
       {paradasCerradas.length > 0 && (
         <div className="paradas__historial">

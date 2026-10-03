@@ -73,6 +73,9 @@ export function OrderInProduction({
   const [erroresFin, setErroresFin] = useState<string[]>([]);
 
   const paradaActiva = paradaActivaDeOrden !== null;
+  // Se lee del spread (no se saca de él) para que el resto de props siga llevando
+  // `soloLectura` a ResumenTiempo/Actividades/Inspección/Daños/Mantenimiento.
+  const { soloLectura } = actividadesProps;
 
   const golpesProducidos = golpesProducidosDesdeLecturas(orden.lecturas);
   const unidadesProducidas = unidadesParaGolpes(golpesProducidos);
@@ -143,39 +146,42 @@ export function OrderInProduction({
 
       <CalidadSection integracion2da={integracion2da} />
 
-      <form className="start-form" onSubmit={handleSubmit} aria-label="Registrar lectura">
-        <h2 className="start-form__titulo">Registrar lectura</h2>
-        <label className="start-form__campo">
-          Nueva lectura del contador (absoluta)
-          <input
-            type="number"
-            step={1}
-            value={nuevaLectura}
-            onChange={(e) => setNuevaLectura(e.currentTarget.value)}
-            placeholder="Ej.: 1234"
-            disabled={paradaActiva}
-          />
-        </label>
-        <button type="submit" className="start-form__boton" disabled={paradaActiva}>
-          Registrar lectura
-        </button>
-        {paradaActiva && (
-          <p className="start-form__aviso" role="status">
-            La producción está detenida por una parada activa
-          </p>
-        )}
-        {aviso && <p className="start-form__aviso">{aviso}</p>}
-        {errores.length > 0 && (
-          <ul className="start-form__errores" role="alert">
-            {errores.map((e) => (
-              <li key={e}>{e}</li>
-            ))}
-          </ul>
-        )}
-      </form>
+      {!soloLectura && (
+        <form className="start-form" onSubmit={handleSubmit} aria-label="Registrar lectura">
+          <h2 className="start-form__titulo">Registrar lectura</h2>
+          <label className="start-form__campo">
+            Nueva lectura del contador (absoluta)
+            <input
+              type="number"
+              step={1}
+              value={nuevaLectura}
+              onChange={(e) => setNuevaLectura(e.currentTarget.value)}
+              placeholder="Ej.: 1234"
+              disabled={paradaActiva}
+            />
+          </label>
+          <button type="submit" className="start-form__boton" disabled={paradaActiva}>
+            Registrar lectura
+          </button>
+          {paradaActiva && (
+            <p className="start-form__aviso" role="status">
+              La producción está detenida por una parada activa
+            </p>
+          )}
+          {aviso && <p className="start-form__aviso">{aviso}</p>}
+          {errores.length > 0 && (
+            <ul className="start-form__errores" role="alert">
+              {errores.map((e) => (
+                <li key={e}>{e}</li>
+              ))}
+            </ul>
+          )}
+        </form>
+      )}
 
       <ParadasSection
         fechaOperativa={actividadesProps.fechaOperativa}
+        soloLectura={actividadesProps.soloLectura}
         ordenId={orden.id}
         operatorName={orden.operatorName ?? ""}
         paradasDeOrden={paradasDeOrden}
@@ -190,28 +196,30 @@ export function OrderInProduction({
       <DanoSection {...actividadesProps} />
       <MantenimientoSection {...actividadesProps} />
 
-      <section className="finish-section">
-        <button
-          type="button"
-          className="start-form__boton finish-btn"
-          onClick={handleFinalizar}
-          disabled={paradaActiva}
-        >
-          Finalizar producción
-        </button>
-        {paradaActiva && (
-          <p className="start-form__aviso" role="status">
-            Cierre la parada activa antes de finalizar la orden
-          </p>
-        )}
-        {erroresFin.length > 0 && (
-          <ul className="start-form__errores" role="alert">
-            {erroresFin.map((e) => (
-              <li key={e}>{e}</li>
-            ))}
-          </ul>
-        )}
-      </section>
+      {!soloLectura && (
+        <section className="finish-section">
+          <button
+            type="button"
+            className="start-form__boton finish-btn"
+            onClick={handleFinalizar}
+            disabled={paradaActiva}
+          >
+            Finalizar producción
+          </button>
+          {paradaActiva && (
+            <p className="start-form__aviso" role="status">
+              Cierre la parada activa antes de finalizar la orden
+            </p>
+          )}
+          {erroresFin.length > 0 && (
+            <ul className="start-form__errores" role="alert">
+              {erroresFin.map((e) => (
+                <li key={e}>{e}</li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
     </article>
   );
 }

@@ -561,7 +561,7 @@ edits. The `hoy` prop and every existing test return to their pre-change shape.
 
 **Depends on:** WU7 (`soloLectura` must already be threaded through `App`).
 
-- [ ] 8.1 Declare `soloLectura: boolean` as a **required** member on the three previously-ungated prop interfaces, so
+- [x] 8.1 Declare `soloLectura: boolean` as a **required** member on the three previously-ungated prop interfaces, so
   a call site that forgets it does not compile: `ActividadesProps` (`src/ui/ActividadesSection.tsx:15`),
   `ResumenTiempoProps` (`src/ui/ResumenTiempoSection.tsx:10`) and `ParadasSectionProps`
   (`src/ui/ParadasSection.tsx:12`). One JSDoc line each: *"true when the selected day is not today: every write
@@ -570,24 +570,24 @@ edits. The `hoy` prop and every existing test return to their pre-change shape.
   (`src/ui/OrderFinished.tsx:21-30`) and the inline intersection `EmptyDay` takes (`src/ui/EmptyDay.tsx:11`) all
   `extends` / `&` those interfaces, so all four order views receive it for free. **Traces to:** `H:278-292`;
   design §6.1, DD7, DD7a.
-- [ ] 8.2 Gate both write controls in `src/ui/ParadasSection.tsx` and `src/ui/ActividadesSection.tsx` and hide the
+- [x] 8.2 Gate both write controls in `src/ui/ParadasSection.tsx` and `src/ui/ActividadesSection.tsx` and hide the
   fin control in `src/ui/ResumenTiempoSection.tsx` behind `!soloLectura`. **Hidden, not disabled** — a control that
   is present and fails silently, or present and reports a validation error, is prohibited.
   **Traces to:** `H:278-285`; `H:287-294`; `H:295-302`; `H:303-310`; design §11 (second risk row).
-- [ ] 8.3 In `src/ui/OrderAvailable.tsx`, destructure `soloLectura` from `actividadesProps` after `:42` and wrap the
+- [x] 8.3 In `src/ui/OrderAvailable.tsx`, destructure `soloLectura` from `actividadesProps` after `:42` and wrap the
   whole `start-form` (`OrderAvailable.tsx:61-92`) in `{!soloLectura && (…)}`. `onIniciar` stays **required and
   always passed** — no `undefined`, no optional-prop widening; the guard is on the rendered form, not on the prop.
   **Traces to:** `H:303-310` ("the control to start production is absent"); design §6.1 "Order sections".
-- [ ] 8.4 In `src/ui/OrderInProduction.tsx`, destructure after `:69`, then wrap **both** write blocks in
+- [x] 8.4 In `src/ui/OrderInProduction.tsx`, destructure after `:69`, then wrap **both** write blocks in
   `{!soloLectura && (…)}`: the `Registrar lectura` form (`:146-175`) and the `.finish-section` (`:193-214`).
   **Traces to:** `H:303-310` ("the control to register a reading and the control to finalize production are absent
   for an `orden` in production"); design §6.1.
-- [ ] 8.5 Pass `soloLectura` to `ParadasSection` explicitly. It is the only child `App` never spreads in directly:
+- [x] 8.5 Pass `soloLectura` to `ParadasSection` explicitly. It is the only child `App` never spreads in directly:
   `src/ui/OrderInProduction.tsx:177-185` lists its props by hand, right next to
   `fechaOperativa={actividadesProps.fechaOperativa}` (`:178`), so `soloLectura` is written there the same way.
   `OrderFinished` and `EmptyDay` need **no** change — they already render no write controls of their own.
   **Traces to:** `H:287-294`; `H:295-302`; design §5.4 item 7, §6.1.
-- [ ] 8.6 Compose the two gates at `App` **only**, keeping them as two distinct names and never merging them
+- [x] 8.6 Compose the two gates at `App` **only**, keeping them as two distinct names and never merging them
   (DD7a — the `App` call sites at `:897-939` are flat JSX spreads where *later wins*, so one name cannot carry two
   gates): add `soloLectura` to `propsActividades` (`App.tsx:761-771`) and, defensively, to `propsResumenTiempo`
   (`:814-818`, because a required member must not be satisfied by an accident of spread order); then change
@@ -596,7 +596,7 @@ edits. The `hoy` prop and every existing test return to their pre-change shape.
   On today (`soloLectura === false`) this reduces to `true && orden?.estado !== "finished"` — **byte-identical to
   today's expression**, which is why no existing assertion moves. **Traces to:** `H:278-292`; `H:353-364`;
   design §6.1 (including the three-case proof), DD7a.
-- [ ] 8.7 JSDoc-only pass on the three sections that keep `permitirRegistrar` and change **zero** behaviour:
+- [x] 8.7 JSDoc-only pass on the three sections that keep `permitirRegistrar` and change **zero** behaviour:
   `src/ui/DanoSection.tsx:7-30`, `src/ui/InspeccionTelaSection.tsx:58-73`,
   `src/ui/MantenimientoSection.tsx:16-30` — one comment line each pointing at the composition rule of design §6.1.
   No statement, no prop, no condition. Two **field comments** in this pass do stop being true and must be reworded:
@@ -604,7 +604,7 @@ edits. The `hoy` prop and every existing test return to their pre-change shape.
   `src/ui/ActividadesSection.tsx:25` (*"Todas las actividades de la máquina (abiertas y cerradas)…"*) both describe a
   full-history list that is now the selected day's list. Documentation only.
   **Traces to:** design §6.1 Gate B; §9 "JSDoc-only".
-- [ ] 8.8 Add the read-only cases to `src/App.test.tsx` — control **absence**, not disabled state: no control to
+- [x] 8.8 Add the read-only cases to `src/App.test.tsx` — control **absence**, not disabled state: no control to
   register a `parada`, `ActividadPlanificada`, `Dano`, `Mantenimiento` or `InspeccionTela` is reachable on a past day;
   no closure control for an open `parada` / `Dano` / in-progress `Mantenimiento`; no start / reading / finalize
   control; and, for each of the 15 handlers, a direct call on a past day returns the refusal and the store is
@@ -616,6 +616,20 @@ edits. The `hoy` prop and every existing test return to their pre-change shape.
 moved — case (a) and case (b) of design §6.1 are unchanged.
 **Rollback:** remove `soloLectura` from the three interfaces and the three order-view wraps. `permitirRegistrar`
 keeps its current meaning on the three `…SectionProps`, so the pre-change behaviour returns exactly.
+
+> **8.x status: implemented; the first "Finish when" clause is still unmet for 7.9's reason, not a new one.**
+> `npx tsc --noEmit` is clean (0 errors). `src/App.test.tsx` is **112 cases: 107 passed / 5 failed**, and the 5 are
+> **byte-for-byte the same failures 7.9 recorded** — same names, same messages, verified by diffing every `FAIL` line
+> against the pre-8.x baseline. `git diff -- src/domain src-tauri` is empty. The case count necessarily rose from 107 to
+> 112 because 8.8 adds 5 cases; the invariant that matters is that **no pre-existing case changed**, and that held.
+> **The suite cannot be green until Phase 10 lands**, for exactly the reason 7.9 documents — so the first clause is
+> deferred to WU10, not waived. Two deviations recorded rather than hidden:
+> (a) the JSDoc line in 8.1 is written in **Spanish**, not the English quoted in design §6.1, because every comment in
+> those four files is Spanish and CONTEXT.md fixes the vocabulary; (b) `OrderAvailable`'s `soloLectura` destructure sits
+> after the state hooks rather than literally "after `:42`" — the spec's line number is pre-Phase-7.
+> 8.8's closure-control cases were proven **non-vacuous**: temporarily reverting `permitirRegistrar` made the
+> "Cerrar daño" case fail with `+ Received: <button class="danos__boton-cerrar">Cerrar daño</button>`, and the gate was
+> restored. A test that cannot fail proves nothing.
 
 ---
 

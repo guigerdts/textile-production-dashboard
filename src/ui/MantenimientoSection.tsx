@@ -24,6 +24,7 @@ export interface MantenimientoSectionProps {
   mantenimientosDeMaquina: Mantenimiento[];
   mantenimientoAbiertoDeMaquina: MantenimientoAbierto | null;
   danosDeMaquina: Dano[];
+  /** Gate B: App lo compone con el gate A como `!soloLectura && orden?.estado !== "finished"`; los dos nombres nunca se fusionan (design §6.1). */
   permitirRegistrar: boolean;
   onRegistrarMantenimiento(input: RegistrarMantenimientoInput): Promise<string[]>;
   onCerrarMantenimiento(fin: string, queSeRevisoReparo: string): Promise<string[]>;

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactElement } from "react";
 import userEvent from "@testing-library/user-event";
 import App from "./App";
@@ -16,7 +16,7 @@ import {
   DANO_4_SIN_ORDEN_CERRADO,
 } from "./store/danosFixtures";
 import { FECHA_CON_ORDEN, FECHA_SIN_ORDEN } from "./store/fixtures";
-import { P1 } from "./store/paradasFixtures";
+import { P1, P2, P4_ABIERTA } from "./store/paradasFixtures";
 import {
   A1_LIMPIEZA_CERRADA,
   A2_CAMBIO_CERRADO,
@@ -29,16 +29,60 @@ import {
   registrarDevolucion,
   registrarInspeccion,
 } from "./domain/inspeccionTela";
-import type { InspeccionTela, Mantenimiento, Orden } from "./domain/types";
+import type { ActividadPlanificada, InspeccionTela, Mantenimiento, Orden } from "./domain/types";
 import type { Parada, ParadaAbierta } from "./domain/types";
 import type { Dano } from "./domain/types";
 import type { RecoveryState } from "./store/sqlite/recovery";
 import { InMemoryMantenimientoRepository } from "./store/inMemoryMantenimientoRepository";
 import {
+  MANT_1_REACTIVO_CON_DANO_CERRADO,
+  MANT_2_REACTIVO_SIN_DANO_CERRADO,
   MANT_4_ABIERTO,
 } from "./store/mantenimientoFixtures";
 import { registrarMantenimiento } from "./domain/mantenimiento";
 import { jornadaDefault } from "./domain/tiempo";
+import type { OrderAvailable } from "./ui/OrderAvailable";
+import type { OrderInProduction } from "./ui/OrderInProduction";
+
+/**
+ * Seam de captura de props (tarea 8.8). `App` compone los 15 handlers de escritura en
+ * las props que le pasa a las vistas de orden; sobre un día pasado NINGÚN control del DOM
+ * los alcanza (los gates de 8.2–8.6 ocultan los controles), así que las llamadas directas
+ * se hacen sobre estas props capturadas — design §11: "handler-guard cases call the
+ * handlers directly, not through the DOM".
+ *
+ * `vi.hoisted` porque el factory de `vi.mock` se eleva por encima de los imports: la
+ * variable tiene que existir ANTES de que el módulo simulado se evalúe. Los wrappers
+ * re-renderizan el componente real, así que el DOM de las demás pruebas no cambia.
+ */
+const propsVistas = vi.hoisted(() => ({
+  ordenDisponible: null as unknown,
+  ordenEnProduccion: null as unknown,
+}));
+
+vi.mock("./ui/OrderAvailable", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./ui/OrderAvailable")>();
+  const { createElement } = await import("react");
+  return {
+    ...actual,
+    OrderAvailable: (props: Parameters<typeof actual.OrderAvailable>[0]) => {
+      propsVistas.ordenDisponible = props;
+      return createElement(actual.OrderAvailable, props);
+    },
+  };
+});
+
+vi.mock("./ui/OrderInProduction", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./ui/OrderInProduction")>();
+  const { createElement } = await import("react");
+  return {
+    ...actual,
+    OrderInProduction: (props: Parameters<typeof actual.OrderInProduction>[0]) => {
+      propsVistas.ordenEnProduccion = props;
+      return createElement(actual.OrderInProduction, props);
+    },
+  };
+});
 
 
 /**
@@ -2306,5 +2350,382 @@ describe("App — phase 14 (G2): el puerto como fuente de verdad (14.1–14.5)",
     // La parada del REPOSITORIO (Falta de color) reemplazó la del seed.
     expectTexto(/Falta de color/);
     expect(screen.queryByText(/Falta de materia prima/)).toBeNull();
+  }, UI_TIMEOUT);
+});
+
+// ---------------------------------------------------------------------------
+// Phase 8 (WU 8) — alcance de solo lectura (tarea 8.8)
+// ---------------------------------------------------------------------------
+describe("App — phase 8: el día seleccionado que no es hoy es de solo lectura", () => {
+  /** Día operativo CON orden (fixture): es el día SELECCIONADO en estas pruebas. */
+  const DIA = FECHA_CON_ORDEN;
+  /** "Hoy" real inyectado, distinto de todo fixture → el montaje queda de solo lectura. */
+  const HOY_REAL = "2026-09-20";
+  /** Negación literal que devuelven los 15 handlers (tarea 7.6). */
+  const RECHAZO = ["no se puede registrar en un día que no es hoy"];
+
+  /** El fixture A3 es de otro día: hace falta una copia abierta del día seleccionado. */
+  const actividadAbiertaDelDia: ActividadPlanificada = {
+    ...A3_LIMPIEZA_ABIERTA,
+    maquinaId: "M1",
+    fechaOperativa: DIA,
+  };
+
+  /** El fixture DANO_3 es de otro día: copia abierta (con daño del día) del día seleccionado. */
+  const danoAbiertoDelDia: Dano = {
+    ...DANO_3_ABIERTO,
+    ordenId: "ord-101",
+    fechaOperativa: DIA,
+    inicio: `${DIA}T09:00:00.000Z`,
+  };
+
+  /** El fixture MANT_4 es de otro día: copia en curso del día seleccionado. */
+  const mantenimientoAbiertoDelDia: Mantenimiento = {
+    ...MANT_4_ABIERTO,
+    fechaOperativa: DIA,
+    inicio: `${DIA}T09:00:00.000Z`,
+  };
+
+  async function montarDiaPasado(
+    opciones: {
+      ordenEnProduccion?: boolean;
+      conLectura?: boolean;
+      paradas?: Parada[];
+      actividades?: ActividadPlanificada[];
+      danos?: Dano[];
+      mantenimientos?: Mantenimiento[];
+      inspecciones?: InspeccionTela[];
+    } = {},
+  ) {
+    const repository = new InMemoryOrderRepository();
+    if (opciones.ordenEnProduccion) {
+      const disponible = await repository.getOrderByFechaOperativa(DIA);
+      if (!disponible) throw new Error("precondición: la orden del fixture no existe");
+      const iniciada = iniciarProduccion(disponible, {
+        operatorName: "Laura",
+        lecturaInicial: 100,
+        timestamp: `${DIA}T08:00:00.000Z`,
+      });
+      if (!iniciada.orden) throw new Error("precondición: la orden no pudo iniciar");
+      let orden = iniciada.orden;
+      if (opciones.conLectura) {
+        const conLectura = registrarLectura(orden, {
+          valor: 400,
+          timestamp: `${DIA}T09:00:00.000Z`,
+        });
+        if (!conLectura.orden) throw new Error("precondición: la lectura no pudo registrarse");
+        orden = conLectura.orden;
+      }
+      await repository.saveOrder(orden);
+    }
+    const repositorios = {
+      repository,
+      paradaRepository: new InMemoryParadaRepository(opciones.paradas ?? []),
+      actividadRepository: new InMemoryActividadPlanificadaRepository(opciones.actividades ?? []),
+      danoRepository: new InMemoryDanoRepository(opciones.danos ?? []),
+      mantenimientoRepository: new InMemoryMantenimientoRepository(
+        opciones.mantenimientos ?? [],
+      ),
+      inspeccionRepository: new InMemoryInspeccionRepository(opciones.inspecciones ?? []),
+      jornadaRepository: new InMemoryJornadaRepository([]),
+    };
+    await mountApp(<App {...repositorios} hoy={DIA} fechaOperativaHoy={HOY_REAL} />);
+    return repositorios;
+  }
+
+  it("día pasado en producción: ningún control de escritura existe en el DOM (ausente, no deshabilitado)", async () => {
+    await montarDiaPasado({
+      ordenEnProduccion: true,
+      paradas: [P1, P2, P4_ABIERTA],
+      actividades: [A1_LIMPIEZA_CERRADA, A2_CAMBIO_CERRADO, actividadAbiertaDelDia],
+      danos: [DANO_1_CERRADO_CON_PARADA, DANO_2_CERRADO_SIN_PARADA, danoAbiertoDelDia],
+      mantenimientos: [
+        MANT_1_REACTIVO_CON_DANO_CERRADO,
+        MANT_2_REACTIVO_SIN_DANO_CERRADO,
+        mantenimientoAbiertoDelDia,
+      ],
+    });
+
+    // Los REGISTROS siguen a la vista: se ocultan los controles, no los datos.
+    expect(screen.getByTestId("parada-activa")).toBeTruthy();
+    expect(screen.getByTestId("actividad-abierta-limpieza")).toBeTruthy();
+    expect(screen.getByTestId("dano-abierto")).toBeTruthy();
+    expect(screen.getByTestId("mantenimiento-abierto")).toBeTruthy();
+
+    // Cierres de los registros abiertos: parada, daño y mantenimiento en curso.
+    expect(screen.queryByRole("button", { name: "Cerrar parada" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Cerrar actividad" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Cerrar daño" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Cerrar mantenimiento" })).toBeNull();
+    expect(screen.queryByRole("form", { name: "Cerrar daño" })).toBeNull();
+    expect(screen.queryByRole("form", { name: "Cerrar mantenimiento" })).toBeNull();
+
+    // Altas de los cinco dominios.
+    expect(screen.queryByRole("button", { name: "Registrar parada" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Registrar actividad" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Registrar daño" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Registrar inspección" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Registrar mantenimiento" })).toBeNull();
+    // Avance de producción y cierre de jornada.
+    expect(screen.queryByRole("button", { name: "Registrar lectura" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Finalizar producción" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Guardar fin de jornada" })).toBeNull();
+
+    // Tampoco existen los FORMULARIOS completos: nada "presente y fallando".
+    expect(screen.queryByRole("form", { name: "Registrar parada" })).toBeNull();
+    expect(screen.queryByRole("form", { name: "Registrar actividad" })).toBeNull();
+    expect(screen.queryByRole("form", { name: "Registrar daño" })).toBeNull();
+    expect(screen.queryByRole("form", { name: "Registrar inspección" })).toBeNull();
+    expect(screen.queryByRole("form", { name: "Registrar mantenimiento" })).toBeNull();
+    expect(screen.queryByRole("form", { name: "Registrar lectura" })).toBeNull();
+    expect(screen.queryByRole("form", { name: "Ajustar fin de jornada" })).toBeNull();
+  }, UI_TIMEOUT);
+
+  it("día pasado con orden disponible: el control de inicio de producción no existe en el DOM", async () => {
+    await montarDiaPasado();
+
+    expect(screen.queryByRole("button", { name: "Iniciar producción" })).toBeNull();
+    expect(screen.queryByRole("form", { name: "Iniciar producción" })).toBeNull();
+    // La orden se ve igual que en un día escribible.
+    expectTexto("OP-101");
+    expectTexto("Disponible");
+  }, UI_TIMEOUT);
+
+  it("día pasado: la vista de solo lectura muestra todo lo que el día registró y sus valores derivados", async () => {
+    const op101 = await new InMemoryOrderRepository().getOrderByFechaOperativa(DIA);
+    if (!op101) throw new Error("precondición: la orden del fixture no existe");
+    const inspeccion = registrarInspeccion(op101, {
+      operatorName: "Ana",
+      items: getItemsChecklist().map((i) => ({ id: i.id, estado: "conforme" as const })),
+      timestamp: `${DIA}T07:30:00.000Z`,
+    }).inspeccion;
+    if (!inspeccion) throw new Error("precondición: la inspección no pudo registrarse");
+
+    await montarDiaPasado({
+      ordenEnProduccion: true,
+      conLectura: true,
+      paradas: [P1],
+      actividades: [A1_LIMPIEZA_CERRADA],
+      danos: [DANO_1_CERRADO_CON_PARADA, DANO_4_SIN_ORDEN_CERRADO],
+      mantenimientos: [MANT_1_REACTIVO_CON_DANO_CERRADO, MANT_2_REACTIVO_SIN_DANO_CERRADO],
+      inspecciones: [inspeccion],
+    });
+
+    // Todo lo que el día registró sigue visible.
+    expectTexto("OP-101");
+    expectTexto("En producción");
+    expectTexto("Producción actual");
+    expectTexto("300 golpes / 900 unidades");
+    expect(screen.getByText("Historial de paradas")).toBeTruthy();
+    expect(screen.getByText("Historial de actividades")).toBeTruthy();
+    expect(screen.getByText("Historial de daños")).toBeTruthy();
+    expect(screen.getByText("Historial de mantenimientos")).toBeTruthy();
+    expect(screen.getAllByTestId("inspeccion-item")).toHaveLength(1);
+
+    // Valores derivados del turno (jornada 10 h, limpieza 1 h, parada 15 min).
+    expect(screen.getByTestId("resumen-tiempo_disponible").textContent).toBe("10 h");
+    expect(screen.getByTestId("resumen-tiempo_planificado").textContent).toBe("1 h");
+    expect(screen.getByTestId("resumen-tiempo_incidencias").textContent).toBe("15 min");
+    expect(screen.getByTestId("resumen-tiempo_productivo").textContent).toBe("8 h 45 min");
+
+    // …y SOLO los controles de escritura desaparecen.
+    expect(screen.queryByRole("form", { name: "Registrar lectura" })).toBeNull();
+    expect(screen.queryByRole("form", { name: "Registrar parada" })).toBeNull();
+    expect(screen.queryByRole("form", { name: "Registrar actividad" })).toBeNull();
+    expect(screen.queryByRole("form", { name: "Registrar daño" })).toBeNull();
+    expect(screen.queryByRole("form", { name: "Registrar inspección" })).toBeNull();
+    expect(screen.queryByRole("form", { name: "Registrar mantenimiento" })).toBeNull();
+    expect(screen.queryByRole("form", { name: "Ajustar fin de jornada" })).toBeNull();
+  }, UI_TIMEOUT);
+
+  it("los 15 handlers llamados directamente sobre un día pasado devuelven la negación y no tocan el almacén", async () => {
+    // Montaje 1 — orden disponible: App le pasa 11 de los 15 handlers a OrderAvailable.
+    const repos = await montarDiaPasado();
+    expect(propsVistas.ordenDisponible).not.toBeNull();
+    const disponibles = propsVistas.ordenDisponible as Parameters<typeof OrderAvailable>[0];
+
+    // Montaje 2 — la misma orden pasada a en producción: OrderInProduction recibe los 4
+    // restantes (lectura, finalizar, parada). El estado cambia FUERA de la app, porque en
+    // un día pasado ningún control ni handler permite escribir.
+    const op101 = await repos.repository.getOrderByFechaOperativa(DIA);
+    if (!op101) throw new Error("precondición: la orden del fixture no existe");
+    const iniciada = iniciarProduccion(op101, {
+      operatorName: "Laura",
+      lecturaInicial: 100,
+      timestamp: `${DIA}T08:00:00.000Z`,
+    });
+    if (!iniciada.orden) throw new Error("precondición: la orden no pudo iniciar");
+    await repos.repository.saveOrder(iniciada.orden);
+    cleanup();
+    await mountApp(
+      <App
+        repository={repos.repository}
+        paradaRepository={repos.paradaRepository}
+        actividadRepository={repos.actividadRepository}
+        danoRepository={repos.danoRepository}
+        mantenimientoRepository={repos.mantenimientoRepository}
+        inspeccionRepository={repos.inspeccionRepository}
+        jornadaRepository={repos.jornadaRepository}
+        hoy={DIA}
+        fechaOperativaHoy={HOY_REAL}
+      />,
+    );
+    expect(propsVistas.ordenEnProduccion).not.toBeNull();
+    const enProduccion = propsVistas.ordenEnProduccion as Parameters<
+      typeof OrderInProduction
+    >[0];
+
+    const estadoAlmacen = async () => ({
+      orden: await repos.repository.getOrderByFechaOperativa(DIA),
+      paradas: await repos.paradaRepository.listarPorMaquina("M1"),
+      actividades: await repos.actividadRepository.listarPorMaquina("M1"),
+      danos: await repos.danoRepository.listarPorMaquina("M1"),
+      mantenimientos: await repos.mantenimientoRepository.listarPorMaquina("M1"),
+      inspecciones: await repos.inspeccionRepository.listarPorOrden("ord-101"),
+      jornada: await repos.jornadaRepository.obtenerParaFecha(DIA),
+    });
+    const almacenAntes = await estadoAlmacen();
+
+    const inspeccionInput = {
+      operatorName: "Laura",
+      items: getItemsChecklist().map((i) => ({ id: i.id, estado: "conforme" as const })),
+      timestamp: `${DIA}T10:00:00.000Z`,
+    };
+
+    const llamadas: [string, unknown][] = [
+      ["handleIniciar", await disponibles.onIniciar("Laura", 100)],
+      [
+        "handleRegistrarActividad",
+        await disponibles.onRegistrarActividad({
+          maquinaId: "M1",
+          tipo: "limpieza",
+          inicio: `${DIA}T10:00:00.000Z`,
+          fechaOperativa: DIA,
+          queSeLimpio: "mesa",
+          operatorName: "Laura",
+        }),
+      ],
+      ["handleCerrarActividad", await disponibles.onCerrarActividad("limpieza")],
+      ["handleCambiarFinJornada", await disponibles.onCambiarFinJornada("19:00")],
+      [
+        "handleRegistrarDano",
+        await disponibles.onRegistrarDano({
+          maquinaId: "M1",
+          ordenId: "ord-101",
+          operatorName: "Laura",
+          tipo: "mecanico",
+          componente: "eje trasero",
+          inicio: `${DIA}T10:00:00.000Z`,
+          fechaOperativa: DIA,
+          causoParada: false,
+          paradaId: null,
+          posibleSegunda: false,
+        }),
+      ],
+      [
+        "handleCerrarDano",
+        await disponibles.onCerrarDano(`${DIA}T11:00:00.000Z`, "Cambio de eje"),
+      ],
+      ["handleRegistrarInspeccion", await disponibles.onRegistrarInspeccion(inspeccionInput)],
+      [
+        "handleDevolverInspeccion",
+        await disponibles.onDevolverInspeccion("insp-x", {
+          motivo: "Absorción insuficiente",
+          registradaPor: "Laura",
+          timestamp: `${DIA}T10:00:00.000Z`,
+        }),
+      ],
+      [
+        "handleAutorizarInspeccion",
+        await disponibles.onAutorizarInspeccion("insp-x", {
+          autorizadoPor: "Gerencia",
+          timestamp: `${DIA}T10:00:00.000Z`,
+        }),
+      ],
+      [
+        "handleRegistrarMantenimiento",
+        await disponibles.onRegistrarMantenimiento({
+          maquinaId: "M1",
+          tipo: "reactivo",
+          operatorName: "Laura",
+          motivo: "Fusible quemado",
+          inicio: `${DIA}T10:00:00.000Z`,
+          fechaOperativa: DIA,
+          danoId: null,
+        }),
+      ],
+      [
+        "handleCerrarMantenimiento",
+        await disponibles.onCerrarMantenimiento(
+          `${DIA}T11:00:00.000Z`,
+          "Cambio de fusible",
+        ),
+      ],
+      ["handleRegistrarLectura", (await enProduccion.onRegistrarLectura(500)).errores],
+      ["handleFinalizar", await enProduccion.onFinalizar()],
+      [
+        "handleRegistrarParada",
+        await enProduccion.onRegistrarParada({
+          maquinaId: "M1",
+          ordenId: "ord-101",
+          operatorName: "Laura",
+          causaId: "falta_color",
+          camposEspecificos: { color: "Rojo" },
+          inicio: `${DIA}T10:00:00.000Z`,
+          fechaOperativa: DIA,
+        }),
+      ],
+      ["handleCerrarParada", await enProduccion.onCerrarParada()],
+    ];
+
+    expect(llamadas).toHaveLength(15);
+    for (const [nombre, resultado] of llamadas) {
+      expect(resultado, `${nombre} debe rechazar en un día pasado`).toEqual(RECHAZO);
+    }
+    expect(await estadoAlmacen()).toEqual(almacenAntes);
+  }, UI_TIMEOUT);
+
+  it("volver a hoy restaura todos los controles y la escritura vuelve a funcionar", async () => {
+    const repository = new InMemoryOrderRepository();
+    const paradaRepository = new InMemoryParadaRepository([]);
+    const actividadRepository = new InMemoryActividadPlanificadaRepository([]);
+    const ui = (fechaReferencia: string) => (
+      <App
+        repository={repository}
+        paradaRepository={paradaRepository}
+        actividadRepository={actividadRepository}
+        hoy={DIA}
+        fechaOperativaHoy={fechaReferencia}
+      />
+    );
+    const { rerender } = render(ui(HOY_REAL));
+    await act(async () => {});
+
+    // Día pasado: los controles no existen.
+    expect(screen.queryByRole("button", { name: "Iniciar producción" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Registrar actividad" })).toBeNull();
+    expect(screen.queryByRole("form", { name: "Ajustar fin de jornada" })).toBeNull();
+
+    // "Volver a hoy": Raiz sólo cambia la referencia inyectada; el día no cambia.
+    rerender(ui(DIA));
+    await act(async () => {});
+
+    expect(screen.getByRole("button", { name: "Iniciar producción" })).toBeTruthy();
+    expect(screen.getByRole("form", { name: "Registrar actividad" })).toBeTruthy();
+    expect(screen.getByRole("form", { name: "Ajustar fin de jornada" })).toBeTruthy();
+
+    // …y la escritura vuelve a funcionar como en una app sin configurar.
+    const user = userEvent.setup();
+    await user.type(
+      screen.getByRole("textbox", { name: /operario \(obligatorio\)/i }),
+      "Laura",
+    );
+    await user.type(screen.getByRole("spinbutton", { name: /lectura inicial/i }), "100");
+    await user.click(screen.getByRole("button", { name: "Iniciar producción" }));
+
+    expectTexto("En producción");
+    expect((await repository.getOrderByFechaOperativa(DIA))!.estado).toBe(
+      "in_production",
+    );
   }, UI_TIMEOUT);
 });

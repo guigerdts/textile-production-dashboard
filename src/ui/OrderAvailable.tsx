@@ -43,6 +43,9 @@ export function OrderAvailable({
   const [operatorName, setOperatorName] = useState("");
   const [lecturaInicial, setLecturaInicial] = useState("");
   const [errores, setErrores] = useState<string[]>([]);
+  // Se lee del spread (no se saca de él) para que el resto de props siga llevando
+  // `soloLectura` a ResumenTiempo/Actividades/Inspección/Daños/Mantenimiento.
+  const { soloLectura } = actividadesProps;
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -58,38 +61,40 @@ export function OrderAvailable({
 
       <OrderDatos orden={orden} />
 
-      <form className="start-form" onSubmit={handleSubmit} aria-label="Iniciar producción">
-        <h2 className="start-form__titulo">Iniciar producción</h2>
-        <label className="start-form__campo">
-          Operario (obligatorio)
-          <input
-            type="text"
-            value={operatorName}
-            onChange={(e) => setOperatorName(e.currentTarget.value)}
-            placeholder="Nombre del operario"
-          />
-        </label>
-        <label className="start-form__campo">
-          Lectura inicial del contador (obligatoria, ≥ 0)
-          <input
-            type="number"
-            step={1}
-            value={lecturaInicial}
-            onChange={(e) => setLecturaInicial(e.currentTarget.value)}
-            placeholder="Ej.: 1234"
-          />
-        </label>
-        <button type="submit" className="start-form__boton">
-          Iniciar producción
-        </button>
-        {errores.length > 0 && (
-          <ul className="start-form__errores" role="alert">
-            {errores.map((e) => (
-              <li key={e}>{e}</li>
-            ))}
-          </ul>
-        )}
-      </form>
+      {!soloLectura && (
+        <form className="start-form" onSubmit={handleSubmit} aria-label="Iniciar producción">
+          <h2 className="start-form__titulo">Iniciar producción</h2>
+          <label className="start-form__campo">
+            Operario (obligatorio)
+            <input
+              type="text"
+              value={operatorName}
+              onChange={(e) => setOperatorName(e.currentTarget.value)}
+              placeholder="Nombre del operario"
+            />
+          </label>
+          <label className="start-form__campo">
+            Lectura inicial del contador (obligatoria, ≥ 0)
+            <input
+              type="number"
+              step={1}
+              value={lecturaInicial}
+              onChange={(e) => setLecturaInicial(e.currentTarget.value)}
+              placeholder="Ej.: 1234"
+            />
+          </label>
+          <button type="submit" className="start-form__boton">
+            Iniciar producción
+          </button>
+          {errores.length > 0 && (
+            <ul className="start-form__errores" role="alert">
+              {errores.map((e) => (
+                <li key={e}>{e}</li>
+              ))}
+            </ul>
+          )}
+        </form>
+      )}
 
       <ResumenTiempoSection {...actividadesProps} />
       <ActividadesSection {...actividadesProps} />

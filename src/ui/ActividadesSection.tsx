@@ -20,9 +20,11 @@ export interface ActividadesProps {
    * Hoy la app lo inyecta con el día consultado; al navegar a un día
    * histórico será ese día (CHANGE 2), no el de hoy. */
   fechaOperativa: string;
+  /** true cuando el día seleccionado NO es hoy: todo control de escritura queda oculto. */
+  soloLectura: boolean;
   /** Operario que registra la actividad; en producción/finalizada se precarga con el de la orden. */
   operatorNameInicial?: string;
-  /** Todas las actividades de la máquina (abiertas y cerradas) para historial y validación. */
+  /** Actividades de la máquina del DÍA SELECCIONADO (abiertas y cerradas) para historial y validación. */
   actividades: ActividadPlanificada[];
   /** Actividades abiertas (0..2: limpieza y/o cambio de diseño pueden coexistir). */
   actividadesAbiertas: ActividadAbierta[];
@@ -61,6 +63,7 @@ export function ActividadesSection({
   actividades,
   actividadesAbiertas,
   fechaOperativa,
+  soloLectura,
   onRegistrarActividad,
   onCerrarActividad,
 }: ActividadesProps) {
@@ -114,13 +117,15 @@ export function ActividadesSection({
             {" "}
             (desde las {formatearHora(activa.inicio)})
           </span>
-          <button
-            type="button"
-            className="actividades__cerrar"
-            onClick={() => handleCerrar(activa.tipo)}
-          >
-            Cerrar actividad
-          </button>
+          {!soloLectura && (
+            <button
+              type="button"
+              className="actividades__cerrar"
+              onClick={() => handleCerrar(activa.tipo)}
+            >
+              Cerrar actividad
+            </button>
+          )}
           {erroresCierre.length > 0 && (
             <ul className="start-form__errores" role="alert">
               {erroresCierre.map((e) => (
@@ -131,70 +136,72 @@ export function ActividadesSection({
         </div>
       ))}
 
-      <form className="actividades__form" onSubmit={handleSubmit} aria-label="Registrar actividad">
-        <label className="start-form__campo">
-          Tipo de actividad
-          <select
-            value={tipo}
-            onChange={(e) => {
-              const nuevo = e.currentTarget.value as TipoActividadPlanificada | "";
-              setTipo(nuevo);
-              // Sugerencia SOLO de UI: si es martes y elige limpieza, precarga un texto
-              // editable; no crea nada, no restringe otros días ni horarios.
-              setQueSeLimpio(nuevo === "limpieza" && esMartes(hoy) ? SUGERENCIA_LIMPIEZA_MARTES : "");
-            }}
-          >
-            <option value="">Seleccionar tipo…</option>
-            {getTiposActividad().map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.nombre}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        {tipo === "limpieza" && (
+      {!soloLectura && (
+        <form className="actividades__form" onSubmit={handleSubmit} aria-label="Registrar actividad">
           <label className="start-form__campo">
-            Qué se limpió
+            Tipo de actividad
+            <select
+              value={tipo}
+              onChange={(e) => {
+                const nuevo = e.currentTarget.value as TipoActividadPlanificada | "";
+                setTipo(nuevo);
+                // Sugerencia SOLO de UI: si es martes y elige limpieza, precarga un texto
+                // editable; no crea nada, no restringe otros días ni horarios.
+                setQueSeLimpio(nuevo === "limpieza" && esMartes(hoy) ? SUGERENCIA_LIMPIEZA_MARTES : "");
+              }}
+            >
+              <option value="">Seleccionar tipo…</option>
+              {getTiposActividad().map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.nombre}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {tipo === "limpieza" && (
+            <label className="start-form__campo">
+              Qué se limpió
+              <input
+                type="text"
+                value={queSeLimpio}
+                onChange={(e) => setQueSeLimpio(e.currentTarget.value)}
+                placeholder="Ej.: mesa de estampado"
+              />
+            </label>
+          )}
+
+          <label className="start-form__campo">
+            Operario de la actividad
             <input
               type="text"
-              value={queSeLimpio}
-              onChange={(e) => setQueSeLimpio(e.currentTarget.value)}
-              placeholder="Ej.: mesa de estampado"
+              value={operatorName}
+              onChange={(e) => setOperatorName(e.currentTarget.value)}
+              placeholder="Nombre del operario"
             />
           </label>
-        )}
 
-        <label className="start-form__campo">
-          Operario de la actividad
-          <input
-            type="text"
-            value={operatorName}
-            onChange={(e) => setOperatorName(e.currentTarget.value)}
-            placeholder="Nombre del operario"
-          />
-        </label>
+          <label className="start-form__campo">
+            Observaciones
+            <textarea
+              value={observaciones}
+              onChange={(e) => setObservaciones(e.currentTarget.value)}
+              placeholder="Observaciones (opcional)"
+            />
+          </label>
 
-        <label className="start-form__campo">
-          Observaciones
-          <textarea
-            value={observaciones}
-            onChange={(e) => setObservaciones(e.currentTarget.value)}
-            placeholder="Observaciones (opcional)"
-          />
-        </label>
-
-        <button type="submit" className="start-form__boton actividades__boton">
-          Registrar actividad
-        </button>
-        {errores.length > 0 && (
-          <ul className="start-form__errores" role="alert">
-            {errores.map((e) => (
-              <li key={e}>{e}</li>
-            ))}
-          </ul>
-        )}
-      </form>
+          <button type="submit" className="start-form__boton actividades__boton">
+            Registrar actividad
+          </button>
+          {errores.length > 0 && (
+            <ul className="start-form__errores" role="alert">
+              {errores.map((e) => (
+                <li key={e}>{e}</li>
+              ))}
+            </ul>
+          )}
+        </form>
+      )}
 
       {actividadesCerradas.length > 0 && (
         <div className="actividades__historial">
