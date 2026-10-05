@@ -169,6 +169,9 @@ export interface MantenimientoSqlValues {
  * - `que_se_reviso_reparo` and `observaciones` are absent → `undefined`.
  * - NEVER an order link and NEVER a duration: the table has no `orden_id` and
  *   no `duracion` column (ADR 0006 / ADR 0007), so neither is read.
+ * - A missing, `NULL` or blank `fecha_operativa` leaves through
+ *   `fechaOperativaRow` (NOT NULL with no DEFAULT, migration 005), never as an
+ *   unset field.
  */
 export function mapMantenimientoRow(row: MantenimientoRow): Mantenimiento {
   return {
@@ -179,7 +182,7 @@ export function mapMantenimientoRow(row: MantenimientoRow): Mantenimiento {
     motivo: row.motivo,
     inicio: row.inicio,
     fin: row.fin,
-    fechaOperativa: row.fecha_operativa,
+    fechaOperativa: fechaOperativaRow(row.id, row.fecha_operativa),
     queSeRevisoReparo: row.que_se_reviso_reparo ?? undefined,
     danoId: row.dano_id,
     observaciones: row.observaciones ?? undefined,
@@ -212,6 +215,26 @@ function tipoMantenimientoRow(mantenimientoId: string, valor: string): TipoMante
     `el tipo "${valor}" no es un tipo de mantenimiento conocido ("reactivo" | "preventivo")`,
     new Error(`valor inesperado en la columna "tipo": "${valor}"`)
   );
+}
+
+/**
+ * The operative day a `fecha_operativa` column must carry — NOT NULL with no
+ * DEFAULT (005), so the day of the maintenance is persisted, never derived from
+ * `inicio`. `MantenimientoRow` declares `string`, but TypeScript enforces
+ * nothing at runtime: an absent column, a SQL `NULL` and a `""` all arrive
+ * here as they are. Any of the three is a damaged row and leaves through
+ * `errorDeMapeo` naming the column and the NOT-NULL-without-DEFAULT reason —
+ * never an unset field.
+ */
+function fechaOperativaRow(mantenimientoId: string, valor: unknown): string {
+  if (typeof valor !== "string" || valor.trim() === "") {
+    throw errorDeMapeo(
+      mantenimientoId,
+      `la columna "fecha_operativa" es NOT NULL sin DEFAULT (migración 005): el día del evento no puede ser nulo, ausente ni vacío`,
+      new Error(`valor inesperado en la columna "fecha_operativa": ${JSON.stringify(valor)}`)
+    );
+  }
+  return valor;
 }
 
 /**

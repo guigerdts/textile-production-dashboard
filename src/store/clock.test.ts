@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { desplazarDia, fechaOperativaDe, relojDelSistema } from "./clock";
+import { fechaOperativaHoy } from "./fixtures";
 
 /**
  * Fija el reloj: un instante UTC concreto se convierte a un instante local
@@ -68,6 +69,18 @@ describe("fechaOperativaDe", () => {
     const t1 = relojDelSistema().getTime();
     const t2 = relojDelSistema().getTime();
     expect(t2).toBeGreaterThanOrEqual(t1);
+  });
+});
+
+/**
+ * Tarea 2.4 — el "hoy" que la app pinta al arrancar (`fechaOperativaHoy`, en
+ * `store/fixtures.ts`) y la lectura del reloj del sistema (`fechaOperativaDe`)
+ * deben ser la MISMA lectura de calendario local. Si la primera se derivara de
+ * `toISOString()` volvería el bug de atribución al día UTC.
+ */
+describe("fechaOperativaHoy", () => {
+  it("coincide con fechaOperativaDe(relojDelSistema)", () => {
+    expect(fechaOperativaHoy()).toBe(fechaOperativaDe(relojDelSistema));
   });
 });
 

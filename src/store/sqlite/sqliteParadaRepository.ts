@@ -135,6 +135,23 @@ function camposEspecificosRow(paradaId: string, texto: string): Record<string, u
   }
 }
 
+/**
+ * `fecha_operativa` (migración 005) es NOT NULL y sin DEFAULT: el día de la
+ * parada es un dato persistido. `ParadaRow` declara `string`, pero eso
+ * TypeScript no lo cumple en runtime, así que el valor entra como `unknown` y
+ * se valida de verdad: columna ausente, `NULL` o `""` son una fila dañada y
+ * salen en voz alta — nunca un `fechaOperativa` sin definir.
+ */
+function fechaOperativaRow(paradaId: string, valor: unknown): string {
+  if (typeof valor !== "string" || valor.trim() === "") {
+    throw errorDeMapeo(
+      paradaId,
+      `la columna "fecha_operativa" es NOT NULL sin DEFAULT (migración 005): el día del evento no puede ser nulo, ausente ni vacío`,
+    );
+  }
+  return valor;
+}
+
 /** Puro: Parada -> valores SQL (JSON ya stringificado). Ninguna Database aquí. */
 export function mapParadaToSql(parada: Parada): ParadaSqlValues {
   return {
@@ -151,7 +168,11 @@ export function mapParadaToSql(parada: Parada): ParadaSqlValues {
   };
 }
 
-/** Puro: fila SQL -> Parada. Nunca una referencia a la fila de entrada. */
+/**
+ * Puro: fila SQL -> Parada. Nunca una referencia a la fila de entrada.
+ * `fecha_operativa` ausente, `NULL` o vacía sale por `fechaOperativaRow`
+ * (NOT NULL sin DEFAULT, migración 005), nunca como un campo sin definir.
+ */
 export function mapParadaRow(fila: ParadaRow): Parada {
   return {
     id: fila.id,
@@ -163,7 +184,7 @@ export function mapParadaRow(fila: ParadaRow): Parada {
     observaciones: fila.observaciones ?? undefined,
     inicio: fila.inicio,
     fin: fila.fin,
-    fechaOperativa: fila.fecha_operativa,
+    fechaOperativa: fechaOperativaRow(fila.id, fila.fecha_operativa),
   };
 }
 

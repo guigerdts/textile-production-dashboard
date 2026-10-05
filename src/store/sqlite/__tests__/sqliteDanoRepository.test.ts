@@ -259,6 +259,34 @@ describe("sqliteDanoRepository — mappers puros", () => {
     expect(recuperada.ordenId).toBeNull();
     expect(recuperada.paradaId).toBeNull();
   });
+
+  it("una fila sin fecha_operativa (null, ausente o vacía) es un error de mapeo que nombra la columna", () => {
+    // 005 la declara NOT NULL sin DEFAULT: el día es dato persistido, así que
+    // una fila dañada falla en voz alta en lugar de rendir un `fechaOperativa`
+    // sin definir.
+    const base = mapDanoToSql(dano());
+
+    // `null`: la declaración `Row` miente en runtime, por eso el validador
+    // recibe `unknown`.
+    const nula = { ...base, fecha_operativa: null } as unknown as DanoRow;
+    expect(() => mapDanoRow(nula)).toThrow(/fecha_operativa/);
+    expect(() => mapDanoRow(nula)).toThrow(/NOT NULL sin DEFAULT/);
+
+    // Columna ausente del todo.
+    const ausente = { ...base } as Partial<DanoRow>;
+    delete ausente.fecha_operativa;
+    expect(() => mapDanoRow(ausente as DanoRow)).toThrow(/fecha_operativa/);
+
+    // En blanco: la columna no puede legítimamente estar vacía.
+    const vacia = { ...base, fecha_operativa: "" };
+    expect(() => mapDanoRow(vacia)).toThrow(/fecha_operativa/);
+  });
+
+  it("la ruta feliz conserva la fecha operativa válida sin cambios", () => {
+    const recuperada = mapDanoRow(mapDanoToSql(dano()));
+
+    expect(recuperada.fechaOperativa).toBe("2026-09-14");
+  });
 });
 
 // ── 2. Los dos flags son independientes ─────────────────────────────────────

@@ -147,6 +147,36 @@ describe("sqliteActividadPlanificadaRepository — mappers puros", () => {
     const recuperada = mapActividadPlanificadaRow(fila);
     expect(recuperada).not.toHaveProperty("ordenId");
   });
+
+  it("una fila sin fecha_operativa (null, ausente o vacía) es un error de mapeo que nombra la columna", () => {
+    // 005 la declara NOT NULL sin DEFAULT: el día es dato persistido, así que
+    // una fila dañada falla en voz alta en lugar de rendir un `fechaOperativa`
+    // sin definir.
+    const base = mapActividadPlanificadaToSql(actividad());
+
+    // `null`: la declaración `Row` miente en runtime, por eso el validador
+    // recibe `unknown`.
+    const nula = { ...base, fecha_operativa: null } as unknown as ActividadPlanificadaRow;
+    expect(() => mapActividadPlanificadaRow(nula)).toThrow(/fecha_operativa/);
+    expect(() => mapActividadPlanificadaRow(nula)).toThrow(/NOT NULL sin DEFAULT/);
+
+    // Columna ausente del todo.
+    const ausente = { ...base } as Partial<ActividadPlanificadaRow>;
+    delete ausente.fecha_operativa;
+    expect(() => mapActividadPlanificadaRow(ausente as ActividadPlanificadaRow)).toThrow(
+      /fecha_operativa/
+    );
+
+    // En blanco: la columna no puede legítimamente estar vacía.
+    const vacia = { ...base, fecha_operativa: "" };
+    expect(() => mapActividadPlanificadaRow(vacia)).toThrow(/fecha_operativa/);
+  });
+
+  it("la ruta feliz conserva la fecha operativa válida sin cambios", () => {
+    const recuperada = mapActividadPlanificadaRow(mapActividadPlanificadaToSql(actividad()));
+
+    expect(recuperada.fechaOperativa).toBe("2026-09-14");
+  });
 });
 
 // ── 2. Insertar y leer de vuelta ────────────────────────────────────────────

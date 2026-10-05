@@ -115,6 +115,32 @@ export interface ActividadPlanificadaSqlValues {
   fecha_operativa: string;
 }
 
+/** Error de mapeo descriptivo que conserva el defecto concreto como `cause`. */
+function errorDeMapeo(actividadId: string, detalle: string, causa: Error): Error {
+  return new Error(`no se pudo mapear la actividad "${actividadId}": ${detalle}`, {
+    cause: causa,
+  });
+}
+
+/**
+ * `fecha_operativa` (migración 005) es NOT NULL y sin DEFAULT: el día de la
+ * actividad es un dato persistido, nunca derivado de `inicio`.
+ * `ActividadPlanificadaRow` declara `string`, pero eso TypeScript no lo cumple
+ * en runtime, así que el valor entra como `unknown` y se valida de verdad:
+ * columna ausente, `NULL` o `""` son una fila dañada y salen en voz alta —
+ * nunca un `fechaOperativa` sin definir.
+ */
+function fechaOperativaRow(actividadId: string, valor: unknown): string {
+  if (typeof valor !== "string" || valor.trim() === "") {
+    throw errorDeMapeo(
+      actividadId,
+      `la columna "fecha_operativa" es NOT NULL sin DEFAULT (migración 005): el día del evento no puede ser nulo, ausente ni vacío`,
+      new Error(`valor inesperado en la columna "fecha_operativa": ${JSON.stringify(valor)}`),
+    );
+  }
+  return valor;
+}
+
 /**
  * SQL Row → TypeScript. PURA: sin I/O, sin reloj, sin azar, sin `Database`.
  * Devuelve un objeto NUEVO; la fila nunca se reutiliza ni se conserva.
@@ -126,6 +152,8 @@ export interface ActividadPlanificadaSqlValues {
  * - `fin` se conserva como `string | null`: `null` significa abierta y es el
  *   valor que le da sentido a `ActividadAbierta`.
  * - Nunca inventa `ordenId`: esta tabla no tiene enlace a la orden.
+ * - `fecha_operativa` ausente, `NULL` o vacía sale por `fechaOperativaRow`
+ *   (NOT NULL sin DEFAULT, migración 005), nunca como un campo sin definir.
  */
 export function mapActividadPlanificadaRow(row: ActividadPlanificadaRow): ActividadPlanificada {
   return {
@@ -137,7 +165,7 @@ export function mapActividadPlanificadaRow(row: ActividadPlanificadaRow): Activi
     queSeLimpio: row.que_se_limpio ?? undefined,
     observaciones: row.observaciones ?? undefined,
     operatorName: row.operario,
-    fechaOperativa: row.fecha_operativa,
+    fechaOperativa: fechaOperativaRow(row.id, row.fecha_operativa),
   };
 }
 

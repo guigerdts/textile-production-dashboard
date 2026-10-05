@@ -153,6 +153,32 @@ export interface DanoSqlValues {
   fecha_operativa: string;
 }
 
+/** Error de mapeo descriptivo que conserva el defecto concreto como `cause`. */
+function errorDeMapeo(danoId: string, detalle: string, causa: Error): Error {
+  return new Error(`no se pudo mapear el daño "${danoId}": ${detalle}`, {
+    cause: causa,
+  });
+}
+
+/**
+ * `fecha_operativa` (migración 005) es NOT NULL y sin DEFAULT: el día del
+ * daño es un dato persistido, nunca derivado de `inicio`. `DanoRow` declara
+ * `string`, pero eso TypeScript no lo cumple en runtime, así que el valor
+ * entra como `unknown` y se valida de verdad: columna ausente, `NULL` o `""`
+ * son una fila dañada y salen en voz alta — nunca un `fechaOperativa` sin
+ * definir.
+ */
+function fechaOperativaRow(danoId: string, valor: unknown): string {
+  if (typeof valor !== "string" || valor.trim() === "") {
+    throw errorDeMapeo(
+      danoId,
+      `la columna "fecha_operativa" es NOT NULL sin DEFAULT (migración 005): el día del evento no puede ser nulo, ausente ni vacío`,
+      new Error(`valor inesperado en la columna "fecha_operativa": ${JSON.stringify(valor)}`),
+    );
+  }
+  return valor;
+}
+
 /**
  * SQL Row → TypeScript. PURA: sin I/O, sin reloj, sin azar, sin `Database`.
  * Devuelve un objeto NUEVO; la fila nunca se reutiliza ni se conserva.
@@ -173,6 +199,8 @@ export interface DanoSqlValues {
  *   0/1 se leería como `false` sin error; la tabla no declara CHECK, así que esa
  *   garantía la da la escritura, no el DDL (R5).
  * - Nunca deriva un flag del otro ni `unidadesSospechadas` de `posibleSegunda`.
+ * - `fecha_operativa` ausente, `NULL` o vacía sale por `fechaOperativaRow`
+ *   (NOT NULL sin DEFAULT, migración 005), nunca como un campo sin definir.
  */
 export function mapDanoRow(row: DanoRow): Dano {
   return {
@@ -184,7 +212,7 @@ export function mapDanoRow(row: DanoRow): Dano {
     componente: row.componente,
     inicio: row.inicio,
     fin: row.fin,
-    fechaOperativa: row.fecha_operativa,
+    fechaOperativa: fechaOperativaRow(row.id, row.fecha_operativa),
     solucionAplicada: row.solucion_aplicada ?? undefined,
     causoParada: row.causo_parada === 1,
     paradaId: row.parada_id,

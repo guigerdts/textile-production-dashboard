@@ -266,6 +266,34 @@ describe("sqliteParadaRepository — mappers puros", () => {
       'no se pudo mapear la parada "parada-1"'
     );
   });
+
+  it("una fila sin fecha_operativa (null, ausente o vacía) es un error de mapeo que nombra la columna", () => {
+    // 005 la declara NOT NULL sin DEFAULT: el día es dato persistido, así que
+    // una fila dañada falla en voz alta (patrón de camposEspecificosRow) en
+    // lugar de rendir un `fechaOperativa` sin definir.
+    const base = mapParadaToSql(parada()) as unknown as ParadaRow;
+
+    // `null`: la declaración `Row` miente en runtime, por eso el validador
+    // recibe `unknown`.
+    const nula = { ...base, fecha_operativa: null } as unknown as ParadaRow;
+    expect(() => mapParadaRow(nula)).toThrow(/fecha_operativa/);
+    expect(() => mapParadaRow(nula)).toThrow(/NOT NULL sin DEFAULT/);
+
+    // Columna ausente del todo.
+    const ausente = { ...base } as Partial<ParadaRow>;
+    delete ausente.fecha_operativa;
+    expect(() => mapParadaRow(ausente as ParadaRow)).toThrow(/fecha_operativa/);
+
+    // En blanco: la columna no puede legítimamente estar vacía.
+    const vacia = { ...base, fecha_operativa: "" };
+    expect(() => mapParadaRow(vacia)).toThrow(/fecha_operativa/);
+  });
+
+  it("la ruta feliz conserva la fecha operativa válida sin cambios", () => {
+    const recuperada = mapParadaRow(mapParadaToSql(parada()) as unknown as ParadaRow);
+
+    expect(recuperada.fechaOperativa).toBe("2026-09-14");
+  });
 });
 
 // ── 2. Insertar y leer ───────────────────────────────────────────────────────

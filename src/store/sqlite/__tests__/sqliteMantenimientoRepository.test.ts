@@ -301,6 +301,48 @@ describe("sqliteMantenimientoRepository — mappers puros", () => {
       'valor inesperado en la columna "tipo": "REACTIVO"'
     );
   });
+
+  it("una fila sin fecha_operativa (null, ausente o vacía) es un error de mapeo que nombra la columna", () => {
+    // 005 la declara NOT NULL sin DEFAULT: el día es dato persistido, así que
+    // una fila dañada falla en voz alta en lugar de rendir un `fechaOperativa`
+    // sin definir. Mismo contrato que el estrechamiento de `tipo`.
+    const base = mapMantenimientoToSql(mantenimiento()) as unknown as MantenimientoRow;
+
+    // `null`: la declaración `Row` miente en runtime, por eso el validador
+    // recibe `unknown`.
+    const nula = { ...base, fecha_operativa: null } as unknown as MantenimientoRow;
+    const err = (() => {
+      try {
+        mapMantenimientoRow(nula);
+        return null;
+      } catch (e) {
+        return e as Error;
+      }
+    })();
+
+    expect(err).toBeInstanceOf(Error);
+    expect(err!.message).toBe(
+      'no se pudo mapear el mantenimiento "mant-1": la columna "fecha_operativa" es NOT NULL sin DEFAULT (migración 005): el día del evento no puede ser nulo, ausente ni vacío'
+    );
+    expect((err!.cause as Error).message).toBe(
+      'valor inesperado en la columna "fecha_operativa": null'
+    );
+
+    // Columna ausente del todo.
+    const ausente = { ...base } as Partial<MantenimientoRow>;
+    delete ausente.fecha_operativa;
+    expect(() => mapMantenimientoRow(ausente as MantenimientoRow)).toThrow(/fecha_operativa/);
+
+    // En blanco: la columna no puede legítimamente estar vacía.
+    const vacia = { ...base, fecha_operativa: "" };
+    expect(() => mapMantenimientoRow(vacia)).toThrow(/fecha_operativa/);
+  });
+
+  it("la ruta feliz conserva la fecha operativa válida sin cambios", () => {
+    const recuperada = mapMantenimientoRow(mapMantenimientoToSql(mantenimiento()));
+
+    expect(recuperada.fechaOperativa).toBe("2026-09-14");
+  });
 });
 
 // ── 2. Insertar y leer ───────────────────────────────────────────────────────
