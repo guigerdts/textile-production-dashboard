@@ -191,7 +191,7 @@ Migration `004_operational_events.sql` MUST create exactly five tables — `para
 59 columns. Table names MUST be singular ASCII `snake_case`, matching the `jornada` / `orden` /
 `lectura_golpe` convention of migration 001. Each domain field MUST be stored in its own column; no
 column may hold a serialized aggregate of several fields, with the single exception of
-`campos_especificos`.
+`campos_especificos` (Requirement: `campos_especificos` is stored as JSON TEXT).
 
 **Change under migration 005:** the counts above describe what migration 004 itself creates, and that
 is unchanged. What changes is the resulting schema once 005 is applied: each of `parada`,
@@ -202,14 +202,44 @@ a database at version 5 exposes **63** columns across the five operational table
 
 - GIVEN the migration `004_operational_events.sql` script
 - WHEN it is inspected as a SQL contract
-- THEN it contains exactly 5 `CREATE TABLE` statements
-- AND the total column count the script itself declares is 59
+- THEN it contains exactly 5 `CREATE TABLE` statements — `parada`, `actividad_planificada`, `dano`,
+  `inspeccion_tela`, `mantenimiento`
+- AND it creates no table other than those five
+- AND the total column count across the five tables is 59
 
-#### Scenario: The enumerated column sets describe migration 004
+#### Scenario: The five tables carry exactly the enumerated column sets
 
-- GIVEN the five tables as created by migration 004
+- GIVEN the five tables created by migration 004
 - WHEN `PRAGMA table_info` is read for each
-- THEN `parada` exposes exactly its nine migration-004 columns, and so on for the other four
+- THEN `parada` exposes exactly `id`, `machine_id`, `orden_id`, `operario`, `causa_id`,
+  `campos_especificos`, `observaciones`, `inicio`, `fin`
+- AND `actividad_planificada` exposes exactly `id`, `machine_id`, `tipo`, `inicio`, `fin`,
+  `que_se_limpio`, `observaciones`, `operario`
+- AND `dano` exposes exactly `id`, `machine_id`, `orden_id`, `operario`, `tipo`, `componente`,
+  `inicio`, `fin`, `solucion_aplicada`, `causo_parada`, `parada_id`, `posible_segunda`,
+  `unidades_sospechadas`, `observaciones`
+- AND `inspeccion_tela` exposes exactly `id`, `orden_id`, `operario`, `lote`, `absorcion`, `tundido`,
+  `manchas`, `dimensiones`, `estado_general`, `otra_anomalia`, `timestamp`, `observaciones`,
+  `resolucion`, `motivo_devolucion`, `autorizado_por`, `registrada_por`, `resolucion_timestamp`,
+  `autorizacion_observaciones`
+- AND `mantenimiento` exposes exactly `id`, `machine_id`, `tipo`, `operario`, `motivo`, `inicio`,
+  `fin`, `que_se_reviso_reparo`, `dano_id`, `observaciones`
+
+#### Scenario: The schema declares no CHECK constraints and no DEFAULTs
+
+- GIVEN the migration 004 script
+- WHEN it is inspected
+- THEN no `CHECK` constraint appears on any of the five tables
+- AND no column of the five tables declares a `DEFAULT` value
+- AND all business-rule enforcement is left to `src/domain/**`, following 001/002/003
+
+#### Scenario: No Down migration is registered
+
+- GIVEN the registered migrations
+- WHEN their `kind` values are inspected
+- THEN all five are `MigrationKind::Up`, one per registered version
+- AND schema rollback, if ever required, follows the documented table-rebuild precedent rather than a
+  `Down` script
 
 #### Scenario: A version-5 database carries 63 operational columns
 
@@ -220,12 +250,42 @@ a database at version 5 exposes **63** columns across the five operational table
 
 ### Requirement: Exactly eleven indexes exist, one per query the ports issue
 
-Migration 004 MUST create exactly its eleven indexes and MUST NOT create any other index.
+Migration 004 MUST create exactly these eleven indexes, and MUST NOT create any other:
+
+| Index | Serves |
+|---|---|
+| `idx_parada_maquina_inicio (machine_id, inicio)` | `paradaRepository.listarPorMaquina` |
+| `idx_actividad_maquina_inicio (machine_id, inicio)` | `actividadRepository.listarPorMaquina` |
+| `idx_dano_maquina_inicio (machine_id, inicio)` | `danoRepository.listarPorMaquina` |
+| `idx_mantenimiento_maquina_inicio (machine_id, inicio)` | `mantenimientoRepository.listarPorMaquina` |
+| `idx_parada_abierta (machine_id, orden_id) WHERE fin IS NULL` | `getParadaAbierta(maquinaId, ordenId)` |
+| `idx_actividad_abierta (machine_id, tipo) WHERE fin IS NULL` | `getActividadAbierta(maquinaId, tipo)` |
+| `idx_dano_abierta (machine_id) WHERE fin IS NULL` | `getDanoAbierto(maquinaId)` |
+| `idx_mantenimiento_abierta (machine_id) WHERE fin IS NULL` | `getMantenimientoAbierto(maquinaId)` |
+| `idx_parada_orden (orden_id)` | `paradaRepository.listarPorOrden` |
+| `idx_dano_orden (orden_id)` | `danoRepository.listarPorOrden`, also the 2da projection input |
+| `idx_inspeccion_orden (orden_id, timestamp)` | `inspeccionRepository.listarPorOrden` |
 
 **Change under migration 005:** migration 005 adds four more — `idx_parada_maquina_fecha`,
 `idx_actividad_maquina_fecha`, `idx_dano_maquina_fecha`, `idx_mantenimiento_maquina_fecha` — so a
 database at version 5 carries **15** indexes over the operational tables. The eleven from migration 004
 remain, unchanged and still required.
+
+#### Scenario: The migration creates exactly the eleven listed indexes
+
+- GIVEN the migration 004 script
+- WHEN its `CREATE INDEX` statements are counted
+- THEN there are exactly 11
+- AND their names and column lists match the table above
+- AND the four open-record indexes carry the partial predicate `WHERE fin IS NULL`
+
+#### Scenario: No speculative index is created
+
+- GIVEN the eleven indexes of migration 004
+- WHEN the index list is searched for indexes on `dano.parada_id`, `dano.orden_id` alone,
+  `mantenimiento.dano_id`, or `actividad_planificada.tipo` alone
+- THEN none is found
+- AND `obtenerPorId` has no dedicated index because the primary key already serves it
 
 #### Scenario: Migration 004's eleven indexes are still present
 
@@ -240,24 +300,41 @@ remain, unchanged and still required.
 - THEN there are exactly 15
 - AND exactly four of them are over `(machine_id, fecha_operativa)`
 
-### Requirement: The migration is registered in both projects and the frontend metadata matches
+### Requirement: The migration is registered canonically, mirrored, and versioned
 
-The migration MUST be registered in the canonical Rust `migrations` vector in
-`src-tauri/src/lib.rs`, with a mirror SQL file under `src/store/sqlite/migrations/`, and
-`CURRENT_MIGRATION_VERSION` in `src/store/sqlite/migrations/index.ts` MUST equal the highest
-registered version.
+The canonical file MUST live at `src-tauri/migrations/005_event_fecha_operativa.sql` and MUST be
+registered in `src-tauri/src/lib.rs` as `Migration { version: 5, kind: MigrationKind::Up }` with a
+`description` in the existing `snake_case` style, embedded via `include_str!` as versions 1–4 are. A
+**byte-identical** mirror MUST exist at `src/store/sqlite/migrations/005_event_fecha_operativa.sql`.
+`CURRENT_MIGRATION_VERSION` in `src/store/sqlite/migrations/index.ts` MUST be `5`, and `TABLES` in
+that module MUST list all eight tables. No `Down` migration may be registered, matching the project's
+Up-only mechanism.
 
 **Change under migration 005:** the highest registered version becomes `5`.
 
 #### Scenario: The Rust side registers the full version range
 
-- GIVEN the migrations vector in `src-tauri/src/lib.rs`
-- WHEN it is read
-- THEN it registers every migration file 001 through 005 in ascending order
+- GIVEN `src-tauri/src/lib.rs`
+- WHEN the `migrations` vector is read
+- THEN it contains five entries, versions 1 through 5 in ascending order, each with
+  `kind: MigrationKind::Up` and a `description` in the snake_case style of the previous ones
+- AND version 5 embeds `sql: include_str!("../migrations/005_event_fecha_operativa.sql")`
+- AND the entries for versions 1 through 4 are unchanged
+
+#### Scenario: The mirror is byte-identical to the canonical file
+
+- GIVEN `src-tauri/migrations/005_event_fecha_operativa.sql` and
+  `src/store/sqlite/migrations/005_event_fecha_operativa.sql`
+- WHEN the two files are compared byte for byte
+- THEN they are identical
+- AND the same check continues to hold for 001, 002, 003 and 004
 
 #### Scenario: The frontend migration metadata reflects the highest version
 
-- GIVEN `CURRENT_MIGRATION_VERSION` and `TABLES` in `src/store/sqlite/migrations/index.ts`
-- WHEN they are read
-- THEN `CURRENT_MIGRATION_VERSION` is `5`
-- AND `TABLES` is unchanged, since migration 005 creates no table
+- GIVEN `src/store/sqlite/migrations/index.ts`
+- WHEN `CURRENT_MIGRATION_VERSION` and `TABLES` are read
+- THEN `CURRENT_MIGRATION_VERSION` is `5`, equal to the highest registered version
+- AND `TABLES` contains the eight names `jornada`, `orden`, `lectura_golpe`, `parada`,
+  `actividad_planificada`, `dano`, `inspeccion_tela` and `mantenimiento`, unchanged, since migration 005
+  creates no table
+- AND `verifySchema()` reports existence for all eight after migration
