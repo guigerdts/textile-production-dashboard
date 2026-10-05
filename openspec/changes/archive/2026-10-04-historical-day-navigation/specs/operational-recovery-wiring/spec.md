@@ -183,7 +183,7 @@ re-seed reads the same collections the mount loaders read.
 
 - GIVEN the selected day is `D` and a `Parada` was just inserted
 - WHEN the handler re-seeds state
-- THEN it calls `paradaRepository.listarPorMaquina` with the day-scoped listing for `(machineId="M1", fechaOperativa=D)`
+- THEN it calls `paradaRepository.listarPorMaquinaYFecha` with the day-scoped listing for `(machineId="M1", fechaOperativa=D)`
 - AND sets state to that result
 
 #### Scenario: The re-seed does not introduce another day's record

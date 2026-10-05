@@ -514,11 +514,15 @@ the suite's honesty note at `startup.test.ts:20-23` is unedited.
   Nothing else in the repository mounts `App`; only `src/main.tsx` does, and it goes through `Raiz`, which always
   passes both props. **Traces to:** `H:353-364` ("Today's write paths stay reachable"); `H:380-385` ("The operario
   never has to navigate to work"); design §5.3 (the 44-mount table), §11 (third risk row).
-- [ ] 7.9 Verify with the **existing** suites, unmodified: `npx tsc --noEmit` plus
+- [x] 7.9 Verify with the **existing** suites, unmodified: `npx tsc --noEmit` plus
   `npx vitest run src/App.test.tsx src/__tests__/persistence-integration.test.ts
   src/store/sqlite/__tests__/lecturaWiring.test.ts`. Not one existing assertion moves — that is this phase's
   entire proof. **Traces to:** `H:353-371`; `H:380-385`; design §6.1 case (a) and case (b), which reduce
   arithmetically to today's exact expressions.
+  **Verified 2026-10-04, suites unmodified:** `npx tsc --noEmit` exit 0; the three files report
+  `Test Files 3 passed (3)` / `Tests 150 passed (150)` in 262.05s. Run serially (`--maxWorkers=1`) because this
+  host has 3 cores and jsdom dominates the run (29% environment, 62% tests) — the mitigation already documented
+  in the README, not a change to any assertion.
 
 **Finish when:** all three suites pass with zero new cases, and no existing assertion was changed.
 
