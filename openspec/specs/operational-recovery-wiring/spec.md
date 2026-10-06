@@ -199,7 +199,7 @@ rendered at all.
 `App` MUST seed its `paradas`, `actividades`, `danos`, `mantenimientos` and `inspecciones` state from
 `estadoInicial` for the first paint, exactly as it already seeds `orden` and `jornada`. It MUST **also
 keep** its mount loaders, converted to the `cancelled`-flag asynchronous pattern already used for the
-order and jornada loaders, because `App` accepts an injectable `hoy` that the startup recovery does not
+order and jornada loaders, because `App` accepts an injectable `fechaOperativa` that the startup recovery does not
 know about: a test injecting a different date must not display stale recovered data.
 
 #### Scenario: The first paint shows the recovered operational state
@@ -211,9 +211,9 @@ know about: a test injecting a different date must not display stale recovered d
 
 #### Scenario: The mount loaders re-read the same repositories for the injected date
 
-- GIVEN `App` is mounted with a `hoy` different from the one used to produce `estadoInicial`
+- GIVEN `App` is mounted with a `fechaOperativa` different from the one used to produce `estadoInicial`
 - WHEN the mount loaders run
-- THEN each operational domain is re-read through its repository contract for `hoy` / the machine
+- THEN each operational domain is re-read through its repository contract for `fechaOperativa` / the machine
 - AND the state is replaced with the re-read values
 - AND a loader that resolves after unmount does not call a state setter
 
@@ -520,7 +520,7 @@ the order); it MUST apply the day predicate only where specified.
 
 When the application is started with a selected day, `main.tsx` (or the startup composition path) MUST
 pass that selected day to `recoverPersistedState`. The `App` component MUST receive that selected day as
-its `hoy` (or equivalent selected-day prop) and MUST seed its state from the recovered state that
+its `fechaOperativa` and MUST seed its state from the recovered state that
 belongs to that day. The first paint MUST show the recovered day, with no intermediate "today" shown.
 
 #### Scenario: Startup passes the selected day to recovery
@@ -582,7 +582,7 @@ is not cancelled.
 ### Requirement: Registration handlers pass the selected day, never recompute it
 
 Every handler that registers a record MUST pass `fechaOperativa` in its domain input, and that value
-MUST be the **selected operational day** of the app (`hoy`/selected day prop), not `fechaOperativaHoy()`
+MUST be the **selected operational day** of the app (`fechaOperativa`, the selected-day prop), not `fechaOperativaHoy()`
 recomputed inside the handler. The four sections (`ParadasSection`, `ActividadesSection`,
 `DanoSection`, `MantenimientoSection`) and every call site that builds a registration input MUST receive
 the selected day as a prop and use it verbatim.
@@ -723,8 +723,8 @@ omit it and expect a default.
 
 The four call sites are `src/ui/ParadasSection.tsx:100`, `src/ui/ActividadesSection.tsx:76`,
 `src/ui/DanoSection.tsx:127` and `src/ui/MantenimientoSection.tsx:112` — each already builds its own
-`inicio: new Date().toISOString()`. Only `ActividadesSection` currently receives `hoy`
-(`src/ui/ActividadesSection.tsx:17`), so the other three sections MUST gain that prop from the same
+`inicio: new Date().toISOString()`. Only `ActividadesSection` currently receives the selected day
+(`src/ui/ActividadesSection.tsx`), so the other three sections MUST gain that prop from the same
 source rather than computing a date independently.
 
 #### Scenario: Each registration call site passes the current day

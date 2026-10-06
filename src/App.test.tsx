@@ -96,16 +96,16 @@ async function mountApp(ui: ReactElement) {
   await act(async () => {});
 }
 
-async function renderApp(hoy: string) {
-  return await mountApp(<App repository={new InMemoryOrderRepository()} hoy={hoy} fechaOperativaHoy={hoy} />);
+async function renderApp(dia: string) {
+  return await mountApp(<App repository={new InMemoryOrderRepository()} fechaOperativa={dia} fechaOperativaHoy={dia} />);
 }
 
-async function renderAppConActividades(hoy: string, actividadRepository?: InMemoryActividadPlanificadaRepository) {
+async function renderAppConActividades(dia: string, actividadRepository?: InMemoryActividadPlanificadaRepository) {
   return await mountApp(
     <App
       repository={new InMemoryOrderRepository()}
       actividadRepository={actividadRepository ?? new InMemoryActividadPlanificadaRepository([])}
-      hoy={hoy} fechaOperativaHoy={hoy}
+      fechaOperativa={dia} fechaOperativaHoy={dia}
     />,
   );
 }
@@ -174,7 +174,7 @@ describe("App — ciclo 2: iniciar producción", () => {
     { operario = "Laura", lectura = "100" }: { operario?: string; lectura?: string } = {},
   ) {
     const user = userEvent.setup();
-    await mountApp(<App repository={repo} hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />);
+    await mountApp(<App repository={repo} fechaOperativa={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />);
     if (operario) await user.type(screen.getByRole("textbox", { name: /operario \(obligatorio\)/i }), operario);
     if (lectura) await user.type(screen.getByRole("spinbutton", { name: /lectura inicial/i }), lectura);
     await user.click(screen.getByRole("button", { name: /Iniciar producción/i }));
@@ -223,7 +223,7 @@ describe("App — ciclo 2: iniciar producción", () => {
     if (!res.orden) throw new Error("precondition failed");
     await repo.saveOrder(res.orden);
 
-    await mountApp(<App repository={repo} hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />);
+    await mountApp(<App repository={repo} fechaOperativa={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />);
     expectTexto("En producción");
     expectTexto("Ana");
     expect(screen.queryByRole("button", { name: /Iniciar producción/i })).toBeNull();
@@ -238,7 +238,7 @@ describe("App — ciclo 2: iniciar producción", () => {
     if (!finalizada.orden) throw new Error("precondition failed");
     await repo.saveOrder(finalizada.orden);
 
-    await mountApp(<App repository={repo} hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />);
+    await mountApp(<App repository={repo} fechaOperativa={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />);
     expectTexto("Finalizada");
     expect(screen.queryByRole("button", { name: /Iniciar producción/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /Registrar lectura/i })).toBeNull();
@@ -253,7 +253,7 @@ describe("App — ciclo 3: registrar lecturas posteriores", () => {
     nuevaLectura: string,
   ) {
     const user = userEvent.setup();
-    await mountApp(<App repository={repo} hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />);
+    await mountApp(<App repository={repo} fechaOperativa={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />);
     await user.type(screen.getByRole("textbox", { name: /operario \(obligatorio\)/i }), "Laura");
     await user.type(screen.getByRole("spinbutton", { name: /lectura inicial/i }), lecturaInicial);
     await user.click(screen.getByRole("button", { name: /Iniciar producción/i }));
@@ -307,7 +307,7 @@ describe("App — ciclo 3: registrar lecturas posteriores", () => {
     if (!finalizada.orden) throw new Error("precondition failed");
     await repo.saveOrder(finalizada.orden);
 
-    await mountApp(<App repository={repo} hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />);
+    await mountApp(<App repository={repo} fechaOperativa={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />);
     expect(screen.queryByRole("button", { name: /Registrar lectura/i })).toBeNull();
     expect(screen.queryByRole("spinbutton", { name: /nueva lectura/i })).toBeNull();
   }, UI_TIMEOUT);
@@ -329,7 +329,7 @@ describe("App — ticket 02: paradas / incidencias (UI)", () => {
     const user = userEvent.setup();
     const repo = new InMemoryOrderRepository();
     const repoParadas = new InMemoryParadaRepository(opciones.paradas ?? []);
-    await mountApp(<App repository={repo} paradaRepository={repoParadas} hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />);
+    await mountApp(<App repository={repo} paradaRepository={repoParadas} fechaOperativa={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />);
     await user.type(screen.getByRole("textbox", { name: /operario \(obligatorio\)/i }), "Laura");
     await user.type(screen.getByRole("spinbutton", { name: /lectura inicial/i }), "100");
     await user.click(screen.getByRole("button", { name: /Iniciar producción/i }));
@@ -388,7 +388,7 @@ describe("App — ticket 02: paradas / incidencias (UI)", () => {
       fin: null,
     };
     const repoParadas = new InMemoryParadaRepository([abierta]);
-    await mountApp(<App repository={repo} paradaRepository={repoParadas} hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />);
+    await mountApp(<App repository={repo} paradaRepository={repoParadas} fechaOperativa={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />);
 
     const activa = screen.getByTestId("parada-activa");
     expect(activa.textContent).toContain("Atasco o rotura de tela en la máquina");
@@ -497,7 +497,7 @@ describe("App — ciclo 4: finalización de orden", () => {
   async function iniciarParaFinalizar(lecturaInicial = "100") {
     const user = userEvent.setup();
     const repo = new InMemoryOrderRepository();
-    await mountApp(<App repository={repo} hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />);
+    await mountApp(<App repository={repo} fechaOperativa={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />);
     await user.type(screen.getByRole("textbox", { name: /operario \(obligatorio\)/i }), "Laura");
     await user.type(screen.getByRole("spinbutton", { name: /lectura inicial/i }), lecturaInicial);
     await user.click(screen.getByRole("button", { name: /Iniciar producción/i }));
@@ -569,7 +569,7 @@ describe("App — ticket 03: actividades planificadas (UI)", () => {
       <App
         repository={repo}
         actividadRepository={repoActividades}
-        hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
+        fechaOperativa={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
       />,
     );
     await user.type(screen.getByRole("textbox", { name: /operario \(obligatorio\)/i }), "Laura");
@@ -669,7 +669,7 @@ describe("App — ticket 03: actividades planificadas (UI)", () => {
       <App
         repository={repo}
         actividadRepository={repoActividades}
-        hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
+        fechaOperativa={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
       />,
     );
 
@@ -823,7 +823,7 @@ describe("App — ticket 03: actividades planificadas (UI)", () => {
 
 describe("App — ticket 04: resumen del turno (UI)", () => {
   async function renderAppConTiempo(
-    hoy: string,
+    dia: string,
     opciones: {
       paradaRepository?: InMemoryParadaRepository;
       actividadRepository?: InMemoryActividadPlanificadaRepository;
@@ -838,7 +838,7 @@ describe("App — ticket 04: resumen del turno (UI)", () => {
           opciones.actividadRepository ?? new InMemoryActividadPlanificadaRepository([])
         }
         jornadaRepository={opciones.jornadaRepository ?? new InMemoryJornadaRepository([])}
-        hoy={hoy} fechaOperativaHoy={hoy}
+        fechaOperativa={dia} fechaOperativaHoy={dia}
       />,
     );
   }
@@ -915,9 +915,9 @@ describe("App — ticket 04: resumen del turno (UI)", () => {
   }, UI_TIMEOUT);
 
   it("overtime: extender el fin de jornada aumenta el disponible y el productivo", async () => {
-    const hoy = FECHA_CON_ORDEN;
+    const dia = FECHA_CON_ORDEN;
     const jornadaRepository = new InMemoryJornadaRepository([]);
-    await renderAppConTiempo(hoy, { jornadaRepository });
+    await renderAppConTiempo(dia, { jornadaRepository });
 
     // fin editable visible; default 17:00 → 10 h disponibles
     const inputFin = screen.getByLabelText(/fin de jornada \(overtime incluido\)/i) as HTMLInputElement;
@@ -928,13 +928,13 @@ describe("App — ticket 04: resumen del turno (UI)", () => {
 
     // jornada extendida a 19:00 → 12 h disponibles y productivas
     expectBuckets("12 h", "0 min", "0 min", "12 h");
-    expect((await jornadaRepository.obtenerParaFecha(hoy)).fin).toBe("2026-09-11T19:00:00.000Z");
+    expect((await jornadaRepository.obtenerParaFecha(dia)).fin).toBe("2026-09-11T19:00:00.000Z");
   }, UI_TIMEOUT);
 
   it("fin de jornada inválido: el dominio rechaza y la UI muestra el error, sin mutar el repo", async () => {
-    const hoy = FECHA_CON_ORDEN;
+    const dia = FECHA_CON_ORDEN;
     const jornadaRepository = new InMemoryJornadaRepository([]);
-    await renderAppConTiempo(hoy, { jornadaRepository });
+    await renderAppConTiempo(dia, { jornadaRepository });
 
     const inputFin = screen.getByLabelText(/fin de jornada \(overtime incluido\)/i) as HTMLInputElement;
     fireEvent.change(inputFin, { target: { value: "06:00" } });
@@ -942,7 +942,7 @@ describe("App — ticket 04: resumen del turno (UI)", () => {
 
     expectTexto(/el fin de la jornada debe ser posterior al inicio/i);
     // el repositorio no persistió la jornada inválida
-    expect((await jornadaRepository.obtenerParaFecha(hoy)).fin).toBe("2026-09-11T17:00:00.000Z");
+    expect((await jornadaRepository.obtenerParaFecha(dia)).fin).toBe("2026-09-11T17:00:00.000Z");
   }, UI_TIMEOUT);
 
   it("el resumen del turno no muestra «no productivo total» (solo los 4 buckets principales)", async () => {
@@ -969,7 +969,7 @@ describe("App — ticket 05: daños / eventos (UI)", () => {
         repository={repo}
         danoRepository={repoDanos}
         paradaRepository={repoParadas}
-        hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
+        fechaOperativa={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
       />,
     );
     await user.type(screen.getByRole("textbox", { name: /operario \(obligatorio\)/i }), "Laura");
@@ -1039,7 +1039,7 @@ describe("App — ticket 05: daños / eventos (UI)", () => {
         repository={repo}
         paradaRepository={repoParadas}
         danoRepository={repoDanos}
-        hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
+        fechaOperativa={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
       />,
     );
 
@@ -1112,7 +1112,7 @@ it("cierra el daño activo con solución aplicada y lo mueve al historial", asyn
   await repo.saveOrder(iniciada);
   const repoDanos = new InMemoryDanoRepository([]);
   await mountApp(
-    <App repository={repo} danoRepository={repoDanos} hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />,
+    <App repository={repo} danoRepository={repoDanos} fechaOperativa={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />,
   );
 
   fireEvent.change(screen.getByLabelText(/tipo de daño/i), { target: { value: "mecanico" } });
@@ -1153,7 +1153,7 @@ it("cierra sin solución aplicada: error del dominio", async () => {
   await repo.saveOrder(iniciada);
   const repoDanos = new InMemoryDanoRepository([]);
   await mountApp(
-    <App repository={repo} danoRepository={repoDanos} hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />,
+    <App repository={repo} danoRepository={repoDanos} fechaOperativa={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />,
   );
 
   fireEvent.change(screen.getByLabelText(/tipo de daño/i), { target: { value: "mecanico" } });
@@ -1193,7 +1193,7 @@ it("cierra sin solución aplicada: error del dominio", async () => {
       DANO_1_CERRADO_CON_PARADA,
       DANO_2_CERRADO_SIN_PARADA,
     ]);
-    await mountApp(<App repository={repo} danoRepository={repoDanos} hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />);
+    await mountApp(<App repository={repo} danoRepository={repoDanos} fechaOperativa={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />);
 
     expectTexto("Historial de daños");
     expectTexto(/Daño mecánico en eje trasero/);
@@ -1216,7 +1216,7 @@ it("cierra sin solución aplicada: error del dominio", async () => {
       DANO_1_CERRADO_CON_PARADA,
       DANO_2_CERRADO_SIN_PARADA,
     ]);
-    await mountApp(<App repository={repo} danoRepository={repoDanos} hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />);
+    await mountApp(<App repository={repo} danoRepository={repoDanos} fechaOperativa={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />);
 
     expectTexto("Finalizada");
     expectTexto("Historial de daños");
@@ -1233,7 +1233,7 @@ describe("App — ticket 06: bloque de proyección de 2da (UI)", () => {
     const repo = new InMemoryOrderRepository();
     const repoDanos = new InMemoryDanoRepository(opciones.danos ?? []);
     await mountApp(
-      <App repository={repo} danoRepository={repoDanos} hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />,
+      <App repository={repo} danoRepository={repoDanos} fechaOperativa={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />,
     );
     await user.type(screen.getByRole("textbox", { name: /operario \(obligatorio\)/i }), "Laura");
     await user.type(screen.getByRole("spinbutton", { name: /lectura inicial/i }), "100");
@@ -1383,7 +1383,7 @@ describe("App — ticket 06: bloque de proyección de 2da (UI)", () => {
     const finalizada = finalizarProduccion(conLectura, "2026-09-11T12:00:00.000Z").orden!;
     await repo.saveOrder(finalizada);
     const repoDanos = new InMemoryDanoRepository([DANO_1_CERRADO_CON_PARADA]);
-    await mountApp(<App repository={repo} danoRepository={repoDanos} hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />);
+    await mountApp(<App repository={repo} danoRepository={repoDanos} fechaOperativa={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />);
 
     expectTexto("Finalizada");
     const bloque = bloqueCalidad();
@@ -1435,7 +1435,7 @@ describe("App — ticket 07: inspección de tela (UI)", () => {
       <App
         repository={repo}
         inspeccionRepository={repoInspecciones}
-        hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
+        fechaOperativa={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
       />,
     );
     await user.type(screen.getByRole("textbox", { name: /operario \(obligatorio\)/i }), "Laura");
@@ -1474,7 +1474,7 @@ describe("App — ticket 07: inspección de tela (UI)", () => {
       <App
         repository={new InMemoryOrderRepository()}
         inspeccionRepository={repoInspecciones}
-        hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
+        fechaOperativa={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
       />,
     );
 
@@ -1635,7 +1635,7 @@ describe("App — ticket 07: inspección de tela (UI)", () => {
       <App
         repository={repo}
         inspeccionRepository={repoInspecciones}
-        hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
+        fechaOperativa={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
       />,
     );
 
@@ -1670,7 +1670,7 @@ describe("App — ticket 07: inspección de tela (UI)", () => {
       <App
         repository={repo}
         inspeccionRepository={repoInspecciones}
-        hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
+        fechaOperativa={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
       />,
     );
 
@@ -1690,14 +1690,14 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
   });
 
   async function renderAppConMantenimiento(
-    hoy: string,
+    dia: string,
     opciones: { mantenimientoRepository?: InMemoryMantenimientoRepository } = {},
   ) {
     return await mountApp(
       <App
         repository={new InMemoryOrderRepository()}
         mantenimientoRepository={opciones.mantenimientoRepository ?? new InMemoryMantenimientoRepository([])}
-        hoy={hoy} fechaOperativaHoy={hoy}
+        fechaOperativa={dia} fechaOperativaHoy={dia}
       />,
     );
   }
@@ -1712,7 +1712,7 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
       <App
         repository={repo}
         mantenimientoRepository={repoMantenimiento}
-        hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
+        fechaOperativa={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
       />,
     );
     await user.type(screen.getByRole("textbox", { name: /operario \(obligatorio\)/i }), "Laura");
@@ -1797,7 +1797,7 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
       <App
         repository={repo}
         mantenimientoRepository={repoMantenimiento}
-        hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
+        fechaOperativa={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
       />,
     );
 
@@ -1863,7 +1863,7 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
       <App
         repository={repo}
         mantenimientoRepository={repoMantenimiento}
-        hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
+        fechaOperativa={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
       />,
     );
 
@@ -1909,7 +1909,7 @@ describe("App — ticket 08: mantenimiento (UI)", () => {
       <App
         repository={repo}
         mantenimientoRepository={repoMantenimiento}
-        hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
+        fechaOperativa={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
       />,
     );
 
@@ -2106,7 +2106,7 @@ describe("App — ticket 09: DashboardHome", () => {
       <App
         repository={new InMemoryOrderRepository()}
         paradaRepository={repoParadas}
-        hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
+        fechaOperativa={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
       />,
     );
     expectTexto(/PARADA/);
@@ -2134,7 +2134,7 @@ describe("App — ticket 09: DashboardHome", () => {
       fin: null,
     };
     const repoParadas = new InMemoryParadaRepository([abierta]);
-    await mountApp(<App repository={repo} paradaRepository={repoParadas} hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />);
+    await mountApp(<App repository={repo} paradaRepository={repoParadas} fechaOperativa={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />);
 
     expectTexto(/PARADA/);
     expectTexto(/Falta de color/);
@@ -2154,7 +2154,7 @@ describe("App — ticket 09: DashboardHome", () => {
     if (!finalizada.orden) throw new Error("precondition failed");
     await repo.saveOrder(finalizada.orden);
 
-    await mountApp(<App repository={repo} hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />);
+    await mountApp(<App repository={repo} fechaOperativa={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />);
     expectTexto(/OCIOSA/);
     // Calidad no visible en orden finalizada
     expect(screen.queryByText(/Buena racha/)).toBeNull();
@@ -2196,7 +2196,7 @@ describe("App — phase 14 (G2): el puerto como fuente de verdad (14.1–14.5)",
 
     const user = userEvent.setup();
     await mountApp(
-      <App repository={repo} paradaRepository={repoParadas} hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />,
+      <App repository={repo} paradaRepository={repoParadas} fechaOperativa={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN} />,
     );
     // El historial muestra la parada sembrada antes del intento.
     expect(screen.getAllByText(/Falta de materia prima/).length).toBeGreaterThan(0);
@@ -2232,7 +2232,7 @@ describe("App — phase 14 (G2): el puerto como fuente de verdad (14.1–14.5)",
         repository={repo}
         danoRepository={repoDanos}
         paradaRepository={new InMemoryParadaRepository([])}
-        hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
+        fechaOperativa={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
       />,
     );
 
@@ -2280,7 +2280,7 @@ describe("App — phase 14 (G2): el puerto como fuente de verdad (14.1–14.5)",
         repository={repo}
         mantenimientoRepository={repoMantenimientos}
         danoRepository={new InMemoryDanoRepository([])}
-        hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
+        fechaOperativa={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
       />,
     );
 
@@ -2345,7 +2345,7 @@ describe("App — phase 14 (G2): el puerto como fuente de verdad (14.1–14.5)",
         repository={new InMemoryOrderRepository()}
         paradaRepository={new InMemoryParadaRepository([paradaRepo])}
         estadoInicial={estadoInicial}
-        hoy={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
+        fechaOperativa={FECHA_CON_ORDEN} fechaOperativaHoy={FECHA_CON_ORDEN}
       />,
     );
 
@@ -2431,7 +2431,7 @@ describe("App — phase 8: el día seleccionado que no es hoy es de solo lectura
       inspeccionRepository: new InMemoryInspeccionRepository(opciones.inspecciones ?? []),
       jornadaRepository: new InMemoryJornadaRepository([]),
     };
-    await mountApp(<App {...repositorios} hoy={DIA} fechaOperativaHoy={HOY_REAL} />);
+    await mountApp(<App {...repositorios} fechaOperativa={DIA} fechaOperativaHoy={HOY_REAL} />);
     return repositorios;
   }
 
@@ -2568,7 +2568,7 @@ describe("App — phase 8: el día seleccionado que no es hoy es de solo lectura
         mantenimientoRepository={repos.mantenimientoRepository}
         inspeccionRepository={repos.inspeccionRepository}
         jornadaRepository={repos.jornadaRepository}
-        hoy={DIA}
+        fechaOperativa={DIA}
         fechaOperativaHoy={HOY_REAL}
       />,
     );
@@ -2696,7 +2696,7 @@ describe("App — phase 8: el día seleccionado que no es hoy es de solo lectura
         repository={repository}
         paradaRepository={paradaRepository}
         actividadRepository={actividadRepository}
-        hoy={DIA}
+        fechaOperativa={DIA}
         fechaOperativaHoy={fechaReferencia}
       />
     );
@@ -2768,7 +2768,7 @@ describe("App — phase 9: navegador de un día operativo (tarea 9.5)", () => {
    */
   function Arnés({
     repos,
-    hoy,
+    fechaOperativaHoy,
     estados,
     antesDeCambiar,
   }: {
@@ -2781,14 +2781,14 @@ describe("App — phase 9: navegador de un día operativo (tarea 9.5)", () => {
       inspeccionRepository: InMemoryInspeccionRepository;
       jornadaRepository: InMemoryJornadaRepository;
     };
-    hoy: string;
+    fechaOperativaHoy: string;
     estados: Record<string, RecoveryState | undefined>;
     antesDeCambiar?: (dia: string) => Promise<void>;
   }) {
     // Selección por defecto = el "hoy" inyectado (H:71-77), igual que `Raiz`.
     const [vista, setVista] = useState<{ dia: string; estado?: RecoveryState }>(() => ({
-      dia: hoy,
-      estado: estados[hoy],
+      dia: fechaOperativaHoy,
+      estado: estados[fechaOperativaHoy],
     }));
     const [cargando, setCargando] = useState(false);
     const [errorDia, setErrorDia] = useState<string | null>(null);
@@ -2814,8 +2814,8 @@ describe("App — phase 9: navegador de un día operativo (tarea 9.5)", () => {
         key={vista.dia}
         {...repos}
         estadoInicial={vista.estado}
-        hoy={vista.dia}
-        fechaOperativaHoy={hoy}
+        fechaOperativa={vista.dia}
+        fechaOperativaHoy={fechaOperativaHoy}
         onSeleccionarDia={seleccionarDia}
         cargandoDia={cargando}
         errorCambioDia={errorDia}
@@ -2846,7 +2846,7 @@ describe("App — phase 9: navegador de un día operativo (tarea 9.5)", () => {
       [DIA_OTRA_ORDEN]: estadoVacio(DIA_OTRA_ORDEN),
     };
     await mountApp(
-      <Arnés repos={repos} hoy={HOY} estados={estados} antesDeCambiar={opciones.antesDeCambiar} />,
+      <Arnés repos={repos} fechaOperativaHoy={HOY} estados={estados} antesDeCambiar={opciones.antesDeCambiar} />,
     );
     return { repos };
   }
@@ -3049,8 +3049,8 @@ describe("App — phase 10 (WU10): registros abiertos cruzando la medianoche (10
    * juntos. Sin `estadoInicial` a propósito: los registros tienen que llegar
    * por los LOADER, que es lo que 10.1/10.3 cambiaron.
    */
-  function Arnés({ repos, hoy }: { repos: Repos; hoy: string }) {
-    const [dia, setDia] = useState(hoy);
+  function Arnés({ repos, fechaOperativaHoy }: { repos: Repos; fechaOperativaHoy: string }) {
+    const [dia, setDia] = useState(fechaOperativaHoy);
     const [cargando, setCargando] = useState(false);
     const [errorDia, setErrorDia] = useState<string | null>(null);
 
@@ -3069,8 +3069,8 @@ describe("App — phase 10 (WU10): registros abiertos cruzando la medianoche (10
       <App
         key={dia}
         {...repos}
-        hoy={dia}
-        fechaOperativaHoy={hoy}
+        fechaOperativa={dia}
+        fechaOperativaHoy={fechaOperativaHoy}
         onSeleccionarDia={seleccionarDia}
         cargandoDia={cargando}
         errorCambioDia={errorDia}
@@ -3111,7 +3111,7 @@ describe("App — phase 10 (WU10): registros abiertos cruzando la medianoche (10
         fechaOperativa: D,
       });
     }
-    await mountApp(<Arnés repos={repos} hoy={DP1} />);
+    await mountApp(<Arnés repos={repos} fechaOperativaHoy={DP1} />);
     return { repos };
   }
 
@@ -3282,16 +3282,16 @@ describe("App — phase 11 (WU11): los cuatro escenarios de día vacío (11.1)",
    */
   function Arnés({
     repos,
-    hoy,
+    fechaOperativaHoy,
     estados,
   }: {
     repos: Repos;
-    hoy: string;
+    fechaOperativaHoy: string;
     estados: Record<string, RecoveryState | undefined>;
   }) {
     const [vista, setVista] = useState<{ dia: string; estado?: RecoveryState }>(() => ({
-      dia: hoy,
-      estado: estados[hoy],
+      dia: fechaOperativaHoy,
+      estado: estados[fechaOperativaHoy],
     }));
     async function seleccionarDia(dia: string): Promise<void> {
       if (dia === vista.dia) return;
@@ -3302,8 +3302,8 @@ describe("App — phase 11 (WU11): los cuatro escenarios de día vacío (11.1)",
         key={vista.dia}
         {...repos}
         estadoInicial={vista.estado}
-        hoy={vista.dia}
-        fechaOperativaHoy={hoy}
+        fechaOperativa={vista.dia}
+        fechaOperativaHoy={fechaOperativaHoy}
         onSeleccionarDia={seleccionarDia}
       />
     );
@@ -3360,7 +3360,7 @@ describe("App — phase 11 (WU11): los cuatro escenarios de día vacío (11.1)",
       [D]: estadoDeDiaVacio(D),
       [OTRO]: estadoDeDiaVacio(OTRO),
     };
-    await mountApp(<Arnés repos={repos} hoy={HOY} estados={estados} />);
+    await mountApp(<Arnés repos={repos} fechaOperativaHoy={HOY} estados={estados} />);
     return { repos, escrituras, obtenerJornada };
   }
 
@@ -3427,7 +3427,7 @@ describe("App — phase 11 (WU11): los cuatro escenarios de día vacío (11.1)",
     await mountApp(
       <App
         repository={new InMemoryOrderRepository()}
-        hoy={FECHA_SIN_ORDEN}
+        fechaOperativa={FECHA_SIN_ORDEN}
         fechaOperativaHoy={FECHA_SIN_ORDEN}
       />,
     );
@@ -3599,7 +3599,7 @@ describe("App — phase 11 (WU11): el DOM de un montaje directo es el pre-cambio
       await mountApp(
         <App
           repository={new InMemoryOrderRepository()}
-          hoy={dia}
+          fechaOperativa={dia}
           fechaOperativaHoy={dia}
         />,
       );
@@ -3677,7 +3677,7 @@ describe("App — phase 11 (WU11): ocho call sites day-scoped y el guard `cancel
         // `cargarOrden`, así que cada loader corre UNA sola vez y el conteo de
         // abajo es exacto (sin semilla, paradas y daños re-dispararían).
         estadoInicial={{ ...estadoDeDiaVacio(HOY), orden }}
-        hoy={HOY}
+        fechaOperativa={HOY}
         fechaOperativaHoy={HOY}
       />,
     );
@@ -3762,7 +3762,7 @@ describe("App — phase 11 (WU11): ocho call sites day-scoped y el guard `cancel
       <App
         repository={new InMemoryOrderRepository()}
         paradaRepository={repoParadas}
-        hoy={HOY}
+        fechaOperativa={HOY}
         fechaOperativaHoy={HOY}
       />,
     );
@@ -3826,7 +3826,7 @@ describe("App — phase 11 (WU11): ocho call sites day-scoped y el guard `cancel
       <App
         repository={repository}
         paradaRepository={repoParadas}
-        hoy={dia}
+        fechaOperativa={dia}
         fechaOperativaHoy={HOY_INYECTADO}
       />
     );
@@ -3891,8 +3891,8 @@ describe("App — los banners de registro abierto responden por el día consulta
    * LOADER, que es lo que `cargarDanos` / `cargarMantenimientos` re-leen al
    * cambiar de día.
    */
-  function Arnés({ repos, hoy }: { repos: Repos; hoy: string }) {
-    const [dia, setDia] = useState(hoy);
+  function Arnés({ repos, fechaOperativaHoy }: { repos: Repos; fechaOperativaHoy: string }) {
+    const [dia, setDia] = useState(fechaOperativaHoy);
     const [cargando, setCargando] = useState(false);
     const [errorDia, setErrorDia] = useState<string | null>(null);
 
@@ -3911,8 +3911,8 @@ describe("App — los banners de registro abierto responden por el día consulta
       <App
         key={dia}
         {...repos}
-        hoy={dia}
-        fechaOperativaHoy={hoy}
+        fechaOperativa={dia}
+        fechaOperativaHoy={fechaOperativaHoy}
         onSeleccionarDia={seleccionarDia}
         cargandoDia={cargando}
         errorCambioDia={errorDia}
@@ -3935,7 +3935,7 @@ describe("App — los banners de registro abierto responden por el día consulta
       inspeccionRepository: new InMemoryInspeccionRepository([]),
       jornadaRepository: new InMemoryJornadaRepository([]),
     };
-    await mountApp(<Arnés repos={repos} hoy={HOY} />);
+    await mountApp(<Arnés repos={repos} fechaOperativaHoy={HOY} />);
     return repos;
   }
 

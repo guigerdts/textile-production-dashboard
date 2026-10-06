@@ -9,7 +9,7 @@
  * visible para el operario.
  *
  * **OQ-2 (design §12 Q2) — declarada acá, NO respondida en código:**
- * el límite superior de selección es **hoy** (`max={hoy}` y la flecha «siguiente»
+ * el límite superior de selección es **hoy** (`max={fechaOperativaHoy}` y la flecha «siguiente»
  * deshabilitada en hoy) y el límite inferior es el **pasado abierto**, sin piso.
  * `specs/historical-day-navigation/spec.md` no requiere fecha mínima, así que
  * aquí NO se inventa lógica de `min` ni ninguna otra cota inferior. Si más
@@ -17,7 +17,7 @@
  * como regla de dominio — no a este componente.
  *
  * Exactamente UN día, nunca un rango: el selector no tiene par inicio/fin, y la
- * suma de `max` + flecha siguiente deshabilitada en hoy hace que "un solo día"
+ * suma de `max` + flecha siguiente deshabilitada en `fechaOperativaHoy` hace que "un solo día"
  * sea estructural en lugar de una convención (H:326-344).
  */
 import { desplazarDia } from "../store/clock";
@@ -30,7 +30,7 @@ export interface SelectorDiaOperativaProps {
    * de `App`, NUNCA una lectura fresca del reloj. Es el tope superior del
    * selector y el punto donde la flecha «siguiente» se detiene.
    */
-  hoy: string;
+  fechaOperativaHoy: string;
   /** `true` mientras un cambio de día está en vuelo: deja los tres controles inoperativos. */
   disabled: boolean;
   /** Seam del navegador: pide cargar ese día; la raíz decide si el cambio resuelve. */
@@ -39,13 +39,13 @@ export interface SelectorDiaOperativaProps {
 
 export function SelectorDiaOperativa({
   fechaOperativa,
-  hoy,
+  fechaOperativaHoy,
   disabled,
   onSeleccionar,
 }: SelectorDiaOperativaProps) {
   const anterior = desplazarDia(fechaOperativa, -1);
   const siguiente = desplazarDia(fechaOperativa, +1);
-  const esHoy = fechaOperativa === hoy;
+  const esHoy = fechaOperativa === fechaOperativaHoy;
   return (
     <nav className="selector-dia" aria-label="Día operativo">
       <button
@@ -62,7 +62,7 @@ export function SelectorDiaOperativa({
         <input
           type="date"
           value={fechaOperativa}
-          max={hoy}
+          max={fechaOperativaHoy}
           disabled={disabled}
           onChange={(e) => e.target.value && onSeleccionar(e.target.value)}
         />

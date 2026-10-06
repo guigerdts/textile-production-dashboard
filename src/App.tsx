@@ -114,9 +114,9 @@ interface AppProps {
   estadoInicial?: RecoveryState;
   /**
    * Fecha operativa consultada: the selected operational day; the navigator owns it
-   * (OQ-3 mantiene el nombre de la prop). En pruebas se sigue inyectando.
+   * (canonical name `fechaOperativa`, resuelto en D1-B). En pruebas se sigue inyectando.
    */
-  hoy?: string;
+  fechaOperativa?: string;
   /**
    * Fecha operativa de HOY (YYYY-MM-DD): the read-only reference and the navigator's
    * upper bound. Defaults to the local-calendar clock. Tests inject it so a fixture
@@ -146,7 +146,7 @@ function App({
   mantenimientoRepository: mantenimientoRepositoryProp,
   lecturaRepository,
   estadoInicial,
-  hoy = fechaOperativaHoy(),
+  fechaOperativa = fechaOperativaHoy(),
   // El RENAME al destructurar es load-bearing, NO cosmético: la CLAVE del patrón es
   // `fechaOperativaHoy` pero el binding es `hoyReal`, así que el patrón no introduce
   // una local con ese nombre y la llamada del default resuelve al import del módulo.
@@ -160,9 +160,9 @@ function App({
 }: AppProps) {
   // ÚNICA derivación de soloLectura en todo el cambio (design §5.3/§5.4.2): ningún
   // loader, handler, sección ni módulo la recalcula, y ningún código escribe
-  // `hoy !== fechaOperativaHoy()` — eso leería el import del módulo, ignoraría la
+  // `fechaOperativa !== fechaOperativaHoy()` — eso leería el import del módulo, ignoraría la
   // prop inyectada y volvería de solo lectura cada montaje con fixture.
-  const soloLectura = hoy !== hoyReal;
+  const soloLectura = fechaOperativa !== hoyReal;
   // Semilla desde el estado recuperado (10.8): el loader de montaje vuelve a leer los
   // mismos repositorios (relectura idempotente, misma data) y no cambia el resultado.
   // Phase 14.1 (D2h): las cinco listas operativas se siembran incondicionalmente desde
@@ -185,7 +185,7 @@ function App({
     () => estadoInicial?.inspecciones ?? [],
   );
   const [jornada, setJornada] = useState<JornadaTurno>(
-    () => estadoInicial?.jornada ?? jornadaDefault(hoy),
+    () => estadoInicial?.jornada ?? jornadaDefault(fechaOperativa),
   );
   // Phase 14.2: los tres valores que antes se derivaban del puerto en el render body
   // viven ahora en estado. La semilla es coherente con los arrays de daños/mantenimientos
@@ -255,7 +255,7 @@ function App({
   useEffect(() => {
     let cancelled = false;
     async function cargarOrden() {
-      const ordenCargada = await repository.getOrderByFechaOperativa(hoy);
+      const ordenCargada = await repository.getOrderByFechaOperativa(fechaOperativa);
       if (cancelled) return;
       // Con lecturaRepository presente las lecturas persistidas son parte de la
       // orden: el repositorio de órdenes NUNCA las consulta (10.4/10.5), así que se
@@ -273,7 +273,7 @@ function App({
     return () => {
       cancelled = true;
     };
-  }, [repository, lecturaRepository, hoy]);
+  }, [repository, lecturaRepository, fechaOperativa]);
 
   useEffect(() => {
     // Phase 10 (WU10 — 10.2/10.3): junto con la lista del día se leen las DOS
@@ -285,7 +285,7 @@ function App({
     let cancelled = false;
     async function cargarParadas() {
       const [delDia, deMaquina, deOrden] = await Promise.all([
-        paradaRepository.listarPorMaquinaYFecha("M1", hoy),
+        paradaRepository.listarPorMaquinaYFecha("M1", fechaOperativa),
         paradaRepository.getParadaAbiertaDeMaquina("M1"),
         orden ? paradaRepository.getParadaAbierta("M1", orden.id) : Promise.resolve(null),
       ]);
@@ -298,7 +298,7 @@ function App({
     return () => {
       cancelled = true;
     };
-  }, [paradaRepository, orden?.id, hoy]);
+  }, [paradaRepository, orden?.id, fechaOperativa]);
 
   useEffect(() => {
     // Phase 10 (WU10 — 10.1): la lista del día NO alcanza para «¿qué está
@@ -313,7 +313,7 @@ function App({
     let cancelled = false;
     async function cargarActividades() {
       const [delDia, ...abiertasPorTipo] = await Promise.all([
-        actividadRepository.listarPorMaquinaYFecha("M1", hoy),
+        actividadRepository.listarPorMaquinaYFecha("M1", fechaOperativa),
         ...getTiposActividad().map((tipo) =>
           actividadRepository.getActividadAbierta("M1", tipo.id),
         ),
@@ -329,19 +329,19 @@ function App({
     return () => {
       cancelled = true;
     };
-  }, [actividadRepository, hoy]);
+  }, [actividadRepository, fechaOperativa]);
 
   useEffect(() => {
     let cancelled = false;
     async function cargarJornada() {
-      const jornadaCargada = await jornadaRepository.obtenerParaFecha(hoy);
+      const jornadaCargada = await jornadaRepository.obtenerParaFecha(fechaOperativa);
       if (!cancelled) setJornada(jornadaCargada);
     }
     cargarJornada();
     return () => {
       cancelled = true;
     };
-  }, [jornadaRepository, hoy]);
+  }, [jornadaRepository, fechaOperativa]);
 
   useEffect(() => {
     // Phase 14.1: el loader de daños re-lee los tres valores (lista de la máquina,
@@ -350,7 +350,7 @@ function App({
     let cancelled = false;
     async function cargarDanos() {
       const [danosCargados, abierto, deOrden] = await Promise.all([
-        danoRepository.listarPorMaquinaYFecha("M1", hoy),
+        danoRepository.listarPorMaquinaYFecha("M1", fechaOperativa),
         danoRepository.getDanoAbierto("M1"),
         orden ? danoRepository.listarPorOrden(orden.id) : Promise.resolve([]),
       ]);
@@ -363,7 +363,7 @@ function App({
     return () => {
       cancelled = true;
     };
-  }, [danoRepository, orden?.id, hoy]);
+  }, [danoRepository, orden?.id, fechaOperativa]);
 
   useEffect(() => {
     // Phase 14.1: lista y abierto de mantenimientos se re-leen juntos; el abierto
@@ -371,7 +371,7 @@ function App({
     let cancelled = false;
     async function cargarMantenimientos() {
       const [deMaquina, abierto] = await Promise.all([
-        mantenimientoRepository.listarPorMaquinaYFecha("M1", hoy),
+        mantenimientoRepository.listarPorMaquinaYFecha("M1", fechaOperativa),
         mantenimientoRepository.getMantenimientoAbierto("M1"),
       ]);
       if (cancelled) return;
@@ -382,7 +382,7 @@ function App({
     return () => {
       cancelled = true;
     };
-  }, [mantenimientoRepository, hoy]);
+  }, [mantenimientoRepository, fechaOperativa]);
 
   useEffect(() => {
     // La inspección siempre pertenece a su orden: se recarga al cambiar la orden.
@@ -412,7 +412,7 @@ function App({
     // Phase 10 (WU10 — 10.2/10.3): mismo trío que `cargarParadas`; tras cada
     // escritura la lista del día y las dos lecturas day-free se refrescan juntos.
     const [delDia, deMaquina, deOrden] = await Promise.all([
-      paradaRepository.listarPorMaquinaYFecha("M1", hoy),
+      paradaRepository.listarPorMaquinaYFecha("M1", fechaOperativa),
       paradaRepository.getParadaAbiertaDeMaquina("M1"),
       orden ? paradaRepository.getParadaAbierta("M1", orden.id) : Promise.resolve(null),
     ]);
@@ -425,7 +425,7 @@ function App({
     // Phase 10 (WU10 — 10.1): la lista del día y la abiertud day-free se
     // re-leen juntas, igual que en el loader de montaje.
     const [delDia, ...abiertasPorTipo] = await Promise.all([
-      actividadRepository.listarPorMaquinaYFecha("M1", hoy),
+      actividadRepository.listarPorMaquinaYFecha("M1", fechaOperativa),
       ...getTiposActividad().map((tipo) =>
         actividadRepository.getActividadAbierta("M1", tipo.id),
       ),
@@ -440,7 +440,7 @@ function App({
 
   async function recargarDanos(): Promise<void> {
     const [danosDeMaquina, abierto, deOrden] = await Promise.all([
-      danoRepository.listarPorMaquinaYFecha("M1", hoy),
+      danoRepository.listarPorMaquinaYFecha("M1", fechaOperativa),
       danoRepository.getDanoAbierto("M1"),
       orden ? danoRepository.listarPorOrden(orden.id) : Promise.resolve([]),
     ]);
@@ -451,7 +451,7 @@ function App({
 
   async function recargarMantenimientos(): Promise<void> {
     const [deMaquina, abierto] = await Promise.all([
-      mantenimientoRepository.listarPorMaquinaYFecha("M1", hoy),
+      mantenimientoRepository.listarPorMaquinaYFecha("M1", fechaOperativa),
       mantenimientoRepository.getMantenimientoAbierto("M1"),
     ]);
     setMantenimientos(deMaquina);
@@ -680,10 +680,10 @@ function App({
   /** Única vía editar el fin de jornada (overtime): repositorio valida; React no duplica reglas. */
   async function handleCambiarFinJornada(fin: string): Promise<string[]> {
     if (soloLectura) return ["no se puede registrar en un día que no es hoy"];
-    const finIso = `${hoy}T${fin}:00.000Z`;
+    const finIso = `${fechaOperativa}T${fin}:00.000Z`;
     const nuevaJornada: JornadaTurno = { inicio: jornada.inicio, fin: finIso };
     try {
-      await jornadaRepository.guardarJornada(hoy, nuevaJornada);
+      await jornadaRepository.guardarJornada(fechaOperativa, nuevaJornada);
       setJornada(nuevaJornada);
       return [];
     } catch (error) {
@@ -952,10 +952,9 @@ function App({
       unirAbiertosPorId(actividadesAbiertasDeMaquina, abiertasDelDia);
 
   const propsActividades = {
-    hoy,
     // CHANGE 1: día al que se atribuyen los eventos nuevos. Igual al consultado
     // mientras no exista navegación histórica (CHANGE 2).
-    fechaOperativa: hoy,
+    fechaOperativa,
     // Gate #1 (design §6.1): contralor UI que OCULTA los controles de escritura de
     // las secciones de actividad/resumen. No sustituye a `permitirRegistrar` (gate #2)
     // ni a los guards de los handlers: son tres capas distintas.
@@ -993,7 +992,7 @@ function App({
     // Gate #1 (`soloLectura`) se apila con el gate #2 (`permitirRegistrar`): la sección
     // solo muestra sus controles si el día NO es pasado Y la orden no está finalizada.
     permitirRegistrar: !soloLectura && orden?.estado !== "finished",
-    fechaOperativa: hoy,
+    fechaOperativa,
     onRegistrarDano: handleRegistrarDano,
     onCerrarDano: handleCerrarDano,
   };
@@ -1033,7 +1032,7 @@ function App({
       : mantenimientoAbiertoDeMaquina,
     danosDeMaquina: danos,
     permitirRegistrar: !soloLectura && orden?.estado !== "finished",
-    fechaOperativa: hoy,
+    fechaOperativa,
     onRegistrarMantenimiento: handleRegistrarMantenimiento,
     onCerrarMantenimiento: handleCerrarMantenimiento,
   };
@@ -1148,20 +1147,20 @@ function App({
     <main className="app">
       <header className="app__header">
         <h1 className="app__titulo">Dashboard de Estampado</h1>
-        <span className="app__fecha">Fecha operativa: {hoy}</span>
+        <span className="app__fecha">Fecha operativa: {fechaOperativa}</span>
         {/* Bloque ÚNICO del día (tarea 7.7): `Raiz` siempre define `onSeleccionarDia`,
             un montaje directo de `App` no, así que su DOM no cambia. El navegador
             (`SelectorDiaOperativa`, tarea 9.4) entra en este MISMO bloque, antes del
             alerta; el alerta `role="alert"` es el render diferido de la tarea 6.3.
-            `hoy` (día seleccionado) va como `fechaOperativa` y `hoyReal` (la prop
-            INYECTADA de la tarea 7.2) como tope `hoy` del navegador: el navegador
+            `fechaOperativa` (día seleccionado) se pasa al navegador y `hoyReal` (la prop
+            INYECTADA de la tarea 7.2) como tope `fechaOperativaHoy` del navegador: el navegador
             nunca lee el reloj. `cargandoDia` deja los tres controles inoperativos
             durante todo el cambio, así no se encola un segundo `seleccionarDia`. */}
         {onSeleccionarDia && (
           <>
             <SelectorDiaOperativa
-              fechaOperativa={hoy}
-              hoy={hoyReal}
+              fechaOperativa={fechaOperativa}
+              fechaOperativaHoy={hoyReal}
               disabled={cargandoDia}
               onSeleccionar={onSeleccionarDia}
             />

@@ -94,7 +94,7 @@ export function Raiz({ repos, estadoInicial, fechaOperativaInicial }: RaizProps)
       key={vista.fechaOperativa}
       {...repos}
       estadoInicial={vista.estado}
-      hoy={vista.fechaOperativa}
+      fechaOperativa={vista.fechaOperativa}
       onSeleccionarDia={seleccionarDia}
       cargandoDia={cargando}
       errorCambioDia={errorDia}

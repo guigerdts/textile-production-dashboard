@@ -13,8 +13,6 @@ import {
 import type { RegistrarActividadInput } from "../domain/actividades";
 
 export interface ActividadesProps {
-  /** Día operativo (para la sugerencia editable del martes en limpieza). */
-  hoy: string;
   /** Día operativo (YYYY-MM-DD) en el que se ATRIBUYE el evento nuevo. No se
    * deriva de `inicio`: es un dato explícito y persistido (CHANGE 1).
    * Hoy la app lo inyecta con el día consultado; al navegar a un día
@@ -58,7 +56,6 @@ function esMartes(fechaOperativa: string): boolean {
 
 /** Sección de actividades planificadas: registrar, activa y historial. Reutilizable en los 4 estados de orden. */
 export function ActividadesSection({
-  hoy,
   operatorNameInicial = "",
   actividades,
   actividadesAbiertas,
@@ -147,7 +144,7 @@ export function ActividadesSection({
                 setTipo(nuevo);
                 // Sugerencia SOLO de UI: si es martes y elige limpieza, precarga un texto
                 // editable; no crea nada, no restringe otros días ni horarios.
-                setQueSeLimpio(nuevo === "limpieza" && esMartes(hoy) ? SUGERENCIA_LIMPIEZA_MARTES : "");
+                setQueSeLimpio(nuevo === "limpieza" && esMartes(fechaOperativa) ? SUGERENCIA_LIMPIEZA_MARTES : "");
               }}
             >
               <option value="">Seleccionar tipo…</option>
