@@ -751,12 +751,12 @@ introduces.
 - WHEN it is passed through a `Registrar*Input`
 - THEN the fixture's `fechaOperativa` is the one the domain carries into the entity
 
-## Interaction with the pending `operational-event-operative-date` delta
+## Interaction with the archived `operational-event-operative-date` change
 
-`openspec/changes/operational-event-operative-date/specs/operational-repository-contracts/spec.md`
-contains an ADDED requirement *"No port signature changes in this change"*, whose scenario asserts that
-`listarPorMaquina` accepts only `maquinaId`. That requirement was correct for its own change and is
-**superseded** by the requirement *"Exactly four machine-event ports gain a day-scoped listing"* above.
-The superseded scenario MUST NOT be promoted as-is when `operational-event-operative-date` is archived;
-it must be replaced by the day-scoped contract specified here. This delta records that; it does not
-edit the other change's file.
+`operational-event-operative-date` was archived at
+`openspec/changes/archive/2026-10-05-operational-event-operative-date/`. The superseded requirement
+*"No port signature changes in this change"* was **EXCLUDED** at archive (see
+`openspec/changes/archive/2026-10-05-operational-event-operative-date/archive-report.md` §2.4).
+The day-scoped contract specified by `historical-day-navigation` is normative: `listarPorMaquinaYFecha`
+exists on the four machine-event ports (`parada`, `actividad_planificada`, `dano`, `mantenimiento`).
+This records that outcome; it does not edit the archived change's files.
