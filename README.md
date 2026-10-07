@@ -133,6 +133,97 @@ npm run tauri build  # desktop app bundle (requires Rust toolchain)
 `npm run tauri dev` and `npm run tauri build` were not executed in the environment used to prepare this README (no Rust/Cargo toolchain available there). This is a verification limitation of that environment, not an indication that the scripts are broken — they correspond to the project's defined scripts.
 
 The dashboard expects to start against an empty database: the startup sequence materializes the operative-day programming (fixtures), recovers persisted state, and renders the app. If initialization fails, the app shows an explicit error screen and never mounts with partial data.
+## From zero
+
+### 1. Prerequisites
+
+- **Frontend/tests (development)**: Node.js with npm. Versions validated in this environment: Node v22.23.3 / npm 10.9.9. Check against `package.json` for any constraints.
+- **Tauri desktop development**: Rust toolchain (`rustc`/`cargo`) and Tauri system dependencies. Validated in this environment: rustc 1.98.1 / cargo 1.98.1 / tauri-cli 2.11.4. Install per platform as per Tauri docs; Tauri 2.x.
+- **Desktop build/distribution**: Same as Tauri desktop development.
+
+### 2. Clone and install
+
+```bash
+git clone https://github.com/guigerdts/textile-production-dashboard
+cd textile-production-dashboard
+npm install
+```
+
+### 3. Run the project
+
+- `npm run dev` — Frontend only (Vite dev server). Opens at `http://localhost:1420`. Use for UI/component iteration without spawning the Tauri shell.
+- `npm run tauri dev` — Full Tauri desktop application in development. Requires Rust toolchain and Tauri system dependencies. Use this to test the complete desktop app.
+
+### 4. First startup
+
+On first run with an empty database:
+1. `initDatabase()` — sets up SQLite infrastructure and applies migrations 001–005 (registered in `src-tauri/src/lib.rs`).
+2. Create/initialize the eight SQLite repositories (orders, jornada, golpe readings, stops, planned activities, damages, inspections, maintenance).
+3. `materializarPrograma(...)` — idempotent materialization of the programming feed using **programmatic fixtures** (current implementation). No external weekly programming source is connected yet.
+4. `recoverPersistedState(...)` — recovers the eight persisted sources for the operative day.
+5. React app mounts **only** when all of the above resolve successfully. If initialization fails, an explicit error screen is shown and the app never mounts with partial state.
+
+Notes: `inspeccion_tela` does not carry `fecha_operativa` (derived via its order). `fecha_operativa` is explicit for `parada`, `actividad_planificada`, `dano` and `mantenimiento`.
+
+### 5. What to expect in the application
+
+- **Programming**: Operative-day programming materialized from fixtures.
+- **Orders**: Available → in_production → finished; finishing allowed with zero golpes; finished orders reject new readings.
+- **Workday/jornada**: Tracks workday boundaries and state.
+- **Golpe readings**: First reading mandatory; higher increments produced units; equal warns; lower rejected.
+- **Production/quality**: Tracks produced units, first/second quality; operational alert above 3% 2da (monthly < 5%). Official 2da classification belongs to Acabado; Estampado records suspicions only.
+- **Stops (paradas)** and **Planned activities (actividades planificadas)**: Separate concepts; stops are incidents, planned activities deduct from productive time without counting as incidents.
+- **Damages (daños), fabric inspections (inspección de tela), maintenance (mantenimiento)**: Full tracking per domain rules.
+- **Day navigation / historical**: Operator can navigate between days. A historical day is **read-only**; today behaves normally. Open damage/maintenance banners are scoped to the selected day.
+
+### 6. Test and verify
+
+```bash
+npm test            # Run all tests (vitest run)
+npm run test:watch  # Watch mode
+npx tsc --noEmit    # TypeScript typecheck
+```
+
+For resource-constrained environments (few CPU cores), prefer serial mode:
+```bash
+npx vitest run --pool=threads --maxWorkers=1
+```
+
+Recommended verification after clone: install deps → typecheck → run tests.
+
+### 7. Desktop build
+
+```bash
+npm run tauri build
+```
+
+Prerequisites: Rust toolchain + Tauri system dependencies. Successful generation means the bundle artifacts were produced; platform-specific validation is not assumed by this repo. The `npm run tauri dev`/`tauri build` paths use `tauri-cli` (validated: 2.11.4).
+
+### 8. SQLite / reset during development
+
+- **Location**: `sqlite:estampado.db` is resolved by `tauri-plugin-sql` (Tauri) depending on the OS/app data directory. The repository does **not** hardcode a physical filesystem path for the dev database.
+- **Initialization**: Migrations 001–005 run on startup via `initDatabase()` (registered in `src-tauri/src/lib.rs`). The app starts empty; programming is materialized from fixtures.
+- **Clean reset**: To return to a clean state, delete the `estampado.db` file from the app's data directory **for your platform**. The exact path is OS/Tauri-specific and not determined by the repo — consult your platform's Tauri app data location. Do not run destructive global commands unless you know the target path.
+- **Note on tests**: SQLite adapter parity uses `node:sqlite` (real SQLite engine) with real migrations — this validates adapters, **not** the Tauri SQL transport/runtime.
+
+### 9. Troubleshooting mínimo
+
+- **Port 1420**: `npm run dev` uses http://localhost:1420 (strict). Ensure it's free.
+- **Rust/Tauri**: If `npm run tauri dev`/`build` fail, verify `rustc --version`, `cargo --version`, and platform Tauri deps.
+- **Node/npm**: Use compatible Node (v22.x tested). If `npm install` fails, clear cache and retry.
+- **Tests timeout on few cores**: Use `--maxWorkers=1` as above.
+- **Empty DB / migrations**: If startup fails, check DB state — migration 005 is NOT NULL with no backfill; existing non-empty DBs may need clean reset as above.
+- **dev vs tauri dev**: `npm run dev` is frontend-only; `npm run tauri dev` is the full desktop app.
+
+### 10. Development workflow
+
+1. Read `CONTEXT.md` (domain vocabulary and rules).
+2. Review ADRs in `docs/adr/`.
+3. Review specs in `openspec/` before changing behavior.
+4. Implement changes.
+5. Run tests, typecheck, and build as applicable.
+6. Keep specs in sync with implementation.
+
 
 ## Testing
 
