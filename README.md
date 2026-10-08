@@ -117,6 +117,11 @@ docs/adr/                # Architecture Decision Records (0001–0007)
 openspec/                # SDD change artifacts (specs, design, tasks)
 ```
 
+## Documentation
+
+- **[User Manual](docs/user-manual.md)** — complete guide to installing, starting, and using the dashboard: daily production workflow, orders and readings, stops, planned activities, damage, fabric inspection, maintenance, quality/2da, operative-day navigation, persistence, troubleshooting, and best practices. **If you are going to operate the application, start here.** Written in Spanish, the working language of the printing area.
+- **This README** — technical entry point to the project: overview, domain, architecture, development setup, testing, persistence, and technical status. **If you are going to develop or evaluate the project, continue here.**
+
 ## Getting Started
 
 Prerequisites: Node.js with npm; for the desktop app, the Rust toolchain and Tauri system dependencies.
